@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-surface-800;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-surface-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-surface-600;
+  }
+
+  ::selection {
+    @apply bg-accent-600/40 text-white;
+  }
+}
+
+@layer components {
+  .drag-overlay {
+    @apply opacity-90 shadow-2xl shadow-accent-500/20 ring-2 ring-accent-500/40 rounded-lg;
+  }
+
+  .drop-indicator {
+    @apply bg-accent-500/20 border-2 border-dashed border-accent-500/50 rounded-lg;
+  }
+
+  .task-item {
+    @apply bg-surface-900/60 border border-surface-800/60 rounded-lg px-3 py-2.5
+           hover:bg-surface-800/80 hover:border-surface-700/60
+           transition-all duration-150 ease-out cursor-default;
+  }
+
+  .task-item-selected {
+    @apply bg-accent-900/30 border-accent-700/40 ring-1 ring-accent-500/20;
+  }
+
+  .time-block {
+    @apply rounded-lg border border-accent-600/40 bg-accent-900/40 px-2.5 py-1.5
+           hover:bg-accent-800/50 hover:border-accent-500/60
+           transition-all duration-100 cursor-grab active:cursor-grabbing;
+  }
+
+  .time-slot {
+    @apply border-b border-surface-800/30 transition-colors duration-100;
+  }
+
+  .time-slot-hover {
+    @apply bg-accent-500/8;
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium
+           text-surface-400 hover:text-surface-200 hover:bg-surface-800/60
+           transition-all duration-150 cursor-pointer;
+  }
+
+  .sidebar-item-active {
+    @apply text-accent-400 bg-accent-950/60 hover:bg-accent-900/40;
+  }
+
+  .btn-primary {
+    @apply bg-accent-600 hover:bg-accent-500 text-white font-medium px-4 py-2
+           rounded-lg transition-all duration-150 active:scale-[0.98]
+           focus:outline-none focus:ring-2 focus:ring-accent-500/50;
+  }
+
+  .btn-ghost {
+    @apply text-surface-400 hover:text-surface-200 hover:bg-surface-800/60
+           px-3 py-1.5 rounded-lg transition-all duration-150
+           focus:outline-none focus:ring-2 focus:ring-surface-600/50;
+  }
+
+  .input-base {
+    @apply bg-surface-900/60 border border-surface-700/50 rounded-lg px-3 py-2
+           text-surface-100 placeholder:text-surface-500
+           focus:outline-none focus:ring-2 focus:ring-accent-500/40 focus:border-accent-600/60
+           transition-all duration-150;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium
+           bg-surface-800/80 text-surface-300 border border-surface-700/40;
+  }
+
+  .chip-accent {
+    @apply bg-accent-900/60 text-accent-300 border-accent-700/40;
+  }
+
+  .chip-success {
+    @apply bg-green-900/40 text-green-300 border-green-700/30;
+  }
+
+  .chip-warning {
+    @apply bg-amber-900/40 text-amber-300 border-amber-700/30;
+  }
+}
+
+/* Drag and drop animation helpers */
+.sortable-ghost {
+  @apply opacity-30;
+}
+
+.dragging {
+  @apply opacity-80;
+}
+
+/* Title bar drag region */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}

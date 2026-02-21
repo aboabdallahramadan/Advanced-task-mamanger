@@ -1,0 +1,73 @@
+{
+    "name": "daily-planner-desktop",
+    "version": "1.0.0",
+    "private": true,
+    "description": "A daily planning workspace with task management and time blocking",
+    "main": "./dist-electron/main.js",
+    "scripts": {
+        "dev": "vite",
+        "build": "tsc && vite build && tsc -p tsconfig.electron.json",
+        "preview": "vite preview",
+        "package": "npm run build && electron-builder",
+        "format": "prettier --write \"**/*.{ts,tsx,css,json}\""
+    },
+    "dependencies": {
+        "@dnd-kit/core": "^6.3.1",
+        "@dnd-kit/sortable": "^10.0.0",
+        "@dnd-kit/utilities": "^3.2.2",
+        "@radix-ui/react-context-menu": "^2.2.6",
+        "@radix-ui/react-dialog": "^1.1.6",
+        "@radix-ui/react-dropdown-menu": "^2.1.6",
+        "@radix-ui/react-popover": "^1.1.6",
+        "@radix-ui/react-tooltip": "^1.1.8",
+        "@radix-ui/react-scroll-area": "^1.2.3",
+        "sql.js": "^1.12.0",
+        "clsx": "^2.1.1",
+        "date-fns": "^4.1.0",
+        "electron-updater": "^6.3.9",
+        "lucide-react": "^0.474.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "uuid": "^11.1.0",
+        "zustand": "^5.0.3"
+    },
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "@types/uuid": "^10.0.0",
+        "@vitejs/plugin-react": "^4.3.4",
+        "autoprefixer": "^10.4.20",
+        "electron": "^33.3.1",
+        "electron-builder": "^26.8.1",
+        "postcss": "^8.4.49",
+        "prettier": "^3.2.0",
+        "tailwindcss": "^3.4.17",
+        "typescript": "^5.4.0",
+        "vite": "^6.0.0",
+        "vite-plugin-electron": "^0.29.0",
+        "vite-plugin-electron-renderer": "^0.14.6"
+    },
+    "build": {
+        "appId": "com.dailyplanner.app",
+        "productName": "Daily Planner",
+        "directories": {
+            "output": "out"
+        },
+        "win": {
+            "target": "nsis",
+            "icon": "build/icon.ico"
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "Daily Planner"
+        },
+        "files": [
+            "dist/**/*",
+            "dist-electron/**/*"
+        ]
+    }
+}

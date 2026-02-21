@@ -1,0 +1,292 @@
+import { create } from 'zustand';
+import { Task, ViewMode } from './types';
+import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
+
+interface AppState {
+    // Tasks
+    tasks: Task[];
+    loading: boolean;
+
+    // View
+    currentView: ViewMode;
+    selectedDate: string;
+    selectedTaskIds: Set<string>;
+    editingTaskId: string | null;
+    searchQuery: string;
+    searchOpen: boolean;
+
+    // Timeline
+    timeIncrement: number; // 5, 10, or 15
+    workStartHour: number;
+    workEndHour: number;
+    allowOverlaps: boolean;
+
+    // UI
+    sidebarCollapsed: boolean;
+
+    // Actions
+    loadTasks: () => Promise<void>;
+    loadTasksByDate: (date: string) => Promise<void>;
+    createTask: (task: Partial<Task>) => Promise<Task | null>;
+    updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+    deleteTask: (id: string) => Promise<void>;
+    reorderTasks: (items: { id: string; order: number }[]) => Promise<void>;
+    scheduleTask: (id: string, start: string, end: string) => Promise<void>;
+    unscheduleTask: (id: string) => Promise<void>;
+    markDone: (id: string) => Promise<void>;
+    moveToToday: (id: string) => Promise<void>;
+    moveToBacklog: (id: string) => Promise<void>;
+    archiveTask: (id: string) => Promise<void>;
+
+    setCurrentView: (view: ViewMode) => void;
+    setSelectedDate: (date: string) => void;
+    toggleTaskSelection: (id: string) => void;
+    selectTask: (id: string) => void;
+    clearSelection: () => void;
+    setEditingTaskId: (id: string | null) => void;
+    setSearchQuery: (query: string) => void;
+    setSearchOpen: (open: boolean) => void;
+    setSidebarCollapsed: (collapsed: boolean) => void;
+    setTimeIncrement: (inc: number) => void;
+
+    // Computed
+    todayTasks: () => Task[];
+    scheduledTasks: () => Task[];
+    inboxTasks: () => Task[];
+    backlogTasks: () => Task[];
+    filteredTasks: () => Task[];
+    freeMinutesRemaining: () => number;
+}
+
+export const useStore = create<AppState>((set, get) => ({
+    tasks: [],
+    loading: false,
+    currentView: 'today',
+    selectedDate: format(new Date(), 'yyyy-MM-dd'),
+    selectedTaskIds: new Set(),
+    editingTaskId: null,
+    searchQuery: '',
+    searchOpen: false,
+    timeIncrement: 15,
+    workStartHour: 8,
+    workEndHour: 20,
+    allowOverlaps: false,
+    sidebarCollapsed: false,
+
+    loadTasks: async () => {
+        set({ loading: true });
+        try {
+            const tasks = await window.api.tasks.getAll();
+            set({ tasks, loading: false });
+        } catch (e) {
+            console.error('Failed to load tasks:', e);
+            set({ loading: false });
+        }
+    },
+
+    loadTasksByDate: async (date: string) => {
+        set({ loading: true });
+        try {
+            const tasks = await window.api.tasks.getByDate(date);
+            set({ tasks, loading: false });
+        } catch (e) {
+            console.error('Failed to load tasks by date:', e);
+            set({ loading: false });
+        }
+    },
+
+    createTask: async (task: Partial<Task>) => {
+        try {
+            const newTask = await window.api.tasks.create(task);
+            set((s) => ({ tasks: [...s.tasks, newTask] }));
+            return newTask;
+        } catch (e) {
+            console.error('Failed to create task:', e);
+            return null;
+        }
+    },
+
+    updateTask: async (id: string, updates: Partial<Task>) => {
+        try {
+            const updated = await window.api.tasks.update(id, updates);
+            set((s) => ({
+                tasks: s.tasks.map((t) => (t.id === id ? updated : t)),
+            }));
+        } catch (e) {
+            console.error('Failed to update task:', e);
+        }
+    },
+
+    deleteTask: async (id: string) => {
+        try {
+            await window.api.tasks.delete(id);
+            set((s) => ({
+                tasks: s.tasks.filter((t) => t.id !== id),
+                selectedTaskIds: new Set([...s.selectedTaskIds].filter((sid) => sid !== id)),
+            }));
+        } catch (e) {
+            console.error('Failed to delete task:', e);
+        }
+    },
+
+    reorderTasks: async (items: { id: string; order: number }[]) => {
+        try {
+            await window.api.tasks.reorder(items);
+            set((s) => {
+                const orderMap = new Map(items.map((i) => [i.id, i.order]));
+                return {
+                    tasks: s.tasks
+                        .map((t) => (orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t))
+                        .sort((a, b) => a.order - b.order),
+                };
+            });
+        } catch (e) {
+            console.error('Failed to reorder tasks:', e);
+        }
+    },
+
+    scheduleTask: async (id: string, start: string, end: string) => {
+        const { updateTask } = get();
+        await updateTask(id, {
+            status: 'scheduled',
+            scheduledStart: start,
+            scheduledEnd: end,
+            plannedDate: start.split('T')[0],
+        });
+    },
+
+    unscheduleTask: async (id: string) => {
+        const { updateTask, selectedDate } = get();
+        await updateTask(id, {
+            status: 'planned',
+            scheduledStart: null,
+            scheduledEnd: null,
+        });
+    },
+
+    markDone: async (id: string) => {
+        const { updateTask } = get();
+        await updateTask(id, { status: 'done' });
+    },
+
+    moveToToday: async (id: string) => {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const { updateTask } = get();
+        await updateTask(id, { status: 'planned', plannedDate: today });
+    },
+
+    moveToBacklog: async (id: string) => {
+        const { updateTask } = get();
+        await updateTask(id, { status: 'backlog', plannedDate: null, scheduledStart: null, scheduledEnd: null });
+    },
+
+    archiveTask: async (id: string) => {
+        const { updateTask } = get();
+        await updateTask(id, { status: 'archived' });
+    },
+
+    setCurrentView: (view: ViewMode) => {
+        const now = new Date();
+        let date = format(now, 'yyyy-MM-dd');
+        if (view === 'tomorrow') date = format(addDays(now, 1), 'yyyy-MM-dd');
+        set({ currentView: view, selectedDate: date });
+    },
+
+    setSelectedDate: (date: string) => set({ selectedDate: date }),
+
+    toggleTaskSelection: (id: string) =>
+        set((s) => {
+            const newSet = new Set(s.selectedTaskIds);
+            if (newSet.has(id)) newSet.delete(id);
+            else newSet.add(id);
+            return { selectedTaskIds: newSet };
+        }),
+
+    selectTask: (id: string) => set({ selectedTaskIds: new Set([id]) }),
+
+    clearSelection: () => set({ selectedTaskIds: new Set() }),
+
+    setEditingTaskId: (id: string | null) => set({ editingTaskId: id }),
+
+    setSearchQuery: (query: string) => set({ searchQuery: query }),
+
+    setSearchOpen: (open: boolean) => set({ searchOpen: open, searchQuery: '' }),
+
+    setSidebarCollapsed: (collapsed: boolean) => set({ sidebarCollapsed: collapsed }),
+
+    setTimeIncrement: (inc: number) => set({ timeIncrement: inc }),
+
+    todayTasks: () => {
+        const { tasks, selectedDate } = get();
+        return tasks.filter(
+            (t) =>
+                t.plannedDate === selectedDate &&
+                t.status !== 'archived' &&
+                t.status !== 'done',
+        );
+    },
+
+    scheduledTasks: () => {
+        const { tasks, selectedDate } = get();
+        return tasks.filter(
+            (t) =>
+                t.status === 'scheduled' &&
+                t.scheduledStart &&
+                t.scheduledStart.startsWith(selectedDate),
+        );
+    },
+
+    inboxTasks: () => {
+        const { tasks } = get();
+        return tasks.filter((t) => t.status === 'inbox');
+    },
+
+    backlogTasks: () => {
+        const { tasks } = get();
+        return tasks.filter((t) => t.status === 'backlog');
+    },
+
+    filteredTasks: () => {
+        const { tasks, currentView, selectedDate, searchQuery } = get();
+        let filtered = tasks.filter((t) => t.status !== 'archived');
+
+        if (searchQuery) {
+            const q = searchQuery.toLowerCase();
+            return filtered.filter(
+                (t) =>
+                    t.title.toLowerCase().includes(q) ||
+                    t.notes.toLowerCase().includes(q) ||
+                    t.project.toLowerCase().includes(q),
+            );
+        }
+
+        switch (currentView) {
+            case 'today':
+            case 'tomorrow':
+                return filtered.filter(
+                    (t) => t.plannedDate === selectedDate || (t.status === 'scheduled' && t.scheduledStart?.startsWith(selectedDate)),
+                );
+            case 'inbox':
+                return filtered.filter((t) => t.status === 'inbox');
+            case 'backlog':
+                return filtered.filter((t) => t.status === 'backlog');
+            case 'week': {
+                const start = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+                const end = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+                return filtered.filter(
+                    (t) => t.plannedDate && t.plannedDate >= start && t.plannedDate <= end,
+                );
+            }
+            default:
+                return filtered;
+        }
+    },
+
+    freeMinutesRemaining: () => {
+        const { scheduledTasks, workStartHour, workEndHour } = get();
+        const scheduled = scheduledTasks();
+        const totalWorkMinutes = (workEndHour - workStartHour) * 60;
+        const scheduledMinutes = scheduled.reduce((sum, t) => sum + (t.durationMinutes || 0), 0);
+        return totalWorkMinutes - scheduledMinutes;
+    },
+}));
