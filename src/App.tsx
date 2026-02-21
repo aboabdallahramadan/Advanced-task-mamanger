@@ -12,13 +12,15 @@ import {
 import { Sidebar } from './components/Sidebar';
 import { TaskList } from './components/TaskList';
 import { DayTimeline } from './components/DayTimeline';
+import { PlanningFlowOverlay } from './components/planning/PlanningFlowOverlay';
+import { FocusModeOverlay } from './components/focus/FocusModeOverlay';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock } from 'lucide-react';
 
 export default function App() {
-    const { loadTasks, scheduleTask } = useStore();
+    const { loadTasks, scheduleTask, startPlanningFlow } = useStore();
     const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
     const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -36,8 +38,16 @@ export default function App() {
             // These are handled in individual components
         };
         window.addEventListener('keydown', handleKeyDown);
+
+        // Listen for IPC navigation events
+        window.api.on('navigate', (route) => {
+            if (route === 'plan-today') {
+                startPlanningFlow();
+            }
+        });
+
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
+    }, [startPlanningFlow]);
 
     const handleDragStart = useCallback((event: DragStartEvent) => {
         const data = event.active.data.current;
@@ -113,6 +123,10 @@ export default function App() {
                     </div>
                 </div>
             </div>
+
+            {/* Modals & Overlays */}
+            <PlanningFlowOverlay />
+            <FocusModeOverlay />
 
             {/* Drag overlay for cross-panel drag */}
             <DragOverlay dropAnimation={null}>

@@ -15,6 +15,7 @@ export interface Task {
     scheduledStart: string | null;
     scheduledEnd: string | null;
     durationMinutes: number;
+    actualTimeMinutes?: number;
     order: number;
     createdAt: string;
     updatedAt: string;
@@ -37,6 +38,7 @@ function rowToTask(columns: string[], values: any[]): Task {
         scheduledStart: row.scheduled_start,
         scheduledEnd: row.scheduled_end,
         durationMinutes: row.duration_minutes || 30,
+        actualTimeMinutes: row.actual_time_minutes || 0,
         order: row.sort_order || 0,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -90,8 +92,8 @@ export class TaskService {
             ? (maxResult[0].values[0][0] as number) : 0;
 
         this.db.run(
-            `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 id,
                 input.title || 'Untitled',
@@ -105,6 +107,7 @@ export class TaskService {
                 input.scheduledStart || null,
                 input.scheduledEnd || null,
                 input.durationMinutes || 30,
+                input.actualTimeMinutes || 0,
                 maxOrder + 1,
                 now,
                 now,
@@ -135,6 +138,7 @@ export class TaskService {
         if (updates.scheduledStart !== undefined) { sets.push('scheduled_start = ?'); values.push(updates.scheduledStart); }
         if (updates.scheduledEnd !== undefined) { sets.push('scheduled_end = ?'); values.push(updates.scheduledEnd); }
         if (updates.durationMinutes !== undefined) { sets.push('duration_minutes = ?'); values.push(updates.durationMinutes); }
+        if (updates.actualTimeMinutes !== undefined) { sets.push('actual_time_minutes = ?'); values.push(updates.actualTimeMinutes); }
         if (updates.order !== undefined) { sets.push('sort_order = ?'); values.push(updates.order); }
 
         if (sets.length === 0) return this.getById(id);

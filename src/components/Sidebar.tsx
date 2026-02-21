@@ -9,6 +9,7 @@ import {
     ChevronRight,
     Clock,
     Folder,
+    Sun,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { ViewMode } from '../types';
@@ -30,6 +31,7 @@ export function Sidebar() {
         tasks,
         sidebarCollapsed,
         setSidebarCollapsed,
+        startPlanningFlow,
     } = useStore();
 
     const inboxCount = tasks.filter((t) => t.status === 'inbox').length;
@@ -108,7 +110,17 @@ export function Sidebar() {
             </div>
 
             {/* Nav */}
-            <nav className="px-2 py-2 flex flex-col gap-0.5" role="navigation" aria-label="Main navigation">
+            <div className="px-2 py-2 mb-2">
+                <button
+                    onClick={startPlanningFlow}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium bg-accent-600/10 text-accent-400 hover:bg-accent-600/20 hover:text-accent-300 transition-all border border-accent-600/20 shadow-inner"
+                >
+                    <Sun className="w-4 h-4" />
+                    <span className="flex-1 text-left">Plan Today</span>
+                </button>
+            </div>
+
+            <nav className="px-2 py-0 flex flex-col gap-0.5" role="navigation" aria-label="Main navigation">
                 {navItems.map((item) => {
                     const count = getCounts(item.id);
                     return (

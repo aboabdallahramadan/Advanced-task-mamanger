@@ -11,6 +11,7 @@ export interface Task {
     scheduledStart: string | null;
     scheduledEnd: string | null;
     durationMinutes: number;
+    actualTimeMinutes?: number;
     order: number;
     createdAt: string;
     updatedAt: string;

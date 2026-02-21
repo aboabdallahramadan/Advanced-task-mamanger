@@ -11,6 +11,7 @@ export interface TaskInput {
     scheduledStart?: string;
     scheduledEnd?: string;
     durationMinutes?: number;
+    actualTimeMinutes?: number;
 }
 
 export interface TaskUpdate {
@@ -24,6 +25,7 @@ export interface TaskUpdate {
     scheduledStart?: string;
     scheduledEnd?: string;
     durationMinutes?: number;
+    actualTimeMinutes?: number;
     order?: number;
 }
 

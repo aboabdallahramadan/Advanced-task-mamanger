@@ -23,6 +23,16 @@ interface AppState {
 
     // UI
     sidebarCollapsed: boolean;
+    quickAddOpen: boolean;
+    planningFlow: {
+        isOpen: boolean;
+        step: 0 | 1 | 2; // 0: Review Yesterday, 1: Triage Inbox, 2: Timebox
+    };
+    focusMode: {
+        activeTaskId: string | null;
+        isPlaying: boolean;
+        sessionStartTime: number | null;
+    };
 
     // Actions
     loadTasks: () => Promise<void>;
@@ -30,7 +40,7 @@ interface AppState {
     createTask: (task: Partial<Task>) => Promise<Task | null>;
     updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
     deleteTask: (id: string) => Promise<void>;
-    reorderTasks: (items: { id: string; order: number }[]) => Promise<void>;
+    reorderTasks: (tasks: { id: string; order: number }[]) => Promise<void>;
     scheduleTask: (id: string, start: string, end: string) => Promise<void>;
     unscheduleTask: (id: string) => Promise<void>;
     markDone: (id: string) => Promise<void>;
@@ -48,6 +58,15 @@ interface AppState {
     setSearchOpen: (open: boolean) => void;
     setSidebarCollapsed: (collapsed: boolean) => void;
     setTimeIncrement: (inc: number) => void;
+    setQuickAddOpen: (isOpen: boolean) => void;
+    startPlanningFlow: () => void;
+    setPlanningStep: (step: 0 | 1 | 2) => void;
+    closePlanningFlow: () => void;
+
+    // Focus Mode Actions
+    startFocusSession: (taskId: string) => void;
+    pauseFocusSession: () => void;
+    stopFocusSession: () => Promise<void>;
 
     // Computed
     todayTasks: () => Task[];
@@ -72,6 +91,16 @@ export const useStore = create<AppState>((set, get) => ({
     workEndHour: 20,
     allowOverlaps: false,
     sidebarCollapsed: false,
+    quickAddOpen: false,
+    planningFlow: {
+        isOpen: false,
+        step: 0,
+    },
+    focusMode: {
+        activeTaskId: null,
+        isPlaying: false,
+        sessionStartTime: null,
+    },
 
     loadTasks: async () => {
         set({ loading: true });
@@ -129,11 +158,11 @@ export const useStore = create<AppState>((set, get) => ({
         }
     },
 
-    reorderTasks: async (items: { id: string; order: number }[]) => {
+    reorderTasks: async (tasks: { id: string; order: number }[]) => {
         try {
-            await window.api.tasks.reorder(items);
+            await window.api.tasks.reorder(tasks);
             set((s) => {
-                const orderMap = new Map(items.map((i) => [i.id, i.order]));
+                const orderMap = new Map(tasks.map((i) => [i.id, i.order]));
                 return {
                     tasks: s.tasks
                         .map((t) => (orderMap.has(t.id) ? { ...t, order: orderMap.get(t.id)! } : t))
@@ -215,6 +244,74 @@ export const useStore = create<AppState>((set, get) => ({
     setSidebarCollapsed: (collapsed: boolean) => set({ sidebarCollapsed: collapsed }),
 
     setTimeIncrement: (inc: number) => set({ timeIncrement: inc }),
+
+    setQuickAddOpen: (isOpen: boolean) => set({ quickAddOpen: isOpen }),
+    startPlanningFlow: () => set({ planningFlow: { isOpen: true, step: 0 } }),
+    setPlanningStep: (step: 0 | 1 | 2) => set((state) => ({ planningFlow: { ...state.planningFlow, step } })),
+    closePlanningFlow: () => set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } })),
+
+    // Focus Mode Actions
+    startFocusSession: (taskId: string) => {
+        set({
+            focusMode: {
+                activeTaskId: taskId,
+                isPlaying: true,
+                sessionStartTime: Date.now(),
+            }
+        });
+    },
+
+    pauseFocusSession: () => {
+        const { focusMode, updateTask, tasks } = get();
+        if (!focusMode.activeTaskId || !focusMode.isPlaying || !focusMode.sessionStartTime) return;
+
+        // Calculate elapsed minutes
+        const elapsedMs = Date.now() - focusMode.sessionStartTime;
+        const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+        if (elapsedMinutes > 0) {
+            const task = tasks.find(t => t.id === focusMode.activeTaskId);
+            if (task) {
+                const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
+                updateTask(task.id, { actualTimeMinutes: newActual });
+            }
+        }
+
+        set({
+            focusMode: {
+                ...focusMode,
+                isPlaying: false,
+                sessionStartTime: null,
+            }
+        });
+    },
+
+    stopFocusSession: async () => {
+        const { focusMode, updateTask, tasks } = get();
+        if (!focusMode.activeTaskId) return;
+
+        // Save any pending time if playing
+        if (focusMode.isPlaying && focusMode.sessionStartTime) {
+            const elapsedMs = Date.now() - focusMode.sessionStartTime;
+            const elapsedMinutes = Math.floor(elapsedMs / 60000);
+
+            if (elapsedMinutes > 0) {
+                const task = tasks.find(t => t.id === focusMode.activeTaskId);
+                if (task) {
+                    const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
+                    await updateTask(task.id, { actualTimeMinutes: newActual });
+                }
+            }
+        }
+
+        set({
+            focusMode: {
+                activeTaskId: null,
+                isPlaying: false,
+                sessionStartTime: null,
+            }
+        });
+    },
 
     todayTasks: () => {
         const { tasks, selectedDate } = get();

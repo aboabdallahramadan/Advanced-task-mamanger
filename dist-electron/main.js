@@ -94,6 +94,12 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_tasks_planned_date ON tasks(planned_date);
       CREATE INDEX IF NOT EXISTS idx_tasks_scheduled ON tasks(scheduled_start, scheduled_end)
     `
+  },
+  {
+    name: "002_add_actual_time",
+    sql: `
+      ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0;
+        `
   }
 ];
 function rowToTask(columns, values) {
@@ -112,6 +118,7 @@ function rowToTask(columns, values) {
     scheduledStart: row.scheduled_start,
     scheduledEnd: row.scheduled_end,
     durationMinutes: row.duration_minutes || 30,
+    actualTimeMinutes: row.actual_time_minutes || 0,
     order: row.sort_order || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -155,8 +162,8 @@ class TaskService {
     const maxResult = this.db.exec("SELECT MAX(sort_order) as max_order FROM tasks");
     const maxOrder = maxResult.length > 0 && maxResult[0].values[0][0] != null ? maxResult[0].values[0][0] : 0;
     this.db.run(
-      `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.title || "Untitled",
@@ -170,6 +177,7 @@ class TaskService {
         input.scheduledStart || null,
         input.scheduledEnd || null,
         input.durationMinutes || 30,
+        input.actualTimeMinutes || 0,
         maxOrder + 1,
         now,
         now
@@ -225,6 +233,10 @@ class TaskService {
     if (updates.durationMinutes !== void 0) {
       sets.push("duration_minutes = ?");
       values.push(updates.durationMinutes);
+    }
+    if (updates.actualTimeMinutes !== void 0) {
+      sets.push("actual_time_minutes = ?");
+      values.push(updates.actualTimeMinutes);
     }
     if (updates.order !== void 0) {
       sets.push("sort_order = ?");

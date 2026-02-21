@@ -103,4 +103,10 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_tasks_scheduled ON tasks(scheduled_start, scheduled_end)
     `,
     },
+    {
+        name: '002_add_actual_time',
+        sql: `
+      ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0;
+        `,
+    },
 ];

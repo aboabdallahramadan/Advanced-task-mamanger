@@ -8,8 +8,9 @@ import {
     CalendarPlus,
     Archive,
     Trash2,
-    ArrowRight,
     Folder,
+    Play,
+    ArrowRight
 } from 'lucide-react';
 import { Task } from '../types';
 import { useStore } from '../store';
@@ -34,6 +35,8 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
         moveToBacklog,
         archiveTask,
         deleteTask,
+        startFocusSession,
+        focusMode,
     } = useStore();
 
     const [editTitle, setEditTitle] = useState(task.title);
@@ -193,6 +196,24 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                             <Folder className="w-2.5 h-2.5" />
                             {task.project}
                         </span>
+                    )}
+
+                    {!isDone && (
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                startFocusSession(task.id);
+                            }}
+                            className={clsx(
+                                "flex items-center justify-center w-6 h-6 rounded-md transition-all",
+                                focusMode.activeTaskId === task.id
+                                    ? "bg-accent-500 text-white animate-pulse shadow-glow"
+                                    : "opacity-0 group-hover:opacity-100 text-surface-400 hover:text-accent-400 hover:bg-accent-500/10"
+                            )}
+                            title="Focus on this task"
+                        >
+                            <Play className="w-3.5 h-3.5" fill={focusMode.activeTaskId === task.id ? "currentColor" : "none"} />
+                        </button>
                     )}
 
                     <DurationChip
