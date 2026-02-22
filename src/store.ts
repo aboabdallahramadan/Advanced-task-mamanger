@@ -33,6 +33,7 @@ interface AppState {
     // UI
     sidebarCollapsed: boolean;
     quickAddOpen: boolean;
+    settingsOpen: boolean;
     taskDialog: {
         isOpen: boolean;
         mode: 'create' | 'edit';
@@ -82,6 +83,8 @@ interface AppState {
     setSidebarCollapsed: (collapsed: boolean) => void;
     setTimeIncrement: (inc: number) => void;
     setQuickAddOpen: (isOpen: boolean) => void;
+    setSettingsOpen: (open: boolean) => void;
+    setWorkHours: (start: number, end: number) => void;
     openTaskDialog: (mode: 'create' | 'edit', taskId?: string) => void;
     closeTaskDialog: () => void;
     startPlanningFlow: () => void;
@@ -124,6 +127,7 @@ export const useStore = create<AppState>((set, get) => ({
     allowOverlaps: false,
     sidebarCollapsed: false,
     quickAddOpen: false,
+    settingsOpen: false,
     taskDialog: {
         isOpen: false,
         mode: 'create',
@@ -331,6 +335,8 @@ export const useStore = create<AppState>((set, get) => ({
     setTimeIncrement: (inc: number) => set({ timeIncrement: inc }),
 
     setQuickAddOpen: (isOpen: boolean) => set({ quickAddOpen: isOpen }),
+    setSettingsOpen: (open: boolean) => set({ settingsOpen: open }),
+    setWorkHours: (start: number, end: number) => set({ workStartHour: start, workEndHour: end }),
     openTaskDialog: (mode: 'create' | 'edit', taskId?: string) => set({ taskDialog: { isOpen: true, mode, taskId: taskId || null } }),
     closeTaskDialog: () => set({ taskDialog: { isOpen: false, mode: 'create', taskId: null } }),
     startPlanningFlow: () => set({ planningFlow: { isOpen: true, step: 0 } }),
@@ -352,16 +358,14 @@ export const useStore = create<AppState>((set, get) => ({
         const { focusMode, updateTask, tasks } = get();
         if (!focusMode.activeTaskId || !focusMode.isPlaying || !focusMode.sessionStartTime) return;
 
-        // Calculate elapsed minutes
+        // Calculate elapsed minutes (round to nearest minute to preserve seconds)
         const elapsedMs = Date.now() - focusMode.sessionStartTime;
-        const elapsedMinutes = Math.floor(elapsedMs / 60000);
+        const elapsedMinutes = Math.round(elapsedMs / 60000);
 
-        if (elapsedMinutes > 0) {
-            const task = tasks.find(t => t.id === focusMode.activeTaskId);
-            if (task) {
-                const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
-                updateTask(task.id, { actualTimeMinutes: newActual });
-            }
+        const task = tasks.find(t => t.id === focusMode.activeTaskId);
+        if (task && elapsedMinutes > 0) {
+            const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
+            updateTask(task.id, { actualTimeMinutes: newActual });
         }
 
         set({
@@ -380,14 +384,12 @@ export const useStore = create<AppState>((set, get) => ({
         // Save any pending time if playing
         if (focusMode.isPlaying && focusMode.sessionStartTime) {
             const elapsedMs = Date.now() - focusMode.sessionStartTime;
-            const elapsedMinutes = Math.floor(elapsedMs / 60000);
+            const elapsedMinutes = Math.round(elapsedMs / 60000);
 
-            if (elapsedMinutes > 0) {
-                const task = tasks.find(t => t.id === focusMode.activeTaskId);
-                if (task) {
-                    const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
-                    await updateTask(task.id, { actualTimeMinutes: newActual });
-                }
+            const task = tasks.find(t => t.id === focusMode.activeTaskId);
+            if (task && elapsedMinutes > 0) {
+                const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
+                await updateTask(task.id, { actualTimeMinutes: newActual });
             }
         }
 

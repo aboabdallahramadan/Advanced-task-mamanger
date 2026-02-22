@@ -224,6 +224,20 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                         compact
                     />
 
+                    {(task.actualTimeMinutes || 0) > 0 && (
+                        <span className={clsx(
+                            "text-2xs px-1.5 py-0.5 rounded-md font-medium",
+                            (task.actualTimeMinutes || 0) > task.durationMinutes
+                                ? "bg-warning-900/30 text-warning-400"
+                                : "bg-accent-900/30 text-accent-400"
+                        )}>
+                            {task.actualTimeMinutes! >= 60
+                                ? `${(task.actualTimeMinutes! / 60).toFixed(1)}h`
+                                : `${task.actualTimeMinutes}m`
+                            } tracked
+                        </span>
+                    )}
+
                     {task.scheduledStart && (
                         <span className="chip chip-accent text-2xs">
                             {new Date(task.scheduledStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -245,11 +259,6 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
 
                         {showMenu && (
                             <div className="absolute right-0 top-full mt-1 z-50 bg-surface-900 border border-surface-700/60 rounded-lg shadow-xl shadow-black/40 py-1 min-w-[160px] animate-scale-in">
-                                <MenuItem
-                                    icon={<CalendarPlus className="w-3.5 h-3.5" />}
-                                    label="Move to Today"
-                                    onClick={() => { moveToToday(task.id); setShowMenu(false); }}
-                                />
                                 <MenuItem
                                     icon={<Pencil className="w-3.5 h-3.5" />}
                                     label="Edit Details"

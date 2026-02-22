@@ -16,6 +16,7 @@ import { PlanningFlowOverlay } from './components/planning/PlanningFlowOverlay';
 import { FocusModeOverlay } from './components/focus/FocusModeOverlay';
 import { TaskDetailDialog } from './components/TaskDetailDialog';
 import { ProjectDialog } from './components/ProjectDialog';
+import { SettingsDialog } from './components/SettingsDialog';
 import { WeeklyBoardView } from './components/WeeklyBoardView';
 import { ProjectView } from './components/ProjectView';
 import { useStore } from './store';
@@ -140,6 +141,7 @@ export default function App() {
             <FocusModeOverlay />
             <TaskDetailDialog />
             <ProjectDialog />
+            <SettingsDialog />
 
             {/* Drag overlay for cross-panel drag */}
             <DragOverlay dropAnimation={null}>

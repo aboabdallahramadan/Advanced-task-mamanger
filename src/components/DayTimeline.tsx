@@ -1,10 +1,10 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { Clock, AlertTriangle, GripVertical } from 'lucide-react';
+import { Clock, AlertTriangle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useStore } from '../store';
 import { Task } from '../types';
 import { clsx } from 'clsx';
-import { format, parseISO, differenceInMinutes, setHours, setMinutes, addMinutes } from 'date-fns';
+import { format, parseISO, addMinutes, addDays, subDays, isToday as isTodayFn } from 'date-fns';
 
 const HOUR_HEIGHT = 80; // pixels per hour
 const MIN_BLOCK_MINUTES = 15;
@@ -13,6 +13,7 @@ export function DayTimeline() {
     const {
         tasks,
         selectedDate,
+        setSelectedDate,
         workStartHour,
         workEndHour,
         timeIncrement,
@@ -60,12 +61,12 @@ export function DayTimeline() {
         return () => clearInterval(interval);
     }, [selectedDate, workStartHour]);
 
-    // Scroll to current time on mount
+    // Scroll to current time on mount or date change
     useEffect(() => {
         if (containerRef.current && currentTimeTop > 0) {
             containerRef.current.scrollTop = Math.max(0, currentTimeTop - 200);
         }
-    }, []);
+    }, [selectedDate]);
 
     const getTimeFromY = useCallback(
         (y: number): { hour: number; minute: number } => {
@@ -106,12 +107,77 @@ export function DayTimeline() {
 
     const freeMinutes = freeMinutesRemaining();
 
+    // Date navigation
+    const goToday = () => setSelectedDate(format(new Date(), 'yyyy-MM-dd'));
+    const goPrev = () => setSelectedDate(format(subDays(parseISO(selectedDate), 1), 'yyyy-MM-dd'));
+    const goNext = () => setSelectedDate(format(addDays(parseISO(selectedDate), 1), 'yyyy-MM-dd'));
+
+    const displayDate = parseISO(selectedDate);
+    const isToday = isTodayFn(displayDate);
+    const dayLabel = format(displayDate, 'EEEE, MMM d');
+
     return (
         <div className="flex flex-col h-full">
-            {/* Timeline header */}
-            <div className="px-4 pt-10 pb-3 border-b border-surface-800/40 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold text-surface-100 tracking-tight">Schedule</h2>
+            {/* Timeline header with date nav */}
+            <div className="px-4 pt-10 pb-3 border-b border-surface-800/40">
+                {/* Date navigation row */}
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1">
+                        <button
+                            onClick={goPrev}
+                            className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
+                        >
+                            <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <button
+                            onClick={goNext}
+                            className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
+                        >
+                            <ChevronRight className="w-4 h-4" />
+                        </button>
+                        <h2 className="text-base font-semibold text-surface-100 ml-2">{dayLabel}</h2>
+                        {isToday && (
+                            <span className="ml-2 text-2xs bg-accent-600/20 text-accent-400 px-2 py-0.5 rounded-md font-medium">
+                                Today
+                            </span>
+                        )}
+                    </div>
+                    {!isToday && (
+                        <button
+                            onClick={goToday}
+                            className="text-xs text-accent-400 hover:text-accent-300 transition-colors"
+                        >
+                            Go to today
+                        </button>
+                    )}
+                </div>
+                {/* Stats row */}
+                <div className="flex items-center gap-3 flex-wrap">
+                    {/* Daily tracked time */}
+                    {(() => {
+                        const dayTasks = tasks.filter(t => t.plannedDate === selectedDate && t.status !== 'archived');
+                        const totalPlanned = dayTasks.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+                        const totalTracked = dayTasks.reduce((s, t) => s + (t.actualTimeMinutes || 0), 0);
+                        const ph = Math.floor(totalPlanned / 60);
+                        const pm = totalPlanned % 60;
+                        const th = Math.floor(totalTracked / 60);
+                        const tm = totalTracked % 60;
+                        return (
+                            <>
+                                <span className="chip text-xs bg-surface-800 text-surface-300 border-surface-700/40">
+                                    📋 {ph}h {pm}m planned
+                                </span>
+                                <span className={clsx(
+                                    "chip text-xs",
+                                    totalTracked > totalPlanned && totalTracked > 0
+                                        ? "bg-warning-900/40 text-warning-300 border-warning-700/30"
+                                        : "bg-accent-900/30 text-accent-300 border-accent-700/30"
+                                )}>
+                                    ⏱ {th}h {tm}m tracked
+                                </span>
+                            </>
+                        );
+                    })()}
                     <span className={clsx(
                         'chip text-xs',
                         freeMinutes > 120 ? 'chip-success' : freeMinutes > 0 ? 'chip-warning' : 'bg-danger-900/40 text-danger-300 border-danger-700/30',
@@ -120,17 +186,17 @@ export function DayTimeline() {
                             ? `${Math.floor(freeMinutes / 60)}h ${freeMinutes % 60}m free`
                             : 'Fully booked'}
                     </span>
+                    {conflicts.size > 0 && (
+                        <div className="flex items-center gap-1.5 text-xs text-warning-400">
+                            <AlertTriangle className="w-3.5 h-3.5" />
+                            <span>{Math.floor(conflicts.size / 2)} conflict{conflicts.size > 2 ? 's' : ''}</span>
+                        </div>
+                    )}
                 </div>
-                {conflicts.size > 0 && (
-                    <div className="flex items-center gap-1.5 text-xs text-warning-400">
-                        <AlertTriangle className="w-3.5 h-3.5" />
-                        <span>{conflicts.size / 2} conflict{conflicts.size > 2 ? 's' : ''}</span>
-                    </div>
-                )}
             </div>
 
             {/* Timeline body */}
-            <div ref={containerRef} className="flex-1 overflow-y-auto relative">
+            <div ref={containerRef} className="flex-1 overflow-y-auto relative custom-scrollbar">
                 <div
                     className="relative ml-16 mr-4"
                     style={{ height: (workEndHour - workStartHour + 1) * HOUR_HEIGHT }}
@@ -259,7 +325,7 @@ function TimeSlotDrop({
     );
 }
 
-// Scheduled task block
+// Scheduled task block — uses refs for drag/resize to avoid stale closures
 function TimeBlock({
     task,
     top,
@@ -285,30 +351,24 @@ function TimeBlock({
 }) {
     const [isDragging, setIsDragging] = useState(false);
     const [isResizing, setIsResizing] = useState(false);
-    const [dragStartY, setDragStartY] = useState(0);
     const [currentTop, setCurrentTop] = useState(top);
     const [currentHeight, setCurrentHeight] = useState(height);
     const blockRef = useRef<HTMLDivElement>(null);
+
+    // Refs to track latest values for mouse event handlers (avoids stale closure)
+    const currentTopRef = useRef(currentTop);
+    const currentHeightRef = useRef(currentHeight);
+    useEffect(() => { currentTopRef.current = currentTop; }, [currentTop]);
+    useEffect(() => { currentHeightRef.current = currentHeight; }, [currentHeight]);
 
     useEffect(() => {
         setCurrentTop(top);
         setCurrentHeight(height);
     }, [top, height]);
 
-    const projectColors: Record<string, { bg: string; border: string; text: string }> = {
-        Engineering: { bg: 'bg-blue-900/50', border: 'border-blue-600/50', text: 'text-blue-300' },
-        Design: { bg: 'bg-purple-900/50', border: 'border-purple-600/50', text: 'text-purple-300' },
-        Product: { bg: 'bg-emerald-900/50', border: 'border-emerald-600/50', text: 'text-emerald-300' },
-        DevOps: { bg: 'bg-orange-900/50', border: 'border-orange-600/50', text: 'text-orange-300' },
-        Research: { bg: 'bg-cyan-900/50', border: 'border-cyan-600/50', text: 'text-cyan-300' },
-        Communication: { bg: 'bg-pink-900/50', border: 'border-pink-600/50', text: 'text-pink-300' },
-    };
-
-    const colors = projectColors[task.project] || {
-        bg: 'bg-accent-900/50',
-        border: 'border-accent-600/50',
-        text: 'text-accent-300',
-    };
+    const { projects } = useStore();
+    const projectObj = projects.find(p => p.name === task.project);
+    const projectColor = projectObj?.color || '#6366f1';
 
     const snapToGrid = (y: number) => {
         const minuteHeight = HOUR_HEIGHT / 60;
@@ -321,12 +381,14 @@ function TimeBlock({
         e.preventDefault();
         e.stopPropagation();
         setIsDragging(true);
-        setDragStartY(e.clientY - currentTop);
+        const offsetY = e.clientY - currentTopRef.current;
 
         const handleMove = (ev: MouseEvent) => {
-            const newTop = snapToGrid(ev.clientY - (e.clientY - currentTop));
-            const maxTop = (workEndHour - workStartHour) * HOUR_HEIGHT - currentHeight;
-            setCurrentTop(Math.max(0, Math.min(newTop, maxTop)));
+            const newTop = snapToGrid(ev.clientY - offsetY);
+            const maxTop = (workEndHour - workStartHour) * HOUR_HEIGHT - currentHeightRef.current;
+            const clamped = Math.max(0, Math.min(newTop, maxTop));
+            setCurrentTop(clamped);
+            currentTopRef.current = clamped;
         };
 
         const handleUp = () => {
@@ -334,8 +396,9 @@ function TimeBlock({
             document.removeEventListener('mousemove', handleMove);
             document.removeEventListener('mouseup', handleUp);
 
-            // Calculate new time
-            const totalMinutes = (currentTop / HOUR_HEIGHT) * 60;
+            // Read from ref for the latest value
+            const latestTop = currentTopRef.current;
+            const totalMinutes = (latestTop / HOUR_HEIGHT) * 60;
             const newHour = workStartHour + Math.floor(totalMinutes / 60);
             const newMinute = Math.round(totalMinutes % 60);
             const start = `${selectedDate}T${String(newHour).padStart(2, '0')}:${String(newMinute).padStart(2, '0')}:00`;
@@ -354,13 +417,15 @@ function TimeBlock({
         e.stopPropagation();
         setIsResizing(true);
         const startY = e.clientY;
-        const startHeight = currentHeight;
+        const startHeight = currentHeightRef.current;
 
         const handleMove = (ev: MouseEvent) => {
             const delta = ev.clientY - startY;
             const newHeight = snapToGrid(startHeight + delta);
             const minHeight = (MIN_BLOCK_MINUTES / 60) * HOUR_HEIGHT;
-            setCurrentHeight(Math.max(minHeight, newHeight));
+            const clamped = Math.max(minHeight, newHeight);
+            setCurrentHeight(clamped);
+            currentHeightRef.current = clamped;
         };
 
         const handleUp = () => {
@@ -368,8 +433,9 @@ function TimeBlock({
             document.removeEventListener('mousemove', handleMove);
             document.removeEventListener('mouseup', handleUp);
 
-            // Calculate new duration
-            const newDuration = Math.round((currentHeight / HOUR_HEIGHT) * 60);
+            // Read from ref for the latest value
+            const latestHeight = currentHeightRef.current;
+            const newDuration = Math.round((latestHeight / HOUR_HEIGHT) * 60);
             const snappedDuration = Math.max(
                 MIN_BLOCK_MINUTES,
                 Math.round(newDuration / timeIncrement) * timeIncrement,
@@ -399,9 +465,6 @@ function TimeBlock({
             ref={blockRef}
             className={clsx(
                 'absolute left-1 right-1 rounded-lg border px-2.5 py-1.5 z-20 group',
-                'transition-shadow duration-100',
-                colors.bg,
-                colors.border,
                 hasConflict && 'ring-2 ring-warning-500/50',
                 isDragging && 'cursor-grabbing shadow-2xl shadow-black/40 z-40 opacity-90',
                 !isDragging && 'cursor-grab',
@@ -409,6 +472,8 @@ function TimeBlock({
             style={{
                 top: currentTop,
                 height: Math.max(currentHeight, 24),
+                backgroundColor: projectColor + '20',
+                borderColor: projectColor + '50',
             }}
             onMouseDown={handleMoveStart}
             onDoubleClick={() => onUnschedule(task.id)}
@@ -417,7 +482,7 @@ function TimeBlock({
             {/* Content */}
             <div className="flex items-start justify-between h-full overflow-hidden">
                 <div className="flex-1 min-w-0">
-                    <p className={clsx('text-xs font-medium truncate', colors.text)}>
+                    <p className="text-xs font-medium truncate" style={{ color: projectColor }}>
                         {task.title}
                     </p>
                     {currentHeight > 40 && (
@@ -426,7 +491,7 @@ function TimeBlock({
                         </p>
                     )}
                     {currentHeight > 60 && task.project && (
-                        <p className="text-2xs text-surface-600 mt-0.5">{task.project}</p>
+                        <p className="text-2xs mt-0.5" style={{ color: projectColor + '99' }}>{task.project}</p>
                     )}
                 </div>
                 {hasConflict && (

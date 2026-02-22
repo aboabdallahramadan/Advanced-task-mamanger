@@ -185,4 +185,77 @@ function registerIpcHandlers() {
     ipcMain.handle('projects:delete', (_e: any, id: string) => {
         return projectService.delete(id);
     });
+
+    // ─── Focus Timer Tray Widget ────────────────────────────
+    ipcMain.on('focus:updateTray', (_e: any, data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) => {
+        if (!tray) return;
+
+        if (data.taskTitle && data.elapsed) {
+            // Focus session active — update tray tooltip
+            const state = data.isPlaying ? '▶' : '⏸';
+            tray.setToolTip(`${state} ${data.taskTitle}\n⏱ ${data.elapsed}`);
+
+            // Rebuild context menu with focus controls
+            const contextMenu = Menu.buildFromTemplate([
+                {
+                    label: `${state} ${data.taskTitle}`,
+                    enabled: false,
+                },
+                {
+                    label: `⏱ ${data.elapsed}`,
+                    enabled: false,
+                },
+                { type: 'separator' },
+                {
+                    label: data.isPlaying ? '⏸ Pause' : '▶ Resume',
+                    click: () => {
+                        mainWindow?.webContents.send('focus:togglePlayPause');
+                    },
+                },
+                {
+                    label: '⏹ Stop Timer',
+                    click: () => {
+                        mainWindow?.webContents.send('focus:stop');
+                    },
+                },
+                { type: 'separator' },
+                {
+                    label: 'Open Daily Planner',
+                    click: () => {
+                        mainWindow?.show();
+                        mainWindow?.focus();
+                    },
+                },
+                {
+                    label: 'Quit',
+                    click: () => {
+                        mainWindow?.destroy();
+                        app.quit();
+                    },
+                },
+            ]);
+            tray.setContextMenu(contextMenu);
+        } else {
+            // No focus session — reset to default
+            tray.setToolTip('Daily Planner');
+            const contextMenu = Menu.buildFromTemplate([
+                {
+                    label: 'Open Daily Planner',
+                    click: () => {
+                        mainWindow?.show();
+                        mainWindow?.focus();
+                    },
+                },
+                { type: 'separator' },
+                {
+                    label: 'Quit',
+                    click: () => {
+                        mainWindow?.destroy();
+                        app.quit();
+                    },
+                },
+            ]);
+            tray.setContextMenu(contextMenu);
+        }
+    });
 }

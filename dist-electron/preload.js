@@ -21,8 +21,14 @@ const api = {
     getVersion: () => electron.ipcRenderer.invoke("app:getVersion"),
     showNotification: (title, body) => electron.ipcRenderer.invoke("app:showNotification", title, body)
   },
+  focus: {
+    updateTray: (data) => electron.ipcRenderer.send("focus:updateTray", data)
+  },
   on: (channel, callback) => {
     electron.ipcRenderer.on(channel, (_e, ...args) => callback(...args));
+  },
+  off: (channel, callback) => {
+    electron.ipcRenderer.removeListener(channel, callback);
   }
 };
 electron.contextBridge.exposeInMainWorld("api", api);

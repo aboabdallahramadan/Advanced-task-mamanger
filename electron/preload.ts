@@ -51,8 +51,15 @@ const api = {
         showNotification: (title: string, body: string) =>
             ipcRenderer.invoke('app:showNotification', title, body),
     },
+    focus: {
+        updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) =>
+            ipcRenderer.send('focus:updateTray', data),
+    },
     on: (channel: string, callback: (...args: any[]) => void) => {
         ipcRenderer.on(channel, (_e, ...args) => callback(...args));
+    },
+    off: (channel: string, callback: (...args: any[]) => void) => {
+        ipcRenderer.removeListener(channel, callback);
     },
 };
 

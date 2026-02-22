@@ -44,6 +44,48 @@ export const FocusModeOverlay: React.FC = () => {
         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
+    // ─── Tray Widget Communication ────────────────────────────
+    // Send timer state to tray every second
+    useEffect(() => {
+        if (!activeTask) {
+            // Clear tray when no task focused
+            window.api?.focus?.updateTray({ taskTitle: null, elapsed: null, isPlaying: false });
+            return;
+        }
+
+        const elapsed = formatTime(elapsedSeconds);
+        window.api?.focus?.updateTray({
+            taskTitle: activeTask.title,
+            elapsed,
+            isPlaying: focusMode.isPlaying,
+        });
+    }, [activeTask, elapsedSeconds, focusMode.isPlaying]);
+
+    // Listen for tray commands (pause/stop from Windows tray)
+    useEffect(() => {
+        const handleToggle = () => {
+            const state = useStore.getState();
+            if (state.focusMode.activeTaskId) {
+                if (state.focusMode.isPlaying) {
+                    state.pauseFocusSession();
+                } else {
+                    state.startFocusSession(state.focusMode.activeTaskId);
+                }
+            }
+        };
+
+        const handleStop = () => {
+            useStore.getState().stopFocusSession();
+        };
+
+        window.api?.on('focus:togglePlayPause', handleToggle);
+        window.api?.on('focus:stop', handleStop);
+
+        return () => {
+            // Cleanup not strictly necessary for IPC in Electron but good practice
+        };
+    }, []);
+
     if (!activeTask) return null;
 
     const plannedMinutes = activeTask.durationMinutes || 0;

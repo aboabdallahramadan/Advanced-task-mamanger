@@ -2198,4 +2198,71 @@ function registerIpcHandlers() {
   electron.ipcMain.handle("projects:delete", (_e, id) => {
     return projectService.delete(id);
   });
+  electron.ipcMain.on("focus:updateTray", (_e, data) => {
+    if (!tray) return;
+    if (data.taskTitle && data.elapsed) {
+      const state = data.isPlaying ? "▶" : "⏸";
+      tray.setToolTip(`${state} ${data.taskTitle}
+⏱ ${data.elapsed}`);
+      const contextMenu = electron.Menu.buildFromTemplate([
+        {
+          label: `${state} ${data.taskTitle}`,
+          enabled: false
+        },
+        {
+          label: `⏱ ${data.elapsed}`,
+          enabled: false
+        },
+        { type: "separator" },
+        {
+          label: data.isPlaying ? "⏸ Pause" : "▶ Resume",
+          click: () => {
+            mainWindow == null ? void 0 : mainWindow.webContents.send("focus:togglePlayPause");
+          }
+        },
+        {
+          label: "⏹ Stop Timer",
+          click: () => {
+            mainWindow == null ? void 0 : mainWindow.webContents.send("focus:stop");
+          }
+        },
+        { type: "separator" },
+        {
+          label: "Open Daily Planner",
+          click: () => {
+            mainWindow == null ? void 0 : mainWindow.show();
+            mainWindow == null ? void 0 : mainWindow.focus();
+          }
+        },
+        {
+          label: "Quit",
+          click: () => {
+            mainWindow == null ? void 0 : mainWindow.destroy();
+            electron.app.quit();
+          }
+        }
+      ]);
+      tray.setContextMenu(contextMenu);
+    } else {
+      tray.setToolTip("Daily Planner");
+      const contextMenu = electron.Menu.buildFromTemplate([
+        {
+          label: "Open Daily Planner",
+          click: () => {
+            mainWindow == null ? void 0 : mainWindow.show();
+            mainWindow == null ? void 0 : mainWindow.focus();
+          }
+        },
+        { type: "separator" },
+        {
+          label: "Quit",
+          click: () => {
+            mainWindow == null ? void 0 : mainWindow.destroy();
+            electron.app.quit();
+          }
+        }
+      ]);
+      tray.setContextMenu(contextMenu);
+    }
+  });
 }

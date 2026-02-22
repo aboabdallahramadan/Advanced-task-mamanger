@@ -58,7 +58,11 @@ export interface ElectronAPI {
         getVersion: () => Promise<string>;
         showNotification: (title: string, body: string) => Promise<void>;
     };
+    focus: {
+        updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) => void;
+    };
     on: (channel: string, callback: (...args: any[]) => void) => void;
+    off: (channel: string, callback: (...args: any[]) => void) => void;
 }
 
 declare global {

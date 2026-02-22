@@ -1,7 +1,6 @@
 import React from 'react';
 import {
     Calendar,
-    CalendarDays,
     Inbox,
     Archive,
     LayoutList,
@@ -11,16 +10,16 @@ import {
     Folder,
     Sun,
     LayoutGrid,
+    Settings,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { ViewMode } from '../types';
-import { format, addDays } from 'date-fns';
+import { format } from 'date-fns';
 import { clsx } from 'clsx';
 
 const navItems: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
     { id: 'board', label: 'Board', icon: <LayoutGrid className="w-4 h-4" /> },
-    { id: 'today', label: 'Today', icon: <Calendar className="w-4 h-4" /> },
-    { id: 'tomorrow', label: 'Tomorrow', icon: <CalendarDays className="w-4 h-4" /> },
+    { id: 'today', label: 'Day', icon: <Calendar className="w-4 h-4" /> },
     { id: 'week', label: 'This Week', icon: <LayoutList className="w-4 h-4" /> },
     { id: 'inbox', label: 'Inbox', icon: <Inbox className="w-4 h-4" /> },
     { id: 'backlog', label: 'Backlog', icon: <Archive className="w-4 h-4" /> },
@@ -46,15 +45,10 @@ export function Sidebar() {
     const todayCount = tasks.filter(
         (t) => t.plannedDate === todayDate && t.status !== 'archived' && t.status !== 'done',
     ).length;
-    const tomorrowDate = format(addDays(new Date(), 1), 'yyyy-MM-dd');
-    const tomorrowCount = tasks.filter(
-        (t) => t.plannedDate === tomorrowDate && t.status !== 'archived' && t.status !== 'done',
-    ).length;
 
     const getCounts = (id: ViewMode) => {
         switch (id) {
             case 'today': return todayCount;
-            case 'tomorrow': return tomorrowCount;
             case 'inbox': return inboxCount;
             case 'backlog': return backlogCount;
             default: return 0;
@@ -200,9 +194,16 @@ export function Sidebar() {
                 </div>
             </div>
 
-            {/* Free time indicator */}
-            <div className="mt-auto px-4 py-3 border-t border-surface-800/40">
+            {/* Footer: free time indicator + settings */}
+            <div className="mt-auto px-4 py-3 border-t border-surface-800/40 space-y-2">
                 <FreeTimeIndicator />
+                <button
+                    onClick={() => useStore.getState().setSettingsOpen(true)}
+                    className="flex items-center gap-2 w-full px-2 py-1.5 text-xs text-surface-500 hover:text-surface-200 hover:bg-surface-800/40 rounded-md transition-all"
+                >
+                    <Settings className="w-3.5 h-3.5" />
+                    <span>Settings</span>
+                </button>
             </div>
         </div>
     );
