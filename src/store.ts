@@ -1,11 +1,20 @@
 import { create } from 'zustand';
-import { Task, ViewMode } from './types';
+import { Task, ViewMode, Project } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 
 interface AppState {
     // Tasks
     tasks: Task[];
     loading: boolean;
+
+    // Projects
+    projects: Project[];
+    selectedProjectId: string | null;
+    projectDialog: {
+        isOpen: boolean;
+        mode: 'create' | 'edit';
+        projectId: string | null;
+    };
 
     // View
     currentView: ViewMode;
@@ -53,6 +62,15 @@ interface AppState {
     moveToBacklog: (id: string) => Promise<void>;
     archiveTask: (id: string) => Promise<void>;
 
+    // Project Actions
+    loadProjects: () => Promise<void>;
+    createProject: (input: { name: string; color?: string; emoji?: string }) => Promise<Project | null>;
+    updateProject: (id: string, updates: Partial<Project>) => Promise<void>;
+    deleteProject: (id: string) => Promise<void>;
+    openProjectDialog: (mode: 'create' | 'edit', projectId?: string) => void;
+    closeProjectDialog: () => void;
+    selectProject: (projectId: string) => void;
+
     setCurrentView: (view: ViewMode) => void;
     setSelectedDate: (date: string) => void;
     toggleTaskSelection: (id: string) => void;
@@ -87,7 +105,14 @@ interface AppState {
 export const useStore = create<AppState>((set, get) => ({
     tasks: [],
     loading: false,
-    currentView: 'today',
+    projects: [],
+    selectedProjectId: null,
+    projectDialog: {
+        isOpen: false,
+        mode: 'create',
+        projectId: null,
+    },
+    currentView: 'board',
     selectedDate: format(new Date(), 'yyyy-MM-dd'),
     selectedTaskIds: new Set(),
     editingTaskId: null,
@@ -225,6 +250,54 @@ export const useStore = create<AppState>((set, get) => ({
         const { updateTask } = get();
         await updateTask(id, { status: 'archived' });
     },
+
+    // ─── Project Actions ─────────────────────────────────────
+    loadProjects: async () => {
+        try {
+            const projects = await window.api.projects.getAll();
+            set({ projects });
+        } catch (e) {
+            console.error('Failed to load projects:', e);
+        }
+    },
+
+    createProject: async (input) => {
+        try {
+            const project = await window.api.projects.create(input);
+            set((s) => ({ projects: [...s.projects, project] }));
+            return project;
+        } catch (e) {
+            console.error('Failed to create project:', e);
+            return null;
+        }
+    },
+
+    updateProject: async (id, updates) => {
+        try {
+            const updated = await window.api.projects.update(id, updates);
+            set((s) => ({
+                projects: s.projects.map((p) => (p.id === id ? updated : p)),
+            }));
+        } catch (e) {
+            console.error('Failed to update project:', e);
+        }
+    },
+
+    deleteProject: async (id) => {
+        try {
+            await window.api.projects.delete(id);
+            set((s) => ({
+                projects: s.projects.filter((p) => p.id !== id),
+            }));
+        } catch (e) {
+            console.error('Failed to delete project:', e);
+        }
+    },
+
+    openProjectDialog: (mode, projectId?) => set({ projectDialog: { isOpen: true, mode, projectId: projectId || null } }),
+    closeProjectDialog: () => set({ projectDialog: { isOpen: false, mode: 'create', projectId: null } }),
+
+    selectProject: (projectId: string) => set({ selectedProjectId: projectId, currentView: 'project' as ViewMode }),
 
     setCurrentView: (view: ViewMode) => {
         const now = new Date();

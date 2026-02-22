@@ -40,6 +40,12 @@ const api = {
         reorder: (tasks: { id: string; order: number }[]) => ipcRenderer.invoke('tasks:reorder', tasks),
         search: (query: string) => ipcRenderer.invoke('tasks:search', query),
     },
+    projects: {
+        getAll: () => ipcRenderer.invoke('projects:getAll'),
+        create: (input: { name: string; color?: string; emoji?: string }) => ipcRenderer.invoke('projects:create', input),
+        update: (id: string, updates: { name?: string; color?: string; emoji?: string; order?: number }) => ipcRenderer.invoke('projects:update', id, updates),
+        delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
+    },
     app: {
         getVersion: () => ipcRenderer.invoke('app:getVersion'),
         showNotification: (title: string, body: string) =>

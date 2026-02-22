@@ -2,11 +2,13 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification } fr
 import path from 'path';
 import { initDatabase, getDatabase } from './database';
 import { TaskService } from './taskService';
+import { ProjectService } from './projectService';
 import { seedDemoData } from './seed';
 
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let taskService: TaskService;
+let projectService: ProjectService;
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -24,6 +26,7 @@ if (!gotTheLock) {
         const dbPath = path.join(app.getPath('userData'), 'daily-planner.db');
         await initDatabase(dbPath);
         taskService = new TaskService(getDatabase());
+        projectService = new ProjectService(getDatabase());
 
         // Seed demo data if empty
         const tasks = taskService.getAll();
@@ -164,5 +167,22 @@ function registerIpcHandlers() {
 
     ipcMain.handle('app:showNotification', (_e: any, title: string, body: string) => {
         new Notification({ title, body }).show();
+    });
+
+    // ─── Project IPC Handlers ────────────────────────────────
+    ipcMain.handle('projects:getAll', () => {
+        return projectService.getAll();
+    });
+
+    ipcMain.handle('projects:create', (_e: any, input: any) => {
+        return projectService.create(input);
+    });
+
+    ipcMain.handle('projects:update', (_e: any, id: string, updates: any) => {
+        return projectService.update(id, updates);
+    });
+
+    ipcMain.handle('projects:delete', (_e: any, id: string) => {
+        return projectService.delete(id);
     });
 }

@@ -19,7 +19,17 @@ export interface Task {
 
 export type TaskStatus = Task['status'];
 
-export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board';
+export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board' | 'project';
+
+export interface Project {
+    id: string;
+    name: string;
+    color: string;
+    emoji: string;
+    order: number;
+    createdAt: string;
+    updatedAt: string;
+}
 
 export interface TimeSlot {
     hour: number;
@@ -37,6 +47,12 @@ export interface ElectronAPI {
         delete: (id: string) => Promise<boolean>;
         reorder: (tasks: { id: string; order: number }[]) => Promise<void>;
         search: (query: string) => Promise<Task[]>;
+    };
+    projects: {
+        getAll: () => Promise<Project[]>;
+        create: (input: { name: string; color?: string; emoji?: string }) => Promise<Project>;
+        update: (id: string, updates: Partial<Project>) => Promise<Project>;
+        delete: (id: string) => Promise<boolean>;
     };
     app: {
         getVersion: () => Promise<string>;

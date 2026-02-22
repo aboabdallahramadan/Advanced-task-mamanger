@@ -100,6 +100,21 @@ const migrations = [
     sql: `
       ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0;
         `
+  },
+  {
+    name: "003_create_projects",
+    sql: `
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        color TEXT DEFAULT '#6366f1',
+        emoji TEXT DEFAULT '📁',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)
+        `
   }
 ];
 function rowToTask(columns, values) {
@@ -272,6 +287,105 @@ class TaskService {
       `SELECT * FROM tasks WHERE (title LIKE ? OR notes LIKE ?) AND status != ? ORDER BY sort_order ASC LIMIT 50`,
       [`%${query}%`, `%${query}%`, "archived"]
     );
+  }
+}
+class ProjectService {
+  constructor(db2) {
+    this.db = db2;
+  }
+  mapRow(row) {
+    return {
+      id: row.id,
+      name: row.name,
+      color: row.color,
+      emoji: row.emoji,
+      order: row.sort_order,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+  getAll() {
+    const stmt = this.db.prepare("SELECT * FROM projects ORDER BY sort_order ASC, created_at ASC");
+    const results = [];
+    while (stmt.step()) {
+      results.push(this.mapRow(stmt.getAsObject()));
+    }
+    stmt.free();
+    return results;
+  }
+  getById(id) {
+    const stmt = this.db.prepare("SELECT * FROM projects WHERE id = ?");
+    stmt.bind([id]);
+    if (stmt.step()) {
+      const project = this.mapRow(stmt.getAsObject());
+      stmt.free();
+      return project;
+    }
+    stmt.free();
+    return null;
+  }
+  create(input) {
+    const id = uuid.v4();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    this.db.run(
+      `INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.name,
+        input.color || "#6366f1",
+        input.emoji || "📁",
+        0,
+        now,
+        now
+      ]
+    );
+    saveDatabase();
+    return this.getById(id);
+  }
+  update(id, updates) {
+    const sets = [];
+    const values = [];
+    if (updates.name !== void 0) {
+      sets.push("name = ?");
+      values.push(updates.name);
+    }
+    if (updates.color !== void 0) {
+      sets.push("color = ?");
+      values.push(updates.color);
+    }
+    if (updates.emoji !== void 0) {
+      sets.push("emoji = ?");
+      values.push(updates.emoji);
+    }
+    if (updates.order !== void 0) {
+      sets.push("sort_order = ?");
+      values.push(updates.order);
+    }
+    if (sets.length === 0) return this.getById(id);
+    sets.push("updated_at = datetime('now')");
+    values.push(id);
+    this.db.run(
+      `UPDATE projects SET ${sets.join(", ")} WHERE id = ?`,
+      values
+    );
+    saveDatabase();
+    return this.getById(id);
+  }
+  delete(id) {
+    const project = this.getById(id);
+    if (project) {
+      this.db.run("UPDATE tasks SET project = '' WHERE project = ?", [project.name]);
+    }
+    this.db.run("DELETE FROM projects WHERE id = ?", [id]);
+    saveDatabase();
+    return true;
+  }
+  reorder(items) {
+    for (const item of items) {
+      this.db.run("UPDATE projects SET sort_order = ? WHERE id = ?", [item.order, item.id]);
+    }
+    saveDatabase();
   }
 }
 const millisecondsInWeek = 6048e5;
@@ -1939,6 +2053,7 @@ function seedDemoData(taskService2) {
 let mainWindow = null;
 let tray = null;
 let taskService;
+let projectService;
 const gotTheLock = electron.app.requestSingleInstanceLock();
 if (!gotTheLock) {
   electron.app.quit();
@@ -1953,6 +2068,7 @@ if (!gotTheLock) {
     const dbPath2 = path.join(electron.app.getPath("userData"), "daily-planner.db");
     await initDatabase(dbPath2);
     taskService = new TaskService(getDatabase());
+    projectService = new ProjectService(getDatabase());
     const tasks = taskService.getAll();
     if (tasks.length === 0) {
       seedDemoData(taskService);
@@ -2069,5 +2185,17 @@ function registerIpcHandlers() {
   });
   electron.ipcMain.handle("app:showNotification", (_e, title, body) => {
     new electron.Notification({ title, body }).show();
+  });
+  electron.ipcMain.handle("projects:getAll", () => {
+    return projectService.getAll();
+  });
+  electron.ipcMain.handle("projects:create", (_e, input) => {
+    return projectService.create(input);
+  });
+  electron.ipcMain.handle("projects:update", (_e, id, updates) => {
+    return projectService.update(id, updates);
+  });
+  electron.ipcMain.handle("projects:delete", (_e, id) => {
+    return projectService.delete(id);
   });
 }

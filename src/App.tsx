@@ -15,14 +15,16 @@ import { DayTimeline } from './components/DayTimeline';
 import { PlanningFlowOverlay } from './components/planning/PlanningFlowOverlay';
 import { FocusModeOverlay } from './components/focus/FocusModeOverlay';
 import { TaskDetailDialog } from './components/TaskDetailDialog';
+import { ProjectDialog } from './components/ProjectDialog';
 import { WeeklyBoardView } from './components/WeeklyBoardView';
+import { ProjectView } from './components/ProjectView';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock } from 'lucide-react';
 
 export default function App() {
-    const { loadTasks, scheduleTask, startPlanningFlow, currentView } = useStore();
+    const { loadTasks, loadProjects, scheduleTask, startPlanningFlow, currentView } = useStore();
     const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
     const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -32,7 +34,8 @@ export default function App() {
 
     useEffect(() => {
         loadTasks();
-    }, [loadTasks]);
+        loadProjects();
+    }, [loadTasks, loadProjects]);
 
     // Global keyboard shortcuts
     useEffect(() => {
@@ -115,6 +118,8 @@ export default function App() {
                 {/* Main content area */}
                 {currentView === 'board' ? (
                     <WeeklyBoardView />
+                ) : currentView === 'project' ? (
+                    <ProjectView />
                 ) : (
                     <div className="flex-1 flex min-w-0">
                         {/* Task List Panel */}
@@ -134,6 +139,7 @@ export default function App() {
             <PlanningFlowOverlay />
             <FocusModeOverlay />
             <TaskDetailDialog />
+            <ProjectDialog />
 
             {/* Drag overlay for cross-panel drag */}
             <DragOverlay dropAnimation={null}>

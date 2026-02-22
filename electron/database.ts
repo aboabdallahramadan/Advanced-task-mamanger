@@ -109,4 +109,19 @@ const migrations = [
       ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0;
         `,
     },
+    {
+        name: '003_create_projects',
+        sql: `
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        color TEXT DEFAULT '#6366f1',
+        emoji TEXT DEFAULT '📁',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)
+        `,
+    },
 ];

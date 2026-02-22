@@ -31,9 +31,13 @@ export function Sidebar() {
         currentView,
         setCurrentView,
         tasks,
+        projects,
+        selectedProjectId,
         sidebarCollapsed,
         setSidebarCollapsed,
         startPlanningFlow,
+        openProjectDialog,
+        selectProject,
     } = useStore();
 
     const inboxCount = tasks.filter((t) => t.status === 'inbox').length;
@@ -56,8 +60,6 @@ export function Sidebar() {
             default: return 0;
         }
     };
-
-    const projects = [...new Set(tasks.map((t) => t.project).filter(Boolean))];
 
     if (sidebarCollapsed) {
         return (
@@ -157,24 +159,40 @@ export function Sidebar() {
 
             {/* Projects */}
             <div className="px-4 py-2">
-                <h3 className="text-2xs font-semibold uppercase tracking-wider text-surface-500 mb-2">
-                    Projects
-                </h3>
+                <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-2xs font-semibold uppercase tracking-wider text-surface-500">
+                        Projects
+                    </h3>
+                    <button
+                        onClick={() => openProjectDialog('create')}
+                        className="text-2xs text-surface-500 hover:text-accent-400 transition-colors"
+                    >
+                        + New
+                    </button>
+                </div>
                 <div className="flex flex-col gap-0.5">
                     {projects.length === 0 && (
                         <p className="text-xs text-surface-600 italic px-1">No projects yet</p>
                     )}
                     {projects.map((project) => {
                         const count = tasks.filter(
-                            (t) => t.project === project && t.status !== 'archived',
+                            (t) => t.project === project.name && t.status !== 'archived',
                         ).length;
+                        const isActive = currentView === 'project' && selectedProjectId === project.id;
                         return (
                             <div
-                                key={project}
-                                className="flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-surface-400 hover:text-surface-200 hover:bg-surface-800/40 transition-all cursor-pointer"
+                                key={project.id}
+                                onClick={() => selectProject(project.id)}
+                                className={clsx(
+                                    "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all cursor-pointer group",
+                                    isActive
+                                        ? "bg-accent-600/15 text-accent-300"
+                                        : "text-surface-400 hover:text-surface-200 hover:bg-surface-800/40"
+                                )}
                             >
-                                <Folder className="w-3.5 h-3.5" />
-                                <span className="flex-1 truncate">{project}</span>
+                                <span className="text-sm">{project.emoji}</span>
+                                <span className="flex-1 truncate">{project.name}</span>
+                                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
                                 <span className="text-xs text-surface-500">{count}</span>
                             </div>
                         );

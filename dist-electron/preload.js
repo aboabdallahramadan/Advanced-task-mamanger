@@ -11,6 +11,12 @@ const api = {
     reorder: (tasks) => electron.ipcRenderer.invoke("tasks:reorder", tasks),
     search: (query) => electron.ipcRenderer.invoke("tasks:search", query)
   },
+  projects: {
+    getAll: () => electron.ipcRenderer.invoke("projects:getAll"),
+    create: (input) => electron.ipcRenderer.invoke("projects:create", input),
+    update: (id, updates) => electron.ipcRenderer.invoke("projects:update", id, updates),
+    delete: (id) => electron.ipcRenderer.invoke("projects:delete", id)
+  },
   app: {
     getVersion: () => electron.ipcRenderer.invoke("app:getVersion"),
     showNotification: (title, body) => electron.ipcRenderer.invoke("app:showNotification", title, body)

@@ -30,6 +30,7 @@ export function TaskDetailDialog() {
         createTask,
         updateTask,
         tasks,
+        projects,
         selectedDate,
     } = useStore();
 
@@ -45,8 +46,7 @@ export function TaskDetailDialog() {
     const [dueDate, setDueDate] = useState('');
     const [scheduledStart, setScheduledStart] = useState('');
 
-    // Get existing projects for autocomplete
-    const existingProjects = [...new Set(tasks.map(t => t.project).filter(Boolean))];
+
 
     // Populate form on open
     useEffect(() => {
@@ -273,19 +273,19 @@ export function TaskDetailDialog() {
                             <Folder className="w-3.5 h-3.5" />
                             Project
                         </label>
-                        <input
-                            type="text"
+                        <select
                             value={project}
                             onChange={(e) => setProject(e.target.value)}
-                            placeholder="Assign to a project..."
-                            list="project-suggestions"
-                            className="w-full px-4 py-2.5 bg-surface-950 border border-surface-700/60 rounded-xl text-surface-100 placeholder-surface-600 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all"
-                        />
-                        <datalist id="project-suggestions">
-                            {existingProjects.map((p) => (
-                                <option key={p} value={p} />
+                            className="w-full px-4 py-2.5 bg-surface-950 border border-surface-700/60 rounded-xl text-surface-100 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all [color-scheme:dark] appearance-none cursor-pointer"
+                            style={{ backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                        >
+                            <option value="">No project</option>
+                            {projects.map((p) => (
+                                <option key={p.id} value={p.name}>
+                                    {p.emoji} {p.name}
+                                </option>
                             ))}
-                        </datalist>
+                        </select>
                     </div>
 
                     {/* Status */}
