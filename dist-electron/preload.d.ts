@@ -64,9 +64,13 @@ declare const api: {
             elapsed: string | null;
             isPlaying: boolean;
         }) => void;
+        showWidget: () => void;
+        hideWidget: () => void;
+        sendWidgetState: (data: any) => void;
     };
     on: (channel: string, callback: (...args: any[]) => void) => void;
     off: (channel: string, callback: (...args: any[]) => void) => void;
+    removeAllListeners: (channel: string) => void;
 };
 export type ElectronAPI = typeof api;
 export {};
