@@ -10,7 +10,8 @@ import {
     Trash2,
     Folder,
     Play,
-    ArrowRight
+    ArrowRight,
+    Pencil,
 } from 'lucide-react';
 import { Task } from '../types';
 import { useStore } from '../store';
@@ -37,6 +38,7 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
         deleteTask,
         startFocusSession,
         focusMode,
+        openTaskDialog,
     } = useStore();
 
     const [editTitle, setEditTitle] = useState(task.title);
@@ -124,7 +126,7 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                 if (e.ctrlKey) toggleTaskSelection(task.id);
                 else selectTask(task.id);
             }}
-            onDoubleClick={() => setEditingTaskId(task.id)}
+            onDoubleClick={() => openTaskDialog('edit', task.id)}
             role="listitem"
             aria-selected={isSelected}
             tabIndex={0}
@@ -247,6 +249,11 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                                     icon={<CalendarPlus className="w-3.5 h-3.5" />}
                                     label="Move to Today"
                                     onClick={() => { moveToToday(task.id); setShowMenu(false); }}
+                                />
+                                <MenuItem
+                                    icon={<Pencil className="w-3.5 h-3.5" />}
+                                    label="Edit Details"
+                                    onClick={() => { openTaskDialog('edit', task.id); setShowMenu(false); }}
                                 />
                                 <MenuItem
                                     icon={<ArrowRight className="w-3.5 h-3.5" />}

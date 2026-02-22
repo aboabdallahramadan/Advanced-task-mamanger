@@ -15,7 +15,7 @@ import {
     verticalListSortingStrategy,
     sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
-import { Search, ListChecks, Inbox as InboxIcon, CheckCircle2 } from 'lucide-react';
+import { Search, ListChecks, Inbox as InboxIcon, CheckCircle2, Plus } from 'lucide-react';
 import { useStore } from '../store';
 import { TaskItem } from './TaskItem';
 import { QuickAdd } from './QuickAdd';
@@ -34,6 +34,7 @@ export function TaskList() {
         setSearchOpen,
         reorderTasks,
         loading,
+        openTaskDialog,
     } = useStore();
 
     const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -118,6 +119,14 @@ export function TaskList() {
                         <span className="text-xs text-surface-500">
                             {activeTasks.length} task{activeTasks.length !== 1 ? 's' : ''}
                         </span>
+                        <button
+                            onClick={() => openTaskDialog('create')}
+                            className="flex items-center gap-1 px-2 py-1 rounded-lg text-2xs font-medium bg-accent-600/10 text-accent-400 hover:bg-accent-600/20 border border-accent-600/20 transition-all"
+                            title="Create Task with Details"
+                        >
+                            <Plus className="w-3 h-3" />
+                            New
+                        </button>
                     </div>
                 </div>
 

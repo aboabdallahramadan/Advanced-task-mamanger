@@ -14,6 +14,7 @@ import { TaskList } from './components/TaskList';
 import { DayTimeline } from './components/DayTimeline';
 import { PlanningFlowOverlay } from './components/planning/PlanningFlowOverlay';
 import { FocusModeOverlay } from './components/focus/FocusModeOverlay';
+import { TaskDetailDialog } from './components/TaskDetailDialog';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
@@ -127,6 +128,7 @@ export default function App() {
             {/* Modals & Overlays */}
             <PlanningFlowOverlay />
             <FocusModeOverlay />
+            <TaskDetailDialog />
 
             {/* Drag overlay for cross-panel drag */}
             <DragOverlay dropAnimation={null}>

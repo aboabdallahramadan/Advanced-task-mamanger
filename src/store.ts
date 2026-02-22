@@ -24,6 +24,11 @@ interface AppState {
     // UI
     sidebarCollapsed: boolean;
     quickAddOpen: boolean;
+    taskDialog: {
+        isOpen: boolean;
+        mode: 'create' | 'edit';
+        taskId: string | null; // null for create, task id for edit
+    };
     planningFlow: {
         isOpen: boolean;
         step: 0 | 1 | 2; // 0: Review Yesterday, 1: Triage Inbox, 2: Timebox
@@ -59,6 +64,8 @@ interface AppState {
     setSidebarCollapsed: (collapsed: boolean) => void;
     setTimeIncrement: (inc: number) => void;
     setQuickAddOpen: (isOpen: boolean) => void;
+    openTaskDialog: (mode: 'create' | 'edit', taskId?: string) => void;
+    closeTaskDialog: () => void;
     startPlanningFlow: () => void;
     setPlanningStep: (step: 0 | 1 | 2) => void;
     closePlanningFlow: () => void;
@@ -92,6 +99,11 @@ export const useStore = create<AppState>((set, get) => ({
     allowOverlaps: false,
     sidebarCollapsed: false,
     quickAddOpen: false,
+    taskDialog: {
+        isOpen: false,
+        mode: 'create',
+        taskId: null,
+    },
     planningFlow: {
         isOpen: false,
         step: 0,
@@ -246,6 +258,8 @@ export const useStore = create<AppState>((set, get) => ({
     setTimeIncrement: (inc: number) => set({ timeIncrement: inc }),
 
     setQuickAddOpen: (isOpen: boolean) => set({ quickAddOpen: isOpen }),
+    openTaskDialog: (mode: 'create' | 'edit', taskId?: string) => set({ taskDialog: { isOpen: true, mode, taskId: taskId || null } }),
+    closeTaskDialog: () => set({ taskDialog: { isOpen: false, mode: 'create', taskId: null } }),
     startPlanningFlow: () => set({ planningFlow: { isOpen: true, step: 0 } }),
     setPlanningStep: (step: 0 | 1 | 2) => set((state) => ({ planningFlow: { ...state.planningFlow, step } })),
     closePlanningFlow: () => set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } })),
