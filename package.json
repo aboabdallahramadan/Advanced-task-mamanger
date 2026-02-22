@@ -1,8 +1,8 @@
 {
-    "name": "daily-planner-desktop",
+    "name": "tmap",
     "version": "1.0.0",
     "private": true,
-    "description": "A daily planning workspace with task management and time blocking",
+    "description": "TMap - Task Map: A daily planning workspace with task management and time blocking",
     "main": "./dist-electron/main.js",
     "scripts": {
         "dev": "vite",
@@ -21,13 +21,13 @@
         "@radix-ui/react-popover": "^1.1.6",
         "@radix-ui/react-tooltip": "^1.1.8",
         "@radix-ui/react-scroll-area": "^1.2.3",
-        "sql.js": "^1.12.0",
         "clsx": "^2.1.1",
         "date-fns": "^4.1.0",
         "electron-updater": "^6.3.9",
         "lucide-react": "^0.474.0",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
+        "sql.js": "^1.12.0",
         "uuid": "^11.1.0",
         "zustand": "^5.0.3"
     },
@@ -40,8 +40,10 @@
         "autoprefixer": "^10.4.20",
         "electron": "^33.3.1",
         "electron-builder": "^26.8.1",
+        "png-to-ico": "^3.0.1",
         "postcss": "^8.4.49",
         "prettier": "^3.2.0",
+        "sharp": "^0.33.5",
         "tailwindcss": "^3.4.17",
         "typescript": "^5.4.0",
         "vite": "^6.0.0",
@@ -49,25 +51,33 @@
         "vite-plugin-electron-renderer": "^0.14.6"
     },
     "build": {
-        "appId": "com.dailyplanner.app",
-        "productName": "Daily Planner",
+        "appId": "com.tmap.app",
+        "productName": "TMap",
         "directories": {
             "output": "out"
         },
         "win": {
             "target": "nsis",
-            "icon": "build/icon.ico"
+            "icon": "build/icon.ico",
+            "forceCodeSigning": false,
+            "signAndEditExecutable": false
         },
         "nsis": {
             "oneClick": false,
             "allowToChangeInstallationDirectory": true,
             "createDesktopShortcut": true,
             "createStartMenuShortcut": true,
-            "shortcutName": "Daily Planner"
+            "shortcutName": "TMap"
         },
         "files": [
             "dist/**/*",
             "dist-electron/**/*"
+        ],
+        "extraResources": [
+            {
+                "from": "node_modules/sql.js/dist/sql-wasm.wasm",
+                "to": "sql-wasm.wasm"
+            }
         ]
     }
 }

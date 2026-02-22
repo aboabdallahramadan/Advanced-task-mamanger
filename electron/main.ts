@@ -23,7 +23,7 @@ if (!gotTheLock) {
     });
 
     app.whenReady().then(async () => {
-        const dbPath = path.join(app.getPath('userData'), 'daily-planner.db');
+        const dbPath = path.join(app.getPath('userData'), 'tmap.db');
         await initDatabase(dbPath);
         taskService = new TaskService(getDatabase());
         projectService = new ProjectService(getDatabase());
@@ -95,7 +95,7 @@ function createTray() {
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: 'Open Daily Planner',
+            label: 'Open TMap',
             click: () => {
                 mainWindow?.show();
                 mainWindow?.focus();
@@ -119,7 +119,7 @@ function createTray() {
         },
     ]);
 
-    tray.setToolTip('Daily Planner');
+    tray.setToolTip('TMap');
     tray.setContextMenu(contextMenu);
 
     tray.on('double-click', () => {
@@ -220,7 +220,7 @@ function registerIpcHandlers() {
                 },
                 { type: 'separator' },
                 {
-                    label: 'Open Daily Planner',
+                    label: 'Open TMap',
                     click: () => {
                         mainWindow?.show();
                         mainWindow?.focus();
@@ -237,10 +237,10 @@ function registerIpcHandlers() {
             tray.setContextMenu(contextMenu);
         } else {
             // No focus session — reset to default
-            tray.setToolTip('Daily Planner');
+            tray.setToolTip('TMap');
             const contextMenu = Menu.buildFromTemplate([
                 {
-                    label: 'Open Daily Planner',
+                    label: 'Open TMap',
                     click: () => {
                         mainWindow?.show();
                         mainWindow?.focus();

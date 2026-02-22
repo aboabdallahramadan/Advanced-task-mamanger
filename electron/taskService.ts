@@ -49,7 +49,7 @@ function queryTasks(db: SqlJsDatabase, sql: string, params: any[] = []): Task[] 
     const result = db.exec(sql, params);
     if (result.length === 0) return [];
     const columns = result[0].columns;
-    return result[0].values.map((row) => rowToTask(columns, row));
+    return result[0].values.map((row: any[]) => rowToTask(columns, row));
 }
 
 export class TaskService {
