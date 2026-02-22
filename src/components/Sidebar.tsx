@@ -10,6 +10,7 @@ import {
     Clock,
     Folder,
     Sun,
+    LayoutGrid,
 } from 'lucide-react';
 import { useStore } from '../store';
 import { ViewMode } from '../types';
@@ -17,6 +18,7 @@ import { format, addDays } from 'date-fns';
 import { clsx } from 'clsx';
 
 const navItems: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
+    { id: 'board', label: 'Board', icon: <LayoutGrid className="w-4 h-4" /> },
     { id: 'today', label: 'Today', icon: <Calendar className="w-4 h-4" /> },
     { id: 'tomorrow', label: 'Tomorrow', icon: <CalendarDays className="w-4 h-4" /> },
     { id: 'week', label: 'This Week', icon: <LayoutList className="w-4 h-4" /> },

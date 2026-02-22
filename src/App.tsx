@@ -15,13 +15,14 @@ import { DayTimeline } from './components/DayTimeline';
 import { PlanningFlowOverlay } from './components/planning/PlanningFlowOverlay';
 import { FocusModeOverlay } from './components/focus/FocusModeOverlay';
 import { TaskDetailDialog } from './components/TaskDetailDialog';
+import { WeeklyBoardView } from './components/WeeklyBoardView';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock } from 'lucide-react';
 
 export default function App() {
-    const { loadTasks, scheduleTask, startPlanningFlow } = useStore();
+    const { loadTasks, scheduleTask, startPlanningFlow, currentView } = useStore();
     const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
     const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -111,18 +112,22 @@ export default function App() {
                 {/* Sidebar */}
                 <Sidebar />
 
-                {/* Main split view */}
-                <div className="flex-1 flex min-w-0">
-                    {/* Task List Panel */}
-                    <div className="w-[420px] min-w-[320px] max-w-[600px] border-r border-surface-800/40 flex flex-col bg-surface-950">
-                        <TaskList />
-                    </div>
+                {/* Main content area */}
+                {currentView === 'board' ? (
+                    <WeeklyBoardView />
+                ) : (
+                    <div className="flex-1 flex min-w-0">
+                        {/* Task List Panel */}
+                        <div className="w-[420px] min-w-[320px] max-w-[600px] border-r border-surface-800/40 flex flex-col bg-surface-950">
+                            <TaskList />
+                        </div>
 
-                    {/* Day Timeline Panel */}
-                    <div className="flex-1 min-w-[400px] flex flex-col bg-surface-950/50">
-                        <DayTimeline />
+                        {/* Day Timeline Panel */}
+                        <div className="flex-1 min-w-[400px] flex flex-col bg-surface-950/50">
+                            <DayTimeline />
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* Modals & Overlays */}

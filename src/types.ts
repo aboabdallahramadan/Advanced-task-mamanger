@@ -19,7 +19,7 @@ export interface Task {
 
 export type TaskStatus = Task['status'];
 
-export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog';
+export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board';
 
 export interface TimeSlot {
     hour: number;
