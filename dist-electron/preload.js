@@ -32,6 +32,9 @@ const api = {
   },
   off: (channel, callback) => {
     electron.ipcRenderer.removeListener(channel, callback);
+  },
+  removeAllListeners: (channel) => {
+    electron.ipcRenderer.removeAllListeners(channel);
   }
 };
 electron.contextBridge.exposeInMainWorld("api", api);

@@ -64,6 +64,9 @@ const api = {
     off: (channel: string, callback: (...args: any[]) => void) => {
         ipcRenderer.removeListener(channel, callback);
     },
+    removeAllListeners: (channel: string) => {
+        ipcRenderer.removeAllListeners(channel);
+    },
 };
 
 contextBridge.exposeInMainWorld('api', api);

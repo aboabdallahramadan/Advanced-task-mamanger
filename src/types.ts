@@ -66,6 +66,7 @@ export interface ElectronAPI {
     };
     on: (channel: string, callback: (...args: any[]) => void) => void;
     off: (channel: string, callback: (...args: any[]) => void) => void;
+    removeAllListeners: (channel: string) => void;
 }
 
 declare global {

@@ -138,6 +138,11 @@ export const FocusModeOverlay: React.FC = () => {
 
     // Listen for commands from tray and external widget
     useEffect(() => {
+        // Clear any previously accumulated listeners first
+        window.api?.removeAllListeners?.('focus:togglePlayPause');
+        window.api?.removeAllListeners?.('focus:stop');
+        window.api?.removeAllListeners?.('focus:done');
+
         const handleToggle = () => {
             const state = useStore.getState();
             if (state.focusMode.activeTaskId) {
@@ -165,7 +170,11 @@ export const FocusModeOverlay: React.FC = () => {
         window.api?.on('focus:stop', handleStop);
         window.api?.on('focus:done', handleDone);
 
-        return () => { };
+        return () => {
+            window.api?.removeAllListeners?.('focus:togglePlayPause');
+            window.api?.removeAllListeners?.('focus:stop');
+            window.api?.removeAllListeners?.('focus:done');
+        };
     }, []);
 
     if (!activeTask) return null;
