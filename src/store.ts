@@ -147,7 +147,43 @@ export const useStore = create<AppState>((set, get) => ({
         set({ loading: true });
         try {
             const tasks = await window.api.tasks.getAll();
-            set({ tasks, loading: false });
+            const today = format(new Date(), 'yyyy-MM-dd');
+
+            // Auto-rollover: move past unfinished tasks to today
+            const rolloverPromises: Promise<any>[] = [];
+            const updatedTasks = tasks.map((task: Task) => {
+                if (
+                    task.plannedDate &&
+                    task.plannedDate < today &&
+                    task.status !== 'done' &&
+                    task.status !== 'archived' &&
+                    task.status !== 'backlog'
+                ) {
+                    const updates: Partial<Task> = {
+                        plannedDate: today,
+                        scheduledStart: undefined,
+                        scheduledEnd: undefined,
+                    };
+                    // If task was scheduled, unschedule it (the old time slot is in the past)
+                    if (task.status === 'scheduled') {
+                        (updates as any).status = 'todo';
+                    }
+                    rolloverPromises.push(window.api.tasks.update(task.id, updates));
+                    return {
+                        ...task,
+                        ...updates,
+                        status: (task.status === 'scheduled' ? 'todo' : task.status) as Task['status'],
+                    };
+                }
+                return task;
+            });
+
+            // Fire rollover updates in the background (don't block UI)
+            if (rolloverPromises.length > 0) {
+                Promise.all(rolloverPromises).catch(e => console.error('Rollover update failed:', e));
+            }
+
+            set({ tasks: updatedTasks, loading: false });
         } catch (e) {
             console.error('Failed to load tasks:', e);
             set({ loading: false });

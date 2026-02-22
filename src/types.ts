@@ -60,6 +60,9 @@ export interface ElectronAPI {
     };
     focus: {
         updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) => void;
+        showWidget: () => void;
+        hideWidget: () => void;
+        sendWidgetState: (data: any) => void;
     };
     on: (channel: string, callback: (...args: any[]) => void) => void;
     off: (channel: string, callback: (...args: any[]) => void) => void;

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, screen } from 'electron';
 import path from 'path';
 import { initDatabase, getDatabase } from './database';
 import { TaskService } from './taskService';
@@ -6,9 +6,50 @@ import { ProjectService } from './projectService';
 import { seedDemoData } from './seed';
 
 let mainWindow: BrowserWindow | null = null;
+let focusWidget: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let taskService: TaskService;
 let projectService: ProjectService;
+
+function createFocusWidget() {
+    if (focusWidget && !focusWidget.isDestroyed()) {
+        focusWidget.show();
+        return;
+    }
+
+    const { width } = screen.getPrimaryDisplay().workAreaSize;
+
+    focusWidget = new BrowserWindow({
+        width: 420,
+        height: 52,
+        x: Math.round(width / 2 - 210),
+        y: 8,
+        frame: false,
+        transparent: true,
+        resizable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        focusable: true,
+        hasShadow: false,
+        webPreferences: {
+            nodeIntegration: true,
+            contextIsolation: false,
+        },
+    });
+
+    if (process.env.VITE_DEV_SERVER_URL) {
+        // In dev, load from Vite's public directory
+        focusWidget.loadFile(path.join(__dirname, '../public/focus-widget.html'));
+    } else {
+        focusWidget.loadFile(path.join(__dirname, '../dist/focus-widget.html'));
+    }
+
+    focusWidget.setAlwaysOnTop(true, 'screen-saver');
+
+    focusWidget.on('closed', () => {
+        focusWidget = null;
+    });
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 
@@ -256,6 +297,40 @@ function registerIpcHandlers() {
                 },
             ]);
             tray.setContextMenu(contextMenu);
+        }
+    });
+
+    // ─── Focus Widget Window (Always-on-Top) ────────────────
+    ipcMain.on('focus:showWidget', () => {
+        createFocusWidget();
+    });
+
+    ipcMain.on('focus:hideWidget', () => {
+        if (focusWidget && !focusWidget.isDestroyed()) {
+            focusWidget.close();
+            focusWidget = null;
+        }
+    });
+
+    ipcMain.on('focus:widgetState', (_e: any, data: any) => {
+        if (focusWidget && !focusWidget.isDestroyed()) {
+            focusWidget.webContents.send('focus:state', data);
+        }
+    });
+
+    // Widget button actions → forward to main renderer
+    ipcMain.on('focus:widgetAction', (_e: any, action: string) => {
+        if (!mainWindow) return;
+        switch (action) {
+            case 'togglePlayPause':
+                mainWindow.webContents.send('focus:togglePlayPause');
+                break;
+            case 'stop':
+                mainWindow.webContents.send('focus:stop');
+                break;
+            case 'done':
+                mainWindow.webContents.send('focus:done');
+                break;
         }
     });
 }

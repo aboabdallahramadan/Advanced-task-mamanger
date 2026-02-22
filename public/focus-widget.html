@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>TMap Focus Timer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+            -webkit-app-region: drag;
+            user-select: none;
+            overflow: hidden;
+        }
+
+        .widget {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid rgba(100, 116, 139, 0.3);
+            border-radius: 14px;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05) inset;
+        }
+
+        .widget.overtime {
+            border-color: rgba(251, 191, 36, 0.4);
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #64748b;
+            flex-shrink: 0;
+        }
+
+        .dot.playing {
+            background: #6366f1;
+            animation: pulse 2s infinite;
+            box-shadow: 0 0 8px rgba(99, 102, 241, 0.6);
+        }
+
+        .dot.paused {
+            background: #f59e0b;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
+        }
+
+        .task-name {
+            color: #cbd5e1;
+            font-size: 12px;
+            font-weight: 500;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .divider {
+            width: 1px;
+            height: 16px;
+            background: rgba(100, 116, 139, 0.3);
+        }
+
+        .timer {
+            color: #f1f5f9;
+            font-size: 16px;
+            font-weight: 600;
+            font-family: 'Consolas', 'SF Mono', monospace;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.5px;
+        }
+
+        .timer.overtime {
+            color: #fbbf24;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            -webkit-app-region: no-drag;
+        }
+
+        .btn {
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.15s;
+            background: transparent;
+            color: #94a3b8;
+        }
+
+        .btn:hover {
+            background: rgba(100, 116, 139, 0.2);
+            color: #e2e8f0;
+        }
+
+        .btn-play {
+            color: #818cf8;
+        }
+
+        .btn-play:hover {
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+        }
+
+        .btn-done {
+            color: #34d399;
+        }
+
+        .btn-done:hover {
+            background: rgba(52, 211, 153, 0.15);
+            color: #6ee7b7;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* Progress bar under the widget */
+        .progress-track {
+            height: 3px;
+            background: rgba(30, 41, 59, 0.6);
+            border-radius: 0 0 14px 14px;
+            overflow: hidden;
+            margin-top: -2px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: #6366f1;
+            border-radius: 0 0 14px 14px;
+            transition: width 1s linear;
+        }
+
+        .progress-bar.overtime {
+            background: #f59e0b;
+        }
+
+        svg {
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="widget" id="widget">
+        <div class="dot" id="dot"></div>
+        <span class="task-name" id="taskName">—</span>
+        <div class="divider"></div>
+        <span class="timer" id="timer">00:00</span>
+        <div class="controls">
+            <button class="btn btn-play" id="btnPlayPause" title="Play/Pause">
+                <svg id="iconPlay" viewBox="0 0 24 24">
+                    <polygon points="5 3 19 12 5 21 5 3" fill="currentColor" stroke="none" />
+                </svg>
+                <svg id="iconPause" class="hidden" viewBox="0 0 24 24">
+                    <rect x="6" y="4" width="4" height="16" fill="currentColor" stroke="none" />
+                    <rect x="14" y="4" width="4" height="16" fill="currentColor" stroke="none" />
+                </svg>
+            </button>
+            <button class="btn" id="btnStop" title="Stop">
+                <svg viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" rx="1" fill="currentColor" stroke="none" />
+                </svg>
+            </button>
+            <button class="btn btn-done" id="btnDone" title="Complete">
+                <svg viewBox="0 0 24 24">
+                    <polyline points="20 6 9 17 4 12" />
+                </svg>
+            </button>
+        </div>
+    </div>
+    <div class="progress-track" id="progressTrack" style="display:none">
+        <div class="progress-bar" id="progressBar"></div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+
+        const widget = document.getElementById('widget');
+        const dot = document.getElementById('dot');
+        const taskName = document.getElementById('taskName');
+        const timer = document.getElementById('timer');
+        const btnPlayPause = document.getElementById('btnPlayPause');
+        const iconPlay = document.getElementById('iconPlay');
+        const iconPause = document.getElementById('iconPause');
+        const btnStop = document.getElementById('btnStop');
+        const btnDone = document.getElementById('btnDone');
+        const progressTrack = document.getElementById('progressTrack');
+        const progressBar = document.getElementById('progressBar');
+
+        let isPlaying = false;
+
+        // Receive state updates from main window
+        ipcRenderer.on('focus:state', (_e, data) => {
+            if (!data || !data.taskTitle) return;
+
+            taskName.textContent = data.taskTitle;
+            timer.textContent = data.elapsed || '00:00';
+            isPlaying = data.isPlaying;
+
+            // Dot state
+            dot.className = 'dot' + (data.isPlaying ? ' playing' : ' paused');
+
+            // Play/pause icons
+            if (data.isPlaying) {
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+            } else {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+            }
+
+            // Overtime styling
+            const isOvertime = data.isOvertime || false;
+            timer.className = 'timer' + (isOvertime ? ' overtime' : '');
+            widget.className = 'widget' + (isOvertime ? ' overtime' : '');
+
+            // Progress bar
+            if (data.progressPercent !== undefined && data.plannedMinutes > 0) {
+                progressTrack.style.display = 'block';
+                progressBar.style.width = Math.min(100, data.progressPercent) + '%';
+                progressBar.className = 'progress-bar' + (isOvertime ? ' overtime' : '');
+            } else {
+                progressTrack.style.display = 'none';
+            }
+        });
+
+        // Controls → send back to main window → forward to renderer
+        btnPlayPause.addEventListener('click', () => {
+            ipcRenderer.send('focus:widgetAction', 'togglePlayPause');
+        });
+
+        btnStop.addEventListener('click', () => {
+            ipcRenderer.send('focus:widgetAction', 'stop');
+        });
+
+        btnDone.addEventListener('click', () => {
+            ipcRenderer.send('focus:widgetAction', 'done');
+        });
+    </script>
+</body>
+
+</html>
