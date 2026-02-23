@@ -10,11 +10,13 @@ import {
     Folder,
     Plus,
     Save,
+    Timer,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
+const TRACKED_PRESETS = [0, 15, 30, 60, 90, 120];
 const STATUS_OPTIONS: { value: Task['status']; label: string; color: string }[] = [
     { value: 'inbox', label: 'Inbox', color: 'bg-surface-500' },
     { value: 'backlog', label: 'Backlog', color: 'bg-surface-400' },
@@ -42,10 +44,10 @@ export function TaskDetailDialog() {
     const [project, setProject] = useState('');
     const [plannedDate, setPlannedDate] = useState('');
     const [durationMinutes, setDurationMinutes] = useState(30);
+    const [actualTimeMinutes, setActualTimeMinutes] = useState(0);
     const [status, setStatus] = useState<Task['status']>('planned');
     const [dueDate, setDueDate] = useState('');
     const [scheduledStart, setScheduledStart] = useState('');
-
 
 
     // Populate form on open
@@ -60,6 +62,7 @@ export function TaskDetailDialog() {
                 setProject(task.project || '');
                 setPlannedDate(task.plannedDate || '');
                 setDurationMinutes(task.durationMinutes || 30);
+                setActualTimeMinutes(task.actualTimeMinutes || 0);
                 setStatus(task.status);
                 setDueDate(task.dueDate || '');
                 setScheduledStart(task.scheduledStart ? task.scheduledStart.split('T')[1]?.substring(0, 5) || '' : '');
@@ -71,6 +74,7 @@ export function TaskDetailDialog() {
             setProject('');
             setPlannedDate(selectedDate);
             setDurationMinutes(30);
+            setActualTimeMinutes(0);
             setStatus('planned');
             setDueDate('');
             setScheduledStart('');
@@ -91,6 +95,7 @@ export function TaskDetailDialog() {
             project,
             plannedDate: plannedDate || null,
             durationMinutes,
+            actualTimeMinutes,
             status,
             dueDate: dueDate || null,
         };
@@ -252,6 +257,47 @@ export function TaskDetailDialog() {
                             <span className="text-xs text-surface-500">min</span>
                         </div>
                     </div>
+
+                    {/* Tracked Time (edit mode only) */}
+                    {isEdit && (
+                        <div>
+                            <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2 flex items-center gap-1.5">
+                                <Timer className="w-3.5 h-3.5" />
+                                Tracked Time
+                            </label>
+                            <div className="flex items-center gap-2 flex-wrap">
+                                {TRACKED_PRESETS.map((d) => (
+                                    <button
+                                        key={d}
+                                        onClick={() => setActualTimeMinutes(d)}
+                                        className={clsx(
+                                            'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                                            actualTimeMinutes === d
+                                                ? 'bg-emerald-600/20 border-emerald-500/40 text-emerald-400'
+                                                : 'bg-surface-950 border-surface-700/60 text-surface-400 hover:text-surface-200 hover:border-surface-600',
+                                        )}
+                                    >
+                                        {d >= 60 ? `${d / 60}h` : `${d}m`}
+                                    </button>
+                                ))}
+                                <input
+                                    type="number"
+                                    min={0}
+                                    max={960}
+                                    step={1}
+                                    value={actualTimeMinutes}
+                                    onChange={(e) => setActualTimeMinutes(Math.max(0, parseInt(e.target.value) || 0))}
+                                    className="w-20 px-3 py-1.5 bg-surface-950 border border-surface-700/60 rounded-lg text-xs text-surface-200 focus:outline-none focus:border-emerald-500/50 text-center"
+                                />
+                                <span className="text-xs text-surface-500">min</span>
+                            </div>
+                            {actualTimeMinutes > 0 && (
+                                <p className="mt-1.5 text-xs text-surface-500">
+                                    {Math.floor(actualTimeMinutes / 60)}h {actualTimeMinutes % 60}m tracked
+                                </p>
+                            )}
+                        </div>
+                    )}
 
                     {/* Due Date */}
                     <div>

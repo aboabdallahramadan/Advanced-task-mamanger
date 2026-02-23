@@ -220,7 +220,7 @@
         const widget = document.getElementById('widget');
         const dot = document.getElementById('dot');
         const taskName = document.getElementById('taskName');
-        const timer = document.getElementById('timer');
+        const timerEl = document.getElementById('timer');
         const btnPlayPause = document.getElementById('btnPlayPause');
         const iconPlay = document.getElementById('iconPlay');
         const iconPause = document.getElementById('iconPause');
@@ -229,21 +229,45 @@
         const progressTrack = document.getElementById('progressTrack');
         const progressBar = document.getElementById('progressBar');
 
-        let isPlaying = false;
+        // ─── Local Timer State ─────────────────────────────────
+        // The widget runs its OWN timer so it doesn't freeze when the main app is throttled
+        let state = {
+            isPlaying: false,
+            sessionStartTime: null,     // timestamp (ms) when current session started
+            accumulatedMinutes: 0,      // already-saved minutes from previous sessions
+            plannedMinutes: 0,
+            taskTitle: '',
+        };
+        let tickInterval = null;
 
-        // Receive state updates from main window
-        ipcRenderer.on('focus:state', (_e, data) => {
-            if (!data || !data.taskTitle) return;
+        function formatTime(totalSeconds) {
+            const h = Math.floor(totalSeconds / 3600);
+            const m = Math.floor((totalSeconds % 3600) / 60);
+            const s = totalSeconds % 60;
+            if (h > 0) {
+                return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+            }
+            return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+        }
 
-            taskName.textContent = data.taskTitle;
-            timer.textContent = data.elapsed || '00:00';
-            isPlaying = data.isPlaying;
+        function tick() {
+            let totalSeconds = state.accumulatedMinutes * 60;
 
-            // Dot state
-            dot.className = 'dot' + (data.isPlaying ? ' playing' : ' paused');
+            if (state.isPlaying && state.sessionStartTime) {
+                const currentSessionMs = Date.now() - state.sessionStartTime;
+                totalSeconds += Math.floor(currentSessionMs / 1000);
+            }
 
-            // Play/pause icons
-            if (data.isPlaying) {
+            const elapsedMins = Math.floor(totalSeconds / 60);
+            const isOvertime = state.plannedMinutes > 0 && elapsedMins >= state.plannedMinutes;
+
+            timerEl.textContent = formatTime(totalSeconds);
+            timerEl.className = 'timer' + (isOvertime ? ' overtime' : '');
+            widget.className = 'widget' + (isOvertime ? ' overtime' : '');
+
+            dot.className = 'dot' + (state.isPlaying ? ' playing' : ' paused');
+
+            if (state.isPlaying) {
                 iconPlay.classList.add('hidden');
                 iconPause.classList.remove('hidden');
             } else {
@@ -251,22 +275,48 @@
                 iconPause.classList.add('hidden');
             }
 
-            // Overtime styling
-            const isOvertime = data.isOvertime || false;
-            timer.className = 'timer' + (isOvertime ? ' overtime' : '');
-            widget.className = 'widget' + (isOvertime ? ' overtime' : '');
-
-            // Progress bar
-            if (data.progressPercent !== undefined && data.plannedMinutes > 0) {
+            if (state.plannedMinutes > 0) {
                 progressTrack.style.display = 'block';
-                progressBar.style.width = Math.min(100, data.progressPercent) + '%';
+                const pct = Math.min(100, (elapsedMins / state.plannedMinutes) * 100);
+                progressBar.style.width = pct + '%';
                 progressBar.className = 'progress-bar' + (isOvertime ? ' overtime' : '');
             } else {
                 progressTrack.style.display = 'none';
             }
+        }
+
+        function startTicking() {
+            if (tickInterval) clearInterval(tickInterval);
+            tickInterval = setInterval(tick, 500); // update every 500ms for smooth display
+            tick(); // immediate first tick
+        }
+
+        function stopTicking() {
+            if (tickInterval) {
+                clearInterval(tickInterval);
+                tickInterval = null;
+            }
+        }
+
+        // Start the local timer immediately
+        startTicking();
+
+        // ─── Receive state changes from main renderer ──────────
+        ipcRenderer.on('focus:state', (_e, data) => {
+            if (!data) return;
+
+            if (data.taskTitle !== undefined) state.taskTitle = data.taskTitle;
+            if (data.isPlaying !== undefined) state.isPlaying = data.isPlaying;
+            if (data.sessionStartTime !== undefined) state.sessionStartTime = data.sessionStartTime;
+            if (data.accumulatedMinutes !== undefined) state.accumulatedMinutes = data.accumulatedMinutes;
+            if (data.plannedMinutes !== undefined) state.plannedMinutes = data.plannedMinutes;
+
+            taskName.textContent = state.taskTitle || '—';
+
+            tick(); // immediate visual update on state change
         });
 
-        // Controls → send back to main window → forward to renderer
+        // ─── Controls → relay back to main app ─────────────────
         btnPlayPause.addEventListener('click', () => {
             ipcRenderer.send('focus:widgetAction', 'togglePlayPause');
         });

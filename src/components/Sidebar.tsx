@@ -170,7 +170,7 @@ export function Sidebar() {
                     )}
                     {projects.map((project) => {
                         const count = tasks.filter(
-                            (t) => t.project === project.name && t.status !== 'archived',
+                            (t) => t.project === project.name && t.status !== 'archived' && t.status !== 'done',
                         ).length;
                         const isActive = currentView === 'project' && selectedProjectId === project.id;
                         return (

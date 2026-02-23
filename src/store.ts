@@ -271,8 +271,9 @@ export const useStore = create<AppState>((set, get) => ({
     },
 
     markDone: async (id: string) => {
+        const today = format(new Date(), 'yyyy-MM-dd');
         const { updateTask } = get();
-        await updateTask(id, { status: 'done' });
+        await updateTask(id, { status: 'done', plannedDate: today });
     },
 
     moveToToday: async (id: string) => {

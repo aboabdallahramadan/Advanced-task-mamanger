@@ -58,6 +58,10 @@ export interface ElectronAPI {
         getVersion: () => Promise<string>;
         showNotification: (title: string, body: string) => Promise<void>;
     };
+    data: {
+        exportAll: (settings: Record<string, any>) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;
+        importAll: () => Promise<{ success: boolean; canceled?: boolean; error?: string; data?: { settings: Record<string, any>; taskCount: number; projectCount: number } }>;
+    };
     focus: {
         updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) => void;
         showWidget: () => void;

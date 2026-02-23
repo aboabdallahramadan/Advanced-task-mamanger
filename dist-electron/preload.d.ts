@@ -58,6 +58,10 @@ declare const api: {
         getVersion: () => Promise<any>;
         showNotification: (title: string, body: string) => Promise<any>;
     };
+    data: {
+        exportAll: (settings: any) => Promise<any>;
+        importAll: () => Promise<any>;
+    };
     focus: {
         updateTray: (data: {
             taskTitle: string | null;

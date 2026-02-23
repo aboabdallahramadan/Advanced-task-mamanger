@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const electron_1 = require("electron");
 const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const database_1 = require("./database");
 const taskService_1 = require("./taskService");
 const projectService_1 = require("./projectService");
@@ -74,6 +75,21 @@ else {
         createWindow();
         createTray();
         registerIpcHandlers();
+        // Global shortcut: Ctrl+Shift+F to toggle the focus timer widget
+        electron_1.globalShortcut.register('Ctrl+Shift+Q', () => {
+            if (focusWidget && !focusWidget.isDestroyed()) {
+                focusWidget.close();
+                focusWidget = null;
+            }
+            else {
+                createFocusWidget();
+                // Send current focus state to the new widget
+                mainWindow?.webContents.send('focus:resyncWidget');
+            }
+        });
+    });
+    electron_1.app.on('will-quit', () => {
+        electron_1.globalShortcut.unregisterAll();
     });
     electron_1.app.on('window-all-closed', () => {
         // On Windows, don't quit — minimize to tray
@@ -299,6 +315,145 @@ function registerIpcHandlers() {
             case 'done':
                 mainWindow.webContents.send('focus:done');
                 break;
+        }
+    });
+    // ─── Data Import / Export ────────────────────────────────
+    electron_1.ipcMain.handle('data:export', async (_e, settings) => {
+        try {
+            const db = (0, database_1.getDatabase)();
+            // Query all tasks
+            const tasksResult = db.exec('SELECT * FROM tasks');
+            const tasks = [];
+            if (tasksResult.length > 0) {
+                const cols = tasksResult[0].columns;
+                for (const row of tasksResult[0].values) {
+                    const obj = {};
+                    cols.forEach((col, i) => { obj[col] = row[i]; });
+                    // Parse labels JSON string
+                    if (typeof obj.labels === 'string') {
+                        try {
+                            obj.labels = JSON.parse(obj.labels);
+                        }
+                        catch {
+                            obj.labels = [];
+                        }
+                    }
+                    tasks.push(obj);
+                }
+            }
+            // Query all projects
+            const projectsResult = db.exec('SELECT * FROM projects');
+            const projects = [];
+            if (projectsResult.length > 0) {
+                const cols = projectsResult[0].columns;
+                for (const row of projectsResult[0].values) {
+                    const obj = {};
+                    cols.forEach((col, i) => { obj[col] = row[i]; });
+                    projects.push(obj);
+                }
+            }
+            const exportData = {
+                meta: {
+                    appName: 'TMap',
+                    version: electron_1.app.getVersion(),
+                    exportedAt: new Date().toISOString(),
+                },
+                settings: settings || {},
+                tasks,
+                projects,
+            };
+            const { canceled, filePath } = await electron_1.dialog.showSaveDialog(mainWindow, {
+                title: 'Export TMap Data',
+                defaultPath: `tmap-backup-${new Date().toISOString().slice(0, 10)}.json`,
+                filters: [{ name: 'JSON Files', extensions: ['json'] }],
+            });
+            if (canceled || !filePath) {
+                return { success: false, canceled: true };
+            }
+            fs_1.default.writeFileSync(filePath, JSON.stringify(exportData, null, 2), 'utf-8');
+            return { success: true, filePath };
+        }
+        catch (err) {
+            console.error('Export failed:', err);
+            return { success: false, error: err.message };
+        }
+    });
+    electron_1.ipcMain.handle('data:import', async () => {
+        try {
+            const { canceled, filePaths } = await electron_1.dialog.showOpenDialog(mainWindow, {
+                title: 'Import TMap Data',
+                filters: [{ name: 'JSON Files', extensions: ['json'] }],
+                properties: ['openFile'],
+            });
+            if (canceled || filePaths.length === 0) {
+                return { success: false, canceled: true };
+            }
+            const raw = fs_1.default.readFileSync(filePaths[0], 'utf-8');
+            let parsed;
+            try {
+                parsed = JSON.parse(raw);
+            }
+            catch {
+                return { success: false, error: 'Invalid JSON file.' };
+            }
+            // Validate structure
+            if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
+                return { success: false, error: 'Invalid backup file: missing tasks array.' };
+            }
+            if (!parsed.projects || !Array.isArray(parsed.projects)) {
+                return { success: false, error: 'Invalid backup file: missing projects array.' };
+            }
+            const db = (0, database_1.getDatabase)();
+            db.run('BEGIN TRANSACTION;');
+            try {
+                // Clear existing data
+                db.run('DELETE FROM tasks;');
+                db.run('DELETE FROM projects;');
+                // Insert tasks
+                for (const t of parsed.tasks) {
+                    db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, sort_order, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                        t.id, t.title, t.notes || '', t.project || '',
+                        Array.isArray(t.labels) ? JSON.stringify(t.labels) : (t.labels || '[]'),
+                        t.source || 'local', t.status || 'inbox',
+                        t.due_date || null, t.planned_date || null,
+                        t.scheduled_start || null, t.scheduled_end || null,
+                        t.duration_minutes ?? 30, t.actual_time_minutes ?? 0,
+                        t.sort_order ?? 0,
+                        t.created_at || new Date().toISOString(),
+                        t.updated_at || new Date().toISOString(),
+                    ]);
+                }
+                // Insert projects
+                for (const p of parsed.projects) {
+                    db.run(`INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`, [
+                        p.id, p.name, p.color || '#6366f1', p.emoji || '📁',
+                        p.sort_order ?? 0,
+                        p.created_at || new Date().toISOString(),
+                        p.updated_at || new Date().toISOString(),
+                    ]);
+                }
+                db.run('COMMIT;');
+                (0, database_1.saveDatabase)();
+                return {
+                    success: true,
+                    data: {
+                        settings: parsed.settings || {},
+                        taskCount: parsed.tasks.length,
+                        projectCount: parsed.projects.length,
+                    },
+                };
+            }
+            catch (err) {
+                db.run('ROLLBACK;');
+                console.error('Import transaction failed:', err);
+                return { success: false, error: 'Import failed: ' + err.message };
+            }
+        }
+        catch (err) {
+            console.error('Import failed:', err);
+            return { success: false, error: err.message };
         }
     });
 }

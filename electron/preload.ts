@@ -51,6 +51,10 @@ const api = {
         showNotification: (title: string, body: string) =>
             ipcRenderer.invoke('app:showNotification', title, body),
     },
+    data: {
+        exportAll: (settings: any) => ipcRenderer.invoke('data:export', settings),
+        importAll: () => ipcRenderer.invoke('data:import'),
+    },
     focus: {
         updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) =>
             ipcRenderer.send('focus:updateTray', data),

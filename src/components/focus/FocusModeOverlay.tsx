@@ -106,20 +106,19 @@ export const FocusModeOverlay: React.FC = () => {
         };
     }, [!!activeTask]);
 
-    // Push state to the external widget every second
+    // Push timing state to the external widget (only on state changes, not every tick)
+    // The widget runs its own local timer using these raw values
     useEffect(() => {
         if (!activeTask) return;
 
-        const elapsed = formatTime(elapsedSeconds);
         window.api?.focus?.sendWidgetState({
             taskTitle: activeTask.title,
-            elapsed,
             isPlaying: focusMode.isPlaying,
-            isOvertime,
-            progressPercent,
-            plannedMinutes,
+            sessionStartTime: focusMode.sessionStartTime,
+            accumulatedMinutes: activeTask.actualTimeMinutes || 0,
+            plannedMinutes: activeTask.durationMinutes || 0,
         });
-    }, [activeTask, elapsedSeconds, focusMode.isPlaying]);
+    }, [activeTask?.id, activeTask?.title, activeTask?.actualTimeMinutes, focusMode.isPlaying, focusMode.sessionStartTime]);
 
     // ─── Tray Communication ───────────────────────────────────
     useEffect(() => {
@@ -170,10 +169,27 @@ export const FocusModeOverlay: React.FC = () => {
         window.api?.on('focus:stop', handleStop);
         window.api?.on('focus:done', handleDone);
 
+        // When the widget is toggled via shortcut, resync state to it
+        const handleResync = () => {
+            const s = useStore.getState();
+            const task = s.tasks.find(t => t.id === s.focusMode.activeTaskId);
+            if (task) {
+                window.api?.focus?.sendWidgetState({
+                    taskTitle: task.title,
+                    isPlaying: s.focusMode.isPlaying,
+                    sessionStartTime: s.focusMode.sessionStartTime,
+                    accumulatedMinutes: task.actualTimeMinutes || 0,
+                    plannedMinutes: task.durationMinutes || 0,
+                });
+            }
+        };
+        window.api?.on('focus:resyncWidget', handleResync);
+
         return () => {
             window.api?.removeAllListeners?.('focus:togglePlayPause');
             window.api?.removeAllListeners?.('focus:stop');
             window.api?.removeAllListeners?.('focus:done');
+            window.api?.removeAllListeners?.('focus:resyncWidget');
         };
     }, []);
 
