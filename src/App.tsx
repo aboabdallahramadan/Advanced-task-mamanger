@@ -22,10 +22,10 @@ import { ProjectView } from './components/ProjectView';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
-import { GripVertical, Clock } from 'lucide-react';
+import { GripVertical, Clock, Plus } from 'lucide-react';
 
 export default function App() {
-    const { loadTasks, loadProjects, scheduleTask, startPlanningFlow, currentView } = useStore();
+    const { loadTasks, loadProjects, scheduleTask, startPlanningFlow, currentView, loadSettings, openTaskDialog } = useStore();
     const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
     const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -36,7 +36,8 @@ export default function App() {
     useEffect(() => {
         loadTasks();
         loadProjects();
-    }, [loadTasks, loadProjects]);
+        loadSettings();
+    }, [loadTasks, loadProjects, loadSettings]);
 
     // Global keyboard shortcuts
     useEffect(() => {
@@ -142,6 +143,16 @@ export default function App() {
             <TaskDetailDialog />
             <ProjectDialog />
             <SettingsDialog />
+
+            {/* Floating Add Task Button */}
+            <button
+                onClick={() => openTaskDialog('create')}
+                className="fixed bottom-6 right-6 z-40 w-14 h-14 bg-accent-600 hover:bg-accent-500 text-white rounded-full shadow-lg shadow-accent-500/30 hover:shadow-accent-500/50 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                aria-label="Add new task"
+                title="Add new task"
+            >
+                <Plus className="w-6 h-6" />
+            </button>
 
             {/* Drag overlay for cross-panel drag */}
             <DragOverlay dropAnimation={null}>

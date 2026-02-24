@@ -1,6 +1,30 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage, Notification, screen, globalShortcut, dialog } from 'electron';
 import path from 'path';
 import fs from 'fs';
+
+function getSettingsPath() {
+    return path.join(app.getPath('userData'), 'settings.json');
+}
+
+function loadSettings(): Record<string, any> {
+    try {
+        const p = getSettingsPath();
+        if (fs.existsSync(p)) {
+            return JSON.parse(fs.readFileSync(p, 'utf-8'));
+        }
+    } catch (e) {
+        console.error('Failed to load settings:', e);
+    }
+    return {};
+}
+
+function persistSettings(settings: Record<string, any>): void {
+    try {
+        fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
+    } catch (e) {
+        console.error('Failed to save settings:', e);
+    }
+}
 import { initDatabase, getDatabase, saveDatabase } from './database';
 import { TaskService } from './taskService';
 import { ProjectService } from './projectService';
@@ -242,6 +266,20 @@ function registerIpcHandlers() {
 
     ipcMain.handle('projects:delete', (_e: any, id: string) => {
         return projectService.delete(id);
+    });
+
+    ipcMain.handle('projects:reorder', (_e: any, items: { id: string; order: number }[]) => {
+        return projectService.reorder(items);
+    });
+
+    // ─── Settings IPC Handlers ───────────────────────────────
+    ipcMain.handle('settings:get', () => {
+        return loadSettings();
+    });
+
+    ipcMain.handle('settings:save', (_e: any, settings: Record<string, any>) => {
+        persistSettings(settings);
+        return true;
     });
 
     // ─── Focus Timer Tray Widget ────────────────────────────

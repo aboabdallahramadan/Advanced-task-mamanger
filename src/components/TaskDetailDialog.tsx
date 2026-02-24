@@ -11,6 +11,7 @@ import {
     Plus,
     Save,
     Timer,
+    Trash2,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
@@ -31,6 +32,7 @@ export function TaskDetailDialog() {
         closeTaskDialog,
         createTask,
         updateTask,
+        deleteTask,
         tasks,
         projects,
         selectedDate,
@@ -362,9 +364,25 @@ export function TaskDetailDialog() {
 
                 {/* Footer */}
                 <div className="flex items-center justify-between px-6 py-4 border-t border-surface-800 bg-surface-900">
-                    <span className="text-xs text-surface-500">
-                        <kbd className="text-surface-400 bg-surface-800 px-1.5 py-0.5 rounded text-2xs">Ctrl+Enter</kbd> to save
-                    </span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-surface-500">
+                            <kbd className="text-surface-400 bg-surface-800 px-1.5 py-0.5 rounded text-2xs">Ctrl+Enter</kbd> to save
+                        </span>
+                        {isEdit && taskDialog.taskId && (
+                            <button
+                                onClick={async () => {
+                                    if (taskDialog.taskId) {
+                                        await deleteTask(taskDialog.taskId);
+                                        closeTaskDialog();
+                                    }
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors border border-transparent hover:border-red-500/20"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                Delete
+                            </button>
+                        )}
+                    </div>
                     <div className="flex items-center gap-3">
                         <button
                             onClick={closeTaskDialog}

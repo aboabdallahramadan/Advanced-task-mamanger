@@ -53,6 +53,14 @@ declare const api: {
             order?: number;
         }) => Promise<any>;
         delete: (id: string) => Promise<any>;
+        reorder: (items: {
+            id: string;
+            order: number;
+        }[]) => Promise<any>;
+    };
+    settings: {
+        get: () => Promise<any>;
+        save: (settings: Record<string, any>) => Promise<any>;
     };
     app: {
         getVersion: () => Promise<any>;

@@ -45,6 +45,11 @@ const api = {
         create: (input: { name: string; color?: string; emoji?: string }) => ipcRenderer.invoke('projects:create', input),
         update: (id: string, updates: { name?: string; color?: string; emoji?: string; order?: number }) => ipcRenderer.invoke('projects:update', id, updates),
         delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
+        reorder: (items: { id: string; order: number }[]) => ipcRenderer.invoke('projects:reorder', items),
+    },
+    settings: {
+        get: () => ipcRenderer.invoke('settings:get'),
+        save: (settings: Record<string, any>) => ipcRenderer.invoke('settings:save', settings),
     },
     app: {
         getVersion: () => ipcRenderer.invoke('app:getVersion'),

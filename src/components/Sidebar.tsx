@@ -11,9 +11,25 @@ import {
     Sun,
     LayoutGrid,
     Settings,
+    GripVertical,
 } from 'lucide-react';
+import {
+    DndContext,
+    closestCenter,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    SortableContext,
+    verticalListSortingStrategy,
+    useSortable,
+    arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../store';
-import { ViewMode } from '../types';
+import { ViewMode, Project } from '../types';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 
@@ -37,7 +53,12 @@ export function Sidebar() {
         startPlanningFlow,
         openProjectDialog,
         selectProject,
+        reorderProjects,
     } = useStore();
+
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    );
 
     const inboxCount = tasks.filter((t) => t.status === 'inbox').length;
     const backlogCount = tasks.filter((t) => t.status === 'backlog').length;
@@ -164,34 +185,43 @@ export function Sidebar() {
                         + New
                     </button>
                 </div>
-                <div className="flex flex-col gap-0.5">
-                    {projects.length === 0 && (
-                        <p className="text-xs text-surface-600 italic px-1">No projects yet</p>
-                    )}
-                    {projects.map((project) => {
-                        const count = tasks.filter(
-                            (t) => t.project === project.name && t.status !== 'archived' && t.status !== 'done',
-                        ).length;
-                        const isActive = currentView === 'project' && selectedProjectId === project.id;
-                        return (
-                            <div
-                                key={project.id}
-                                onClick={() => selectProject(project.id)}
-                                className={clsx(
-                                    "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all cursor-pointer group",
-                                    isActive
-                                        ? "bg-accent-600/15 text-accent-300"
-                                        : "text-surface-400 hover:text-surface-200 hover:bg-surface-800/40"
-                                )}
-                            >
-                                <span className="text-sm">{project.emoji}</span>
-                                <span className="flex-1 truncate">{project.name}</span>
-                                <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
-                                <span className="text-xs text-surface-500">{count}</span>
-                            </div>
-                        );
-                    })}
-                </div>
+                <DndContext
+                    sensors={sensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={(event: DragEndEvent) => {
+                        const { active, over } = event;
+                        if (!over || active.id === over.id) return;
+                        const oldIndex = projects.findIndex((p) => p.id === active.id);
+                        const newIndex = projects.findIndex((p) => p.id === over.id);
+                        if (oldIndex === -1 || newIndex === -1) return;
+                        const reordered = arrayMove(projects, oldIndex, newIndex);
+                        const items = reordered.map((p, i) => ({ id: p.id, order: i }));
+                        reorderProjects(items);
+                    }}
+                >
+                    <SortableContext items={projects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                        <div className="flex flex-col gap-0.5">
+                            {projects.length === 0 && (
+                                <p className="text-xs text-surface-600 italic px-1">No projects yet</p>
+                            )}
+                            {projects.map((project) => {
+                                const count = tasks.filter(
+                                    (t) => t.project === project.name && t.status !== 'archived' && t.status !== 'done',
+                                ).length;
+                                const isActive = currentView === 'project' && selectedProjectId === project.id;
+                                return (
+                                    <SortableProjectItem
+                                        key={project.id}
+                                        project={project}
+                                        count={count}
+                                        isActive={isActive}
+                                        onSelect={() => selectProject(project.id)}
+                                    />
+                                );
+                            })}
+                        </div>
+                    </SortableContext>
+                </DndContext>
             </div>
 
             {/* Footer: free time indicator + settings */}
@@ -205,6 +235,61 @@ export function Sidebar() {
                     <span>Settings</span>
                 </button>
             </div>
+        </div>
+    );
+}
+
+function SortableProjectItem({
+    project,
+    count,
+    isActive,
+    onSelect,
+}: {
+    project: Project;
+    count: number;
+    isActive: boolean;
+    onSelect: () => void;
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: project.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            onClick={onSelect}
+            className={clsx(
+                "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all cursor-pointer group",
+                isActive
+                    ? "bg-accent-600/15 text-accent-300"
+                    : "text-surface-400 hover:text-surface-200 hover:bg-surface-800/40"
+            )}
+        >
+            <button
+                {...attributes}
+                {...listeners}
+                className="cursor-grab active:cursor-grabbing text-surface-600 hover:text-surface-400 opacity-0 group-hover:opacity-100 transition-opacity -ml-0.5 p-0.5"
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Drag to reorder"
+            >
+                <GripVertical className="w-3 h-3" />
+            </button>
+            <span className="text-sm">{project.emoji}</span>
+            <span className="flex-1 truncate">{project.name}</span>
+            <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
+            <span className="text-xs text-surface-500">{count}</span>
         </div>
     );
 }

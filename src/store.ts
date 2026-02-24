@@ -96,6 +96,13 @@ interface AppState {
     pauseFocusSession: () => void;
     stopFocusSession: () => Promise<void>;
 
+    // Settings Persistence
+    loadSettings: () => Promise<void>;
+    saveSettings: () => Promise<void>;
+
+    // Project Reorder
+    reorderProjects: (items: { id: string; order: number }[]) => Promise<void>;
+
     // Computed
     todayTasks: () => Task[];
     scheduledTasks: () => Task[];
@@ -369,16 +376,72 @@ export const useStore = create<AppState>((set, get) => ({
 
     setSidebarCollapsed: (collapsed: boolean) => set({ sidebarCollapsed: collapsed }),
 
-    setTimeIncrement: (inc: number) => set({ timeIncrement: inc }),
+    setTimeIncrement: (inc: number) => {
+        set({ timeIncrement: inc });
+        // Persist settings in the background
+        setTimeout(() => get().saveSettings(), 0);
+    },
 
     setQuickAddOpen: (isOpen: boolean) => set({ quickAddOpen: isOpen }),
     setSettingsOpen: (open: boolean) => set({ settingsOpen: open }),
-    setWorkHours: (start: number, end: number) => set({ workStartHour: start, workEndHour: end }),
+    setWorkHours: (start: number, end: number) => {
+        set({ workStartHour: start, workEndHour: end });
+        // Persist settings in the background
+        setTimeout(() => get().saveSettings(), 0);
+    },
     openTaskDialog: (mode: 'create' | 'edit', taskId?: string) => set({ taskDialog: { isOpen: true, mode, taskId: taskId || null } }),
     closeTaskDialog: () => set({ taskDialog: { isOpen: false, mode: 'create', taskId: null } }),
     startPlanningFlow: () => set({ planningFlow: { isOpen: true, step: 0 } }),
     setPlanningStep: (step: 0 | 1 | 2) => set((state) => ({ planningFlow: { ...state.planningFlow, step } })),
     closePlanningFlow: () => set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } })),
+
+    // Settings Persistence
+    loadSettings: async () => {
+        try {
+            const settings = await window.api.settings.get();
+            if (settings && typeof settings === 'object') {
+                const updates: Partial<AppState> = {};
+                if (typeof settings.workStartHour === 'number') updates.workStartHour = settings.workStartHour;
+                if (typeof settings.workEndHour === 'number') updates.workEndHour = settings.workEndHour;
+                if (typeof settings.timeIncrement === 'number') updates.timeIncrement = settings.timeIncrement;
+                if (typeof settings.sidebarCollapsed === 'boolean') updates.sidebarCollapsed = settings.sidebarCollapsed;
+                set(updates);
+            }
+        } catch (e) {
+            console.error('Failed to load settings:', e);
+        }
+    },
+
+    saveSettings: async () => {
+        try {
+            const { workStartHour, workEndHour, timeIncrement, sidebarCollapsed } = get();
+            await window.api.settings.save({
+                workStartHour,
+                workEndHour,
+                timeIncrement,
+                sidebarCollapsed,
+            });
+        } catch (e) {
+            console.error('Failed to save settings:', e);
+        }
+    },
+
+    // Project Reorder
+    reorderProjects: async (items: { id: string; order: number }[]) => {
+        try {
+            await window.api.projects.reorder(items);
+            set((s) => {
+                const orderMap = new Map(items.map((i) => [i.id, i.order]));
+                return {
+                    projects: s.projects
+                        .map((p) => (orderMap.has(p.id) ? { ...p, order: orderMap.get(p.id)! } : p))
+                        .sort((a, b) => a.order - b.order),
+                };
+            });
+        } catch (e) {
+            console.error('Failed to reorder projects:', e);
+        }
+    },
 
     // Focus Mode Actions
     startFocusSession: (taskId: string) => {

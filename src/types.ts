@@ -53,6 +53,11 @@ export interface ElectronAPI {
         create: (input: { name: string; color?: string; emoji?: string }) => Promise<Project>;
         update: (id: string, updates: Partial<Project>) => Promise<Project>;
         delete: (id: string) => Promise<boolean>;
+        reorder: (items: { id: string; order: number }[]) => Promise<void>;
+    };
+    settings: {
+        get: () => Promise<Record<string, any>>;
+        save: (settings: Record<string, any>) => Promise<boolean>;
     };
     app: {
         getVersion: () => Promise<string>;
