@@ -20,6 +20,7 @@ function rowToTask(columns, values) {
         scheduledEnd: row.scheduled_end,
         durationMinutes: row.duration_minutes || 30,
         actualTimeMinutes: row.actual_time_minutes || 0,
+        priority: row.priority ?? null,
         order: row.sort_order || 0,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -52,8 +53,8 @@ class TaskService {
         const maxResult = this.db.exec('SELECT MAX(sort_order) as max_order FROM tasks');
         const maxOrder = maxResult.length > 0 && maxResult[0].values[0][0] != null
             ? maxResult[0].values[0][0] : 0;
-        this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+        this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             id,
             input.title || 'Untitled',
             input.notes || '',
@@ -67,6 +68,7 @@ class TaskService {
             input.scheduledEnd || null,
             input.durationMinutes || 30,
             input.actualTimeMinutes || 0,
+            input.priority ?? null,
             maxOrder + 1,
             now,
             now,
@@ -125,6 +127,10 @@ class TaskService {
         if (updates.actualTimeMinutes !== undefined) {
             sets.push('actual_time_minutes = ?');
             values.push(updates.actualTimeMinutes);
+        }
+        if (updates.priority !== undefined) {
+            sets.push('priority = ?');
+            values.push(updates.priority);
         }
         if (updates.order !== undefined) {
             sets.push('sort_order = ?');

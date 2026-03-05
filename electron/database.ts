@@ -124,4 +124,29 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)
         `,
     },
+    {
+        name: '004_add_priority',
+        sql: `
+      ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT NULL CHECK (priority IS NULL OR priority IN (1, 2, 3, 4))
+        `,
+    },
+    {
+        name: '005_create_subtasks',
+        sql: `
+      CREATE TABLE IF NOT EXISTS subtasks (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id)
+        `,
+    },
+    {
+        name: '006_add_reminder_minutes',
+        sql: `ALTER TABLE tasks ADD COLUMN reminder_minutes INTEGER DEFAULT 0`,
+    },
 ];

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { X, Save, Clock, Download, Upload, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { X, Save, Clock, Download, Upload, CheckCircle, AlertCircle, Loader2, Power } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
@@ -24,6 +24,7 @@ export function SettingsDialog() {
     const [start, setStart] = useState(workStartHour);
     const [end, setEnd] = useState(workEndHour);
     const [increment, setIncrement] = useState(timeIncrement);
+    const [autoLaunch, setAutoLaunch] = useState(false);
 
     // Import/Export state
     const [dataStatus, setDataStatus] = useState<{ type: 'success' | 'error' | 'loading'; message: string } | null>(null);
@@ -34,6 +35,7 @@ export function SettingsDialog() {
             setEnd(workEndHour);
             setIncrement(timeIncrement);
             setDataStatus(null);
+            window.api.app.getAutoLaunch().then(setAutoLaunch).catch(() => {});
         }
     }, [settingsOpen, workStartHour, workEndHour, timeIncrement]);
 
@@ -136,6 +138,37 @@ export function SettingsDialog() {
 
                 {/* Body */}
                 <div className="p-6 space-y-6 overflow-y-auto">
+                    {/* Startup */}
+                    <div>
+                        <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
+                            Startup
+                        </h3>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Power className="w-4 h-4 text-surface-400" />
+                                <span className="text-sm text-surface-200">Launch on system startup</span>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    const next = !autoLaunch;
+                                    setAutoLaunch(next);
+                                    window.api.app.setAutoLaunch(next);
+                                }}
+                                className={clsx(
+                                    'relative w-10 h-5 rounded-full transition-colors',
+                                    autoLaunch ? 'bg-accent-600' : 'bg-surface-700',
+                                )}
+                            >
+                                <span
+                                    className={clsx(
+                                        'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform',
+                                        autoLaunch && 'translate-x-5',
+                                    )}
+                                />
+                            </button>
+                        </div>
+                    </div>
+
                     {/* Work Hours */}
                     <div>
                         <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">

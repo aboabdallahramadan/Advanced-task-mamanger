@@ -35,6 +35,7 @@ let focusWidget: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let taskService: TaskService;
 let projectService: ProjectService;
+const notifiedTaskIds = new Set<string>();
 
 function createFocusWidget() {
     if (focusWidget && !focusWidget.isDestroyed()) {
@@ -103,6 +104,54 @@ if (!gotTheLock) {
         createWindow();
         createTray();
         registerIpcHandlers();
+
+        // ─── Notification Scheduler ──────────────────────────────
+        setInterval(() => {
+            try {
+                const tasks = taskService.getUpcomingWithReminders();
+                const now = Date.now();
+
+                for (const task of tasks) {
+                    if (notifiedTaskIds.has(task.id)) continue;
+                    if (!task.scheduledStart) continue;
+
+                    const startTime = new Date(task.scheduledStart).getTime();
+                    const reminderMs = (task.reminderMinutes ?? 0) * 60000;
+                    const notifyAt = startTime - reminderMs;
+
+                    // Notify if time has come but task start is not more than 5 min in the past
+                    if (notifyAt <= now && startTime > now - 5 * 60000) {
+                        const body = task.reminderMinutes === 0
+                            ? 'Starting now'
+                            : `Starting in ${task.reminderMinutes} minutes`;
+
+                        const notification = new Notification({
+                            title: task.title,
+                            body,
+                        });
+                        notification.on('click', () => {
+                            mainWindow?.show();
+                            mainWindow?.focus();
+                        });
+                        notification.show();
+                        notifiedTaskIds.add(task.id);
+                    }
+                }
+
+                // Cleanup: remove entries for tasks started more than 1 hour ago
+                for (const id of notifiedTaskIds) {
+                    const task = tasks.find(t => t.id === id);
+                    if (task?.scheduledStart) {
+                        const startTime = new Date(task.scheduledStart).getTime();
+                        if (startTime < now - 3600000) {
+                            notifiedTaskIds.delete(id);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Notification scheduler error:', e);
+            }
+        }, 30000);
 
         // Global shortcut: Ctrl+Shift+F to toggle the focus timer widget
         globalShortcut.register('Ctrl+Shift+Q', () => {
@@ -228,6 +277,9 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('tasks:update', (_e: any, id: string, updates: any) => {
+        if (updates.scheduledStart !== undefined || updates.reminderMinutes !== undefined) {
+            notifiedTaskIds.delete(id);
+        }
         return taskService.update(id, updates);
     });
 
@@ -243,12 +295,35 @@ function registerIpcHandlers() {
         return taskService.search(query);
     });
 
+    // ─── Subtask IPC Handlers ───────────────────────────────
+    ipcMain.handle('subtasks:create', (_e: any, taskId: string, title: string) => {
+        return taskService.createSubtask(taskId, title);
+    });
+
+    ipcMain.handle('subtasks:update', (_e: any, id: string, updates: any) => {
+        return taskService.updateSubtask(id, updates);
+    });
+
+    ipcMain.handle('subtasks:delete', (_e: any, id: string) => {
+        return taskService.deleteSubtask(id);
+    });
+
     ipcMain.handle('app:getVersion', () => {
         return app.getVersion();
     });
 
     ipcMain.handle('app:showNotification', (_e: any, title: string, body: string) => {
         new Notification({ title, body }).show();
+    });
+
+    // ─── Auto-Launch ─────────────────────────────────────────
+    ipcMain.handle('app:getAutoLaunch', () => {
+        return app.getLoginItemSettings().openAtLogin;
+    });
+
+    ipcMain.handle('app:setAutoLaunch', (_e: any, enabled: boolean) => {
+        app.setLoginItemSettings({ openAtLogin: enabled });
+        return true;
     });
 
     // ─── Project IPC Handlers ────────────────────────────────
@@ -490,8 +565,8 @@ function registerIpcHandlers() {
                 // Insert tasks
                 for (const t of parsed.tasks) {
                     db.run(
-                        `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, sort_order, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             t.id, t.title, t.notes || '', t.project || '',
                             Array.isArray(t.labels) ? JSON.stringify(t.labels) : (t.labels || '[]'),
@@ -499,6 +574,7 @@ function registerIpcHandlers() {
                             t.due_date || null, t.planned_date || null,
                             t.scheduled_start || null, t.scheduled_end || null,
                             t.duration_minutes ?? 30, t.actual_time_minutes ?? 0,
+                            t.priority ?? null, t.reminder_minutes ?? 0,
                             t.sort_order ?? 0,
                             t.created_at || new Date().toISOString(),
                             t.updated_at || new Date().toISOString(),

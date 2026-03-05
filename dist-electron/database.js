@@ -127,4 +127,10 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)
         `,
     },
+    {
+        name: '004_add_priority',
+        sql: `
+      ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT NULL CHECK (priority IS NULL OR priority IN (1, 2, 3, 4))
+        `,
+    },
 ];

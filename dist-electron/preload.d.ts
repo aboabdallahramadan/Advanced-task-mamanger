@@ -10,6 +10,7 @@ export interface TaskInput {
     scheduledEnd?: string;
     durationMinutes?: number;
     actualTimeMinutes?: number;
+    priority?: 1 | 2 | 3 | 4 | null;
 }
 export interface TaskUpdate {
     title?: string;
@@ -23,6 +24,7 @@ export interface TaskUpdate {
     scheduledEnd?: string;
     durationMinutes?: number;
     actualTimeMinutes?: number;
+    priority?: 1 | 2 | 3 | 4 | null;
     order?: number;
 }
 declare const api: {

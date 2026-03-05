@@ -5,6 +5,7 @@ import { useStore } from '../store';
 import { Task } from '../types';
 import { clsx } from 'clsx';
 import { format, parseISO, addMinutes, addDays, subDays, isToday as isTodayFn } from 'date-fns';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 
 const HOUR_HEIGHT = 80; // pixels per hour
 const MIN_BLOCK_MINUTES = 15;
@@ -482,7 +483,7 @@ function TimeBlock({
             {/* Content */}
             <div className="flex items-start justify-between h-full overflow-hidden">
                 <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium truncate" style={{ color: projectColor }}>
+                    <p dir={getTextDirection(task.title)} className="text-xs font-medium truncate" style={{ ...getDirectionStyle(task.title), color: projectColor }}>
                         {task.title}
                     </p>
                     {currentHeight > 40 && (
@@ -491,7 +492,7 @@ function TimeBlock({
                         </p>
                     )}
                     {currentHeight > 60 && task.project && (
-                        <p className="text-2xs mt-0.5" style={{ color: projectColor + '99' }}>{task.project}</p>
+                        <p dir={getTextDirection(task.project!)} className="text-2xs mt-0.5" style={{ ...getDirectionStyle(task.project!), color: projectColor + '99' }}>{task.project}</p>
                     )}
                 </div>
                 {hasConflict && (

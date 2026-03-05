@@ -1,13 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Plus } from 'lucide-react';
 import { useStore } from '../store';
-import { format } from 'date-fns';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 
 export function QuickAdd() {
     const [value, setValue] = useState('');
     const [isOpen, setIsOpen] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
-    const { createTask, selectedDate, currentView } = useStore();
+    const { createTask, currentView } = useStore();
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -26,14 +26,10 @@ export function QuickAdd() {
         if (!value.trim()) return;
 
         const status = currentView === 'inbox' ? 'inbox' : currentView === 'backlog' ? 'backlog' : 'planned';
-        const plannedDate = ['today', 'tomorrow', 'week'].includes(currentView)
-            ? selectedDate
-            : undefined;
 
         await createTask({
             title: value.trim(),
             status,
-            plannedDate: plannedDate || undefined,
         });
 
         setValue('');
@@ -67,6 +63,8 @@ export function QuickAdd() {
                 <input
                     ref={inputRef}
                     type="text"
+                    dir={getTextDirection(value)}
+                    style={getDirectionStyle(value)}
                     value={value}
                     onChange={(e) => setValue(e.target.value)}
                     onBlur={() => {

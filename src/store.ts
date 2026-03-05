@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Task, ViewMode, Project } from './types';
+import { Task, Subtask, ViewMode, Project } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 
 interface AppState {
@@ -62,6 +62,11 @@ interface AppState {
     moveToToday: (id: string) => Promise<void>;
     moveToBacklog: (id: string) => Promise<void>;
     archiveTask: (id: string) => Promise<void>;
+
+    // Subtask Actions
+    createSubtask: (taskId: string, title: string) => Promise<Subtask | null>;
+    updateSubtask: (taskId: string, subtaskId: string, updates: { title?: string; completed?: boolean; order?: number }) => Promise<void>;
+    deleteSubtask: (taskId: string, subtaskId: string) => Promise<void>;
 
     // Project Actions
     loadProjects: () => Promise<void>;
@@ -297,6 +302,57 @@ export const useStore = create<AppState>((set, get) => ({
     archiveTask: async (id: string) => {
         const { updateTask } = get();
         await updateTask(id, { status: 'archived' });
+    },
+
+    // ─── Subtask Actions ─────────────────────────────────────
+    createSubtask: async (taskId: string, title: string) => {
+        try {
+            const subtask = await window.api.subtasks.create(taskId, title);
+            set((s) => ({
+                tasks: s.tasks.map((t) =>
+                    t.id === taskId ? { ...t, subtasks: [...t.subtasks, subtask] } : t,
+                ),
+            }));
+            return subtask;
+        } catch (e) {
+            console.error('Failed to create subtask:', e);
+            return null;
+        }
+    },
+
+    updateSubtask: async (taskId: string, subtaskId: string, updates) => {
+        try {
+            await window.api.subtasks.update(subtaskId, updates);
+            set((s) => ({
+                tasks: s.tasks.map((t) =>
+                    t.id === taskId
+                        ? {
+                            ...t,
+                            subtasks: t.subtasks.map((st) =>
+                                st.id === subtaskId ? { ...st, ...updates } : st,
+                            ),
+                        }
+                        : t,
+                ),
+            }));
+        } catch (e) {
+            console.error('Failed to update subtask:', e);
+        }
+    },
+
+    deleteSubtask: async (taskId: string, subtaskId: string) => {
+        try {
+            await window.api.subtasks.delete(subtaskId);
+            set((s) => ({
+                tasks: s.tasks.map((t) =>
+                    t.id === taskId
+                        ? { ...t, subtasks: t.subtasks.filter((st) => st.id !== subtaskId) }
+                        : t,
+                ),
+            }));
+        } catch (e) {
+            console.error('Failed to delete subtask:', e);
+        }
     },
 
     // ─── Project Actions ─────────────────────────────────────
@@ -549,23 +605,32 @@ export const useStore = create<AppState>((set, get) => ({
         switch (currentView) {
             case 'today':
             case 'tomorrow':
-                return filtered.filter(
+                filtered = filtered.filter(
                     (t) => t.plannedDate === selectedDate || (t.status === 'scheduled' && t.scheduledStart?.startsWith(selectedDate)),
                 );
+                break;
             case 'inbox':
-                return filtered.filter((t) => t.status === 'inbox');
+                filtered = filtered.filter((t) => t.status === 'inbox');
+                break;
             case 'backlog':
-                return filtered.filter((t) => t.status === 'backlog');
+                filtered = filtered.filter((t) => t.status === 'backlog');
+                break;
             case 'week': {
                 const start = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
                 const end = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
-                return filtered.filter(
+                filtered = filtered.filter(
                     (t) => t.plannedDate && t.plannedDate >= start && t.plannedDate <= end,
                 );
+                break;
             }
-            default:
-                return filtered;
         }
+
+        return filtered.sort((a, b) => {
+            const pa = a.priority ?? 5;
+            const pb = b.priority ?? 5;
+            if (pa !== pb) return pa - pb;
+            return a.order - b.order;
+        });
     },
 
     freeMinutesRemaining: () => {

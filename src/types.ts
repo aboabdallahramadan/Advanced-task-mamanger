@@ -1,3 +1,12 @@
+export interface Subtask {
+    id: string;
+    taskId: string;
+    title: string;
+    completed: boolean;
+    order: number;
+    createdAt: string;
+}
+
 export interface Task {
     id: string;
     title: string;
@@ -12,6 +21,9 @@ export interface Task {
     scheduledEnd: string | null;
     durationMinutes: number;
     actualTimeMinutes?: number;
+    priority: 1 | 2 | 3 | 4 | null;
+    reminderMinutes: number | null;
+    subtasks: Subtask[];
     order: number;
     createdAt: string;
     updatedAt: string;
@@ -48,6 +60,11 @@ export interface ElectronAPI {
         reorder: (tasks: { id: string; order: number }[]) => Promise<void>;
         search: (query: string) => Promise<Task[]>;
     };
+    subtasks: {
+        create: (taskId: string, title: string) => Promise<Subtask>;
+        update: (id: string, updates: { title?: string; completed?: boolean; order?: number }) => Promise<void>;
+        delete: (id: string) => Promise<void>;
+    };
     projects: {
         getAll: () => Promise<Project[]>;
         create: (input: { name: string; color?: string; emoji?: string }) => Promise<Project>;
@@ -62,6 +79,8 @@ export interface ElectronAPI {
     app: {
         getVersion: () => Promise<string>;
         showNotification: (title: string, body: string) => Promise<void>;
+        getAutoLaunch: () => Promise<boolean>;
+        setAutoLaunch: (enabled: boolean) => Promise<boolean>;
     };
     data: {
         exportAll: (settings: Record<string, any>) => Promise<{ success: boolean; canceled?: boolean; filePath?: string; error?: string }>;

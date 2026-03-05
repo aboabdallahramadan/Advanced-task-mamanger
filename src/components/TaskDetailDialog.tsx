@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store';
-import { Task } from '../types';
+import { Task, Subtask } from '../types';
 import {
     X,
     Calendar,
@@ -12,9 +12,16 @@ import {
     Save,
     Timer,
     Trash2,
+    Flag,
+    Bell,
+    CheckSquare,
+    Square,
+    ListTodo,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
+import { PRIORITY_COLORS, PRIORITY_LABELS } from '../priorityUtils';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 const TRACKED_PRESETS = [0, 15, 30, 60, 90, 120];
@@ -36,6 +43,9 @@ export function TaskDetailDialog() {
         tasks,
         projects,
         selectedDate,
+        createSubtask,
+        updateSubtask,
+        deleteSubtask,
     } = useStore();
 
     const titleRef = useRef<HTMLInputElement>(null);
@@ -50,6 +60,11 @@ export function TaskDetailDialog() {
     const [status, setStatus] = useState<Task['status']>('planned');
     const [dueDate, setDueDate] = useState('');
     const [scheduledStart, setScheduledStart] = useState('');
+    const [priority, setPriority] = useState<Task['priority']>(null);
+    const [reminderMinutes, setReminderMinutes] = useState<number | null>(0);
+    const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+    const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
+    const [editingSubtaskTitle, setEditingSubtaskTitle] = useState('');
 
 
     // Populate form on open
@@ -68,6 +83,8 @@ export function TaskDetailDialog() {
                 setStatus(task.status);
                 setDueDate(task.dueDate || '');
                 setScheduledStart(task.scheduledStart ? task.scheduledStart.split('T')[1]?.substring(0, 5) || '' : '');
+                setPriority(task.priority ?? null);
+                setReminderMinutes(task.reminderMinutes ?? 0);
             }
         } else {
             // Create mode — reset form
@@ -80,6 +97,8 @@ export function TaskDetailDialog() {
             setStatus('planned');
             setDueDate('');
             setScheduledStart('');
+            setPriority(null);
+            setReminderMinutes(0);
         }
 
         // Auto-focus title
@@ -87,6 +106,34 @@ export function TaskDetailDialog() {
     }, [taskDialog.isOpen, taskDialog.mode, taskDialog.taskId, tasks, selectedDate]);
 
     if (!taskDialog.isOpen) return null;
+
+    const isEdit = taskDialog.mode === 'edit';
+    const currentTask = isEdit && taskDialog.taskId ? tasks.find(t => t.id === taskDialog.taskId) : null;
+    const subtasks = currentTask?.subtasks || [];
+
+    const handleAddSubtask = async () => {
+        if (!newSubtaskTitle.trim() || !taskDialog.taskId) return;
+        await createSubtask(taskDialog.taskId, newSubtaskTitle.trim());
+        setNewSubtaskTitle('');
+    };
+
+    const handleToggleSubtask = async (subtask: Subtask) => {
+        if (!taskDialog.taskId) return;
+        await updateSubtask(taskDialog.taskId, subtask.id, { completed: !subtask.completed });
+    };
+
+    const handleSaveSubtaskEdit = async (subtask: Subtask) => {
+        if (!taskDialog.taskId) return;
+        if (editingSubtaskTitle.trim() && editingSubtaskTitle !== subtask.title) {
+            await updateSubtask(taskDialog.taskId, subtask.id, { title: editingSubtaskTitle.trim() });
+        }
+        setEditingSubtaskId(null);
+    };
+
+    const handleDeleteSubtask = async (subtaskId: string) => {
+        if (!taskDialog.taskId) return;
+        await deleteSubtask(taskDialog.taskId, subtaskId);
+    };
 
     const handleSave = async () => {
         if (!title.trim()) return;
@@ -100,6 +147,8 @@ export function TaskDetailDialog() {
             actualTimeMinutes,
             status,
             dueDate: dueDate || null,
+            priority,
+            reminderMinutes,
         };
 
         // If a scheduled start time is set
@@ -128,8 +177,6 @@ export function TaskDetailDialog() {
             handleSave();
         }
     };
-
-    const isEdit = taskDialog.mode === 'edit';
 
     return (
         <div
@@ -173,6 +220,8 @@ export function TaskDetailDialog() {
                         <input
                             ref={titleRef}
                             type="text"
+                            dir={getTextDirection(title)}
+                            style={getDirectionStyle(title)}
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
                             placeholder="What are you working on?"
@@ -186,6 +235,8 @@ export function TaskDetailDialog() {
                             Description
                         </label>
                         <textarea
+                            dir={getTextDirection(notes)}
+                            style={getDirectionStyle(notes)}
                             value={notes}
                             onChange={(e) => setNotes(e.target.value)}
                             placeholder="Add notes, details, or context..."
@@ -193,6 +244,88 @@ export function TaskDetailDialog() {
                             className="w-full px-4 py-2.5 bg-surface-950 border border-surface-700/60 rounded-xl text-surface-100 placeholder-surface-600 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all resize-none"
                         />
                     </div>
+
+                    {/* Subtasks (edit mode only) */}
+                    {isEdit && taskDialog.taskId && (
+                        <div>
+                            <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2 flex items-center gap-1.5">
+                                <ListTodo className="w-3.5 h-3.5" />
+                                Subtasks
+                                {subtasks.length > 0 && (
+                                    <span className="text-surface-500 font-normal normal-case">
+                                        ({subtasks.filter(s => s.completed).length}/{subtasks.length})
+                                    </span>
+                                )}
+                            </label>
+                            <div className="space-y-1">
+                                {subtasks.map((st) => (
+                                    <div key={st.id} className="flex items-center gap-2 group/subtask">
+                                        <button
+                                            onClick={() => handleToggleSubtask(st)}
+                                            className="flex-shrink-0 text-surface-400 hover:text-accent-400 transition-colors"
+                                        >
+                                            {st.completed ? (
+                                                <CheckSquare className="w-4 h-4 text-success-500" />
+                                            ) : (
+                                                <Square className="w-4 h-4" />
+                                            )}
+                                        </button>
+                                        {editingSubtaskId === st.id ? (
+                                            <input
+                                                type="text"
+                                                value={editingSubtaskTitle}
+                                                onChange={(e) => setEditingSubtaskTitle(e.target.value)}
+                                                onBlur={() => handleSaveSubtaskEdit(st)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') handleSaveSubtaskEdit(st);
+                                                    if (e.key === 'Escape') setEditingSubtaskId(null);
+                                                }}
+                                                autoFocus
+                                                className="flex-1 bg-transparent text-sm text-surface-100 outline-none border-b border-accent-500/50 pb-0.5"
+                                            />
+                                        ) : (
+                                            <span
+                                                onClick={() => {
+                                                    setEditingSubtaskId(st.id);
+                                                    setEditingSubtaskTitle(st.title);
+                                                }}
+                                                className={clsx(
+                                                    'flex-1 text-sm cursor-text',
+                                                    st.completed ? 'line-through text-surface-500' : 'text-surface-200',
+                                                )}
+                                            >
+                                                {st.title}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={() => handleDeleteSubtask(st.id)}
+                                            className="flex-shrink-0 opacity-0 group-hover/subtask:opacity-100 text-surface-500 hover:text-red-400 transition-all p-0.5"
+                                        >
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                                {/* Add new subtask */}
+                                <div className="flex items-center gap-2 mt-1">
+                                    <Plus className="w-4 h-4 text-surface-500 flex-shrink-0" />
+                                    <input
+                                        type="text"
+                                        value={newSubtaskTitle}
+                                        onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                handleAddSubtask();
+                                            }
+                                        }}
+                                        placeholder="Add a subtask..."
+                                        className="flex-1 bg-transparent text-sm text-surface-200 placeholder-surface-600 outline-none border-b border-transparent focus:border-surface-700 pb-0.5 transition-colors"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Date & Time Row */}
                     <div className="grid grid-cols-2 gap-4">
@@ -355,6 +488,76 @@ export function TaskDetailDialog() {
                                     )}
                                 >
                                     <div className={clsx('w-2 h-2 rounded-full', opt.color)} />
+                                    {opt.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Priority */}
+                    <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2 flex items-center gap-1.5">
+                            <Flag className="w-3.5 h-3.5" />
+                            Priority
+                        </label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <button
+                                onClick={() => setPriority(null)}
+                                className={clsx(
+                                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                                    priority === null
+                                        ? 'bg-accent-600/20 border-accent-500/40 text-accent-400'
+                                        : 'bg-surface-950 border-surface-700/60 text-surface-400 hover:text-surface-200 hover:border-surface-600',
+                                )}
+                            >
+                                None
+                            </button>
+                            {([1, 2, 3, 4] as const).map((p) => (
+                                <button
+                                    key={p}
+                                    onClick={() => setPriority(p)}
+                                    className={clsx(
+                                        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                                        priority === p
+                                            ? 'bg-accent-600/20 border-accent-500/40 text-accent-400'
+                                            : 'bg-surface-950 border-surface-700/60 text-surface-400 hover:text-surface-200 hover:border-surface-600',
+                                    )}
+                                >
+                                    <div
+                                        className="w-2 h-2 rounded-full flex-shrink-0"
+                                        style={{ backgroundColor: PRIORITY_COLORS[p] }}
+                                    />
+                                    {PRIORITY_LABELS[p]}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Reminder */}
+                    <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2 flex items-center gap-1.5">
+                            <Bell className="w-3.5 h-3.5" />
+                            Reminder
+                        </label>
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {([
+                                { value: null, label: 'None' },
+                                { value: 0, label: 'At start' },
+                                { value: 5, label: '5m before' },
+                                { value: 10, label: '10m before' },
+                                { value: 15, label: '15m before' },
+                                { value: 30, label: '30m before' },
+                            ] as const).map((opt) => (
+                                <button
+                                    key={String(opt.value)}
+                                    onClick={() => setReminderMinutes(opt.value)}
+                                    className={clsx(
+                                        'px-3 py-1.5 rounded-lg text-xs font-medium transition-all border',
+                                        reminderMinutes === opt.value
+                                            ? 'bg-accent-600/20 border-accent-500/40 text-accent-400'
+                                            : 'bg-surface-950 border-surface-700/60 text-surface-400 hover:text-surface-200 hover:border-surface-600',
+                                    )}
+                                >
                                     {opt.label}
                                 </button>
                             ))}

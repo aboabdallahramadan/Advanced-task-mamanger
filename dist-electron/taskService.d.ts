@@ -13,6 +13,7 @@ export interface Task {
     scheduledEnd: string | null;
     durationMinutes: number;
     actualTimeMinutes?: number;
+    priority: 1 | 2 | 3 | 4 | null;
     order: number;
     createdAt: string;
     updatedAt: string;

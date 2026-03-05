@@ -12,6 +12,8 @@ export interface TaskInput {
     scheduledEnd?: string;
     durationMinutes?: number;
     actualTimeMinutes?: number;
+    priority?: 1 | 2 | 3 | 4 | null;
+    reminderMinutes?: number | null;
 }
 
 export interface TaskUpdate {
@@ -26,6 +28,8 @@ export interface TaskUpdate {
     scheduledEnd?: string;
     durationMinutes?: number;
     actualTimeMinutes?: number;
+    priority?: 1 | 2 | 3 | 4 | null;
+    reminderMinutes?: number | null;
     order?: number;
 }
 
@@ -39,6 +43,11 @@ const api = {
         delete: (id: string) => ipcRenderer.invoke('tasks:delete', id),
         reorder: (tasks: { id: string; order: number }[]) => ipcRenderer.invoke('tasks:reorder', tasks),
         search: (query: string) => ipcRenderer.invoke('tasks:search', query),
+    },
+    subtasks: {
+        create: (taskId: string, title: string) => ipcRenderer.invoke('subtasks:create', taskId, title),
+        update: (id: string, updates: { title?: string; completed?: boolean; order?: number }) => ipcRenderer.invoke('subtasks:update', id, updates),
+        delete: (id: string) => ipcRenderer.invoke('subtasks:delete', id),
     },
     projects: {
         getAll: () => ipcRenderer.invoke('projects:getAll'),
@@ -55,6 +64,8 @@ const api = {
         getVersion: () => ipcRenderer.invoke('app:getVersion'),
         showNotification: (title: string, body: string) =>
             ipcRenderer.invoke('app:showNotification', title, body),
+        getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
+        setAutoLaunch: (enabled: boolean) => ipcRenderer.invoke('app:setAutoLaunch', enabled),
     },
     data: {
         exportAll: (settings: any) => ipcRenderer.invoke('data:export', settings),

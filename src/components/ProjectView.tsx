@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { Task } from '../types';
 import {
@@ -10,9 +10,30 @@ import {
     Play,
     ArrowLeft,
     CheckCircle2,
+    GripVertical,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format, parseISO } from 'date-fns';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
+import { getPriorityBorderStyle } from '../priorityUtils';
+import {
+    DndContext,
+    DragOverlay,
+    closestCenter,
+    KeyboardSensor,
+    PointerSensor,
+    useSensor,
+    useSensors,
+    type DragStartEvent,
+    type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+    SortableContext,
+    verticalListSortingStrategy,
+    sortableKeyboardCoordinates,
+    useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 export function ProjectView() {
     const {
@@ -27,7 +48,15 @@ export function ProjectView() {
         focusMode,
         setCurrentView,
         createTask,
+        reorderTasks,
     } = useStore();
+
+    const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+    const sensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    );
 
     const project = projects.find(p => p.id === selectedProjectId);
 
@@ -62,13 +91,34 @@ export function ProjectView() {
         );
     }
 
+    const handleDragStart = (event: DragStartEvent) => {
+        const task = activeTasks.find((t) => t.id === event.active.id);
+        if (task) setActiveTask(task);
+    };
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        setActiveTask(null);
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = activeTasks.findIndex((t) => t.id === active.id);
+        const newIndex = activeTasks.findIndex((t) => t.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
+
+        const reordered = [...activeTasks];
+        const [moved] = reordered.splice(oldIndex, 1);
+        reordered.splice(newIndex, 0, moved);
+
+        const updates = reordered.map((t, i) => ({ id: t.id, order: i }));
+        reorderTasks(updates);
+    };
+
     const handleQuickAdd = () => {
         if (quickAddText.trim() && project) {
             createTask({
                 title: quickAddText.trim(),
                 project: project.name,
                 status: 'planned',
-                plannedDate: format(new Date(), 'yyyy-MM-dd'),
             });
             setQuickAddText('');
         }
@@ -89,7 +139,7 @@ export function ProjectView() {
                     <div className="flex items-center gap-3 flex-1">
                         <span className="text-2xl">{project.emoji}</span>
                         <div>
-                            <h1 className="text-xl font-bold text-surface-100">{project.name}</h1>
+                            <h1 dir={getTextDirection(project.name)} style={getDirectionStyle(project.name)} className="text-xl font-bold text-surface-100">{project.name}</h1>
                             <p className="text-xs text-surface-500">
                                 {activeTasks.length} active · {doneTasks.length} completed
                             </p>
@@ -145,6 +195,8 @@ export function ProjectView() {
                     <input
                         ref={quickAddRef}
                         type="text"
+                        dir={getTextDirection(quickAddText)}
+                        style={getDirectionStyle(quickAddText)}
                         value={quickAddText}
                         onChange={(e) => setQuickAddText(e.target.value)}
                         onKeyDown={(e) => {
@@ -167,19 +219,42 @@ export function ProjectView() {
                 ) : (
                     <>
                         {/* Active tasks */}
-                        <div className="space-y-1">
-                            {activeTasks.map(task => (
-                                <ProjectTaskRow
-                                    key={task.id}
-                                    task={task}
-                                    projectColor={project.color}
-                                    onToggleDone={() => markDone(task.id)}
-                                    onClick={() => openTaskDialog('edit', task.id)}
-                                    onStartTimer={() => startFocusSession(task.id)}
-                                    isFocused={focusMode.activeTaskId === task.id}
-                                />
-                            ))}
-                        </div>
+                        <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
+                        >
+                            <SortableContext items={activeTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
+                                <div className="space-y-1">
+                                    {activeTasks.map(task => (
+                                        <ProjectTaskRow
+                                            key={task.id}
+                                            task={task}
+                                            projectColor={project.color}
+                                            onToggleDone={() => markDone(task.id)}
+                                            onClick={() => openTaskDialog('edit', task.id)}
+                                            onStartTimer={() => startFocusSession(task.id)}
+                                            isFocused={focusMode.activeTaskId === task.id}
+                                        />
+                                    ))}
+                                </div>
+                            </SortableContext>
+
+                            <DragOverlay dropAnimation={null}>
+                                {activeTask && (
+                                    <ProjectTaskRow
+                                        task={activeTask}
+                                        projectColor={project.color}
+                                        onToggleDone={() => {}}
+                                        onClick={() => {}}
+                                        onStartTimer={() => {}}
+                                        isFocused={false}
+                                        isDragOverlay
+                                    />
+                                )}
+                            </DragOverlay>
+                        </DndContext>
 
                         {/* Done tasks */}
                         {doneTasks.length > 0 && (
@@ -224,21 +299,56 @@ interface ProjectTaskRowProps {
     onClick: () => void;
     onStartTimer: () => void;
     isFocused: boolean;
+    isDragOverlay?: boolean;
 }
 
-function ProjectTaskRow({ task, projectColor, onToggleDone, onClick, onStartTimer, isFocused }: ProjectTaskRowProps) {
+function ProjectTaskRow({ task, projectColor, onToggleDone, onClick, onStartTimer, isFocused, isDragOverlay }: ProjectTaskRowProps) {
     const isDone = task.status === 'done';
+
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({
+        id: task.id,
+        data: { type: 'task', task },
+    });
+
+    const sortableStyle = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.3 : 1,
+    };
 
     return (
         <div
+            ref={setNodeRef}
+            style={{ ...sortableStyle, ...getPriorityBorderStyle(task.priority) }}
             onClick={onClick}
             className={clsx(
                 "group flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all",
                 "border border-transparent hover:border-surface-800/60 hover:bg-surface-900/50",
                 isFocused && "border-accent-500/40 bg-accent-500/5",
-                isDone && "opacity-50"
+                isDone && "opacity-50",
+                isDragOverlay && "shadow-2xl bg-surface-900 border-surface-700/60"
             )}
         >
+            {/* Drag handle */}
+            {!isDone && (
+                <div
+                    {...attributes}
+                    {...listeners}
+                    className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-0.5 flex-shrink-0"
+                    aria-label="Drag to reorder"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <GripVertical className="w-3.5 h-3.5 text-surface-500" />
+                </div>
+            )}
+
             {/* Checkbox */}
             <button
                 onClick={(e) => { e.stopPropagation(); onToggleDone(); }}
@@ -255,7 +365,7 @@ function ProjectTaskRow({ task, projectColor, onToggleDone, onClick, onStartTime
 
             {/* Title & meta */}
             <div className="flex-1 min-w-0">
-                <h4 className={clsx(
+                <h4 dir={getTextDirection(task.title)} style={getDirectionStyle(task.title)} className={clsx(
                     "text-sm font-medium",
                     isDone ? "line-through text-surface-500" : "text-surface-100"
                 )}>

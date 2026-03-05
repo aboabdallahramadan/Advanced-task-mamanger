@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { X, Save, Trash2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 
 const PROJECT_COLORS = [
     '#6366f1', // indigo
@@ -110,6 +111,8 @@ export function ProjectDialog() {
                         <input
                             ref={nameRef}
                             type="text"
+                            dir={getTextDirection(name)}
+                            style={getDirectionStyle(name)}
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="e.g. Work, Personal, Side Project..."
@@ -165,7 +168,7 @@ export function ProjectDialog() {
                     {/* Preview */}
                     <div className="flex items-center gap-3 px-4 py-3 bg-surface-950 rounded-xl border border-surface-800/60">
                         <span className="text-lg">{emoji}</span>
-                        <span className="text-sm font-medium text-surface-100">{name || 'Project Name'}</span>
+                        <span dir={getTextDirection(name || 'Project Name')} style={getDirectionStyle(name || 'Project Name')} className="text-sm font-medium text-surface-100">{name || 'Project Name'}</span>
                         <div className="w-3 h-3 rounded-full ml-auto" style={{ backgroundColor: color }} />
                     </div>
                 </div>

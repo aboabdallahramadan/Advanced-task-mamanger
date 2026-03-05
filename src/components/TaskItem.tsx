@@ -12,11 +12,14 @@ import {
     Play,
     ArrowRight,
     Pencil,
+    ListTodo,
 } from 'lucide-react';
 import { Task } from '../types';
 import { useStore } from '../store';
 import { DurationChip } from './DurationChip';
 import { clsx } from 'clsx';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
+import { getPriorityBorderStyle } from '../priorityUtils';
 
 interface TaskItemProps {
     task: Task;
@@ -115,7 +118,7 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
     return (
         <div
             ref={setNodeRef}
-            style={style}
+            style={{ ...style, ...getPriorityBorderStyle(task.priority) }}
             className={clsx(
                 'task-item group',
                 isSelected && 'task-item-selected',
@@ -167,6 +170,8 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                         <input
                             ref={editInputRef}
                             type="text"
+                            dir={getTextDirection(editTitle)}
+                            style={getDirectionStyle(editTitle)}
                             value={editTitle}
                             onChange={(e) => setEditTitle(e.target.value)}
                             onBlur={handleSaveEdit}
@@ -181,6 +186,8 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                         />
                     ) : (
                         <span
+                            dir={getTextDirection(task.title)}
+                            style={getDirectionStyle(task.title)}
                             className={clsx(
                                 'text-sm truncate block',
                                 isDone ? 'line-through text-surface-500' : 'text-surface-200',
@@ -193,6 +200,18 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
 
                 {/* Meta */}
                 <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {task.subtasks && task.subtasks.length > 0 && (
+                        <span className={clsx(
+                            "chip text-2xs",
+                            task.subtasks.every(s => s.completed)
+                                ? "text-success-400"
+                                : "text-surface-400"
+                        )}>
+                            <ListTodo className="w-2.5 h-2.5" />
+                            {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length}
+                        </span>
+                    )}
+
                     {task.project && (
                         <span className="chip text-2xs hidden group-hover:inline-flex sm:inline-flex">
                             <Folder className="w-2.5 h-2.5" />

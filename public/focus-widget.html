@@ -183,7 +183,7 @@
     <div class="container">
         <div class="widget" id="widget">
             <div class="dot" id="dot"></div>
-            <span class="task-name" id="taskName">—</span>
+            <span class="task-name" id="taskName" dir="auto">—</span>
             <div class="divider"></div>
             <span class="timer" id="timer">00:00</span>
             <div class="controls">
@@ -311,7 +311,11 @@
             if (data.accumulatedMinutes !== undefined) state.accumulatedMinutes = data.accumulatedMinutes;
             if (data.plannedMinutes !== undefined) state.plannedMinutes = data.plannedMinutes;
 
-            taskName.textContent = state.taskTitle || '—';
+            const title = state.taskTitle || '—';
+            taskName.textContent = title;
+            const isRtl = /[\u0591-\u07FF\u200F\u202B\u202E\uFB1D-\uFDFD\uFE70-\uFEFC]/.test(title);
+            taskName.dir = isRtl ? 'rtl' : 'ltr';
+            taskName.style.textAlign = isRtl ? 'right' : 'left';
 
             tick(); // immediate visual update on state change
         });

@@ -32,6 +32,7 @@ import { useStore } from '../store';
 import { ViewMode, Project } from '../types';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 
 const navItems: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
     { id: 'board', label: 'Board', icon: <LayoutGrid className="w-4 h-4" /> },
@@ -287,7 +288,7 @@ function SortableProjectItem({
                 <GripVertical className="w-3 h-3" />
             </button>
             <span className="text-sm">{project.emoji}</span>
-            <span className="flex-1 truncate">{project.name}</span>
+            <span dir={getTextDirection(project.name)} style={getDirectionStyle(project.name)} className="flex-1 truncate">{project.name}</span>
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
             <span className="text-xs text-surface-500">{count}</span>
         </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from '../../store';
 import { Play, Pause, Square, CheckCircle2, GripVertical, Minimize2, Maximize2 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { getTextDirection, getDirectionStyle } from '../../useTextDirection';
 
 export const FocusModeOverlay: React.FC = () => {
     const {
@@ -271,7 +272,7 @@ export const FocusModeOverlay: React.FC = () => {
                 </div>
 
                 <div className="p-4">
-                    <h3 className="text-surface-100 font-medium truncate mb-3" title={activeTask.title}>{activeTask.title}</h3>
+                    <h3 dir={getTextDirection(activeTask.title)} style={getDirectionStyle(activeTask.title)} className="text-surface-100 font-medium truncate mb-3" title={activeTask.title}>{activeTask.title}</h3>
 
                     <div className="flex items-center justify-between">
                         <div className={clsx("text-3xl font-mono font-semibold tracking-tight tabular-nums", isOvertime ? "text-warning-400" : "text-surface-100")}>

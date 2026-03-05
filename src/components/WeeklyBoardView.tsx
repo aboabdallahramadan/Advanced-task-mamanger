@@ -36,6 +36,8 @@ import {
     isToday,
     parseISO,
 } from 'date-fns';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
+import { getPriorityBorderStyle } from '../priorityUtils';
 
 export function WeeklyBoardView() {
     const {
@@ -78,7 +80,12 @@ export function WeeklyBoardView() {
             }
         }
         for (const [, dayTasks] of map) {
-            dayTasks.sort((a, b) => a.order - b.order);
+            dayTasks.sort((a, b) => {
+                const pa = a.priority ?? 5;
+                const pb = b.priority ?? 5;
+                if (pa !== pb) return pa - pb;
+                return a.order - b.order;
+            });
         }
         return map;
     }, [tasks, dateKeys]);
@@ -363,6 +370,8 @@ function DayColumn({
                         <input
                             ref={quickAddRef}
                             type="text"
+                            dir={getTextDirection(quickAddText)}
+                            style={getDirectionStyle(quickAddText)}
                             value={quickAddText}
                             onChange={(e) => setQuickAddText(e.target.value)}
                             onKeyDown={(e) => {
@@ -484,6 +493,7 @@ function BoardTaskCard({
     return (
         <div
             onClick={onClick}
+            style={getPriorityBorderStyle(task.priority)}
             className={clsx(
                 "group bg-surface-900 border rounded-xl p-3 cursor-pointer transition-all",
                 isDragOverlay
@@ -521,6 +531,8 @@ function BoardTaskCard({
 
             {/* Title */}
             <h4
+                dir={getTextDirection(task.title)}
+                style={getDirectionStyle(task.title)}
                 className={clsx(
                     "text-sm font-medium leading-snug mb-2",
                     isDone ? "line-through text-surface-500" : "text-surface-100"
@@ -569,7 +581,7 @@ function BoardTaskCard({
                 </div>
 
                 {task.project && (
-                    <span className="text-2xs text-accent-500 font-medium">
+                    <span dir={getTextDirection(task.project)} style={getDirectionStyle(task.project)} className="text-2xs text-accent-500 font-medium">
                         #{task.project}
                     </span>
                 )}

@@ -22,6 +22,7 @@ import { QuickAdd } from './QuickAdd';
 import { Task } from '../types';
 import { clsx } from 'clsx';
 import { format, addDays } from 'date-fns';
+import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 
 export function TaskList() {
     const {
@@ -137,6 +138,8 @@ export function TaskList() {
                         <input
                             ref={searchInputRef}
                             type="text"
+                            dir={getTextDirection(searchQuery)}
+                            style={getDirectionStyle(searchQuery)}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             onKeyDown={(e) => {
