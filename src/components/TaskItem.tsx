@@ -202,13 +202,22 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                 <div className="flex items-center gap-1.5 flex-shrink-0">
                     {task.subtasks && task.subtasks.length > 0 && (
                         <span className={clsx(
-                            "chip text-2xs",
+                            "inline-flex items-center gap-1.5 text-2xs px-2 py-0.5 rounded-md font-medium",
                             task.subtasks.every(s => s.completed)
-                                ? "text-success-400"
-                                : "text-surface-400"
+                                ? "bg-success-900/30 text-success-400"
+                                : "bg-surface-800/60 text-surface-400"
                         )}>
                             <ListTodo className="w-2.5 h-2.5" />
-                            {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length}
+                            <span>{task.subtasks.filter(s => s.completed).length}/{task.subtasks.length}</span>
+                            <span className="w-8 h-1 bg-surface-700 rounded-full overflow-hidden">
+                                <span
+                                    className={clsx(
+                                        "block h-full rounded-full transition-all",
+                                        task.subtasks.every(s => s.completed) ? "bg-success-500" : "bg-accent-500"
+                                    )}
+                                    style={{ width: `${(task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100}%` }}
+                                />
+                            </span>
                         </span>
                     )}
 

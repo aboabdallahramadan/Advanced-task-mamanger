@@ -30,7 +30,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../store';
-import { ViewMode, Project } from '../types';
+import { ViewMode, Project, Task } from '../types';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import { getTextDirection, getDirectionStyle } from '../useTextDirection';
@@ -63,9 +63,37 @@ export function Sidebar() {
         useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     );
 
-    const inboxCount = tasks.filter((t) => t.status === 'inbox').length;
-    const backlogCount = tasks.filter((t) => t.status === 'backlog').length;
     const todayDate = format(new Date(), 'yyyy-MM-dd');
+
+    // Deduplicate recurring tasks: only count the next upcoming instance per rule
+    const deduplicateRecurring = (taskList: Task[]) => {
+        const bestByRule = new Map<string, Task>();
+        const result: Task[] = [];
+        for (const t of taskList) {
+            if (!t.recurrenceRuleId) {
+                result.push(t);
+                continue;
+            }
+            const existing = bestByRule.get(t.recurrenceRuleId);
+            if (!existing) {
+                bestByRule.set(t.recurrenceRuleId, t);
+                continue;
+            }
+            const tIsUpcoming = t.plannedDate ? t.plannedDate >= todayDate : false;
+            const eIsUpcoming = existing.plannedDate ? existing.plannedDate >= todayDate : false;
+            if (tIsUpcoming && !eIsUpcoming) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            } else if (tIsUpcoming && eIsUpcoming && t.plannedDate! < existing.plannedDate!) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            } else if (!tIsUpcoming && !eIsUpcoming && t.plannedDate! > existing.plannedDate!) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            }
+        }
+        return [...result, ...bestByRule.values()];
+    };
+
+    const inboxCount = deduplicateRecurring(tasks.filter((t) => t.status === 'inbox')).length;
+    const backlogCount = deduplicateRecurring(tasks.filter((t) => t.status === 'backlog')).length;
     const todayCount = tasks.filter(
         (t) => t.plannedDate === todayDate && t.status !== 'archived' && t.status !== 'done',
     ).length;
@@ -75,7 +103,7 @@ export function Sidebar() {
             case 'today': return todayCount;
             case 'inbox': return inboxCount;
             case 'backlog': return backlogCount;
-            case 'all': return tasks.filter(t => t.status !== 'archived').length;
+            case 'all': return deduplicateRecurring(tasks.filter(t => t.status !== 'archived')).length;
             default: return 0;
         }
     };
@@ -209,9 +237,9 @@ export function Sidebar() {
                                 <p className="text-xs text-surface-600 italic px-1">No projects yet</p>
                             )}
                             {projects.map((project) => {
-                                const count = tasks.filter(
+                                const count = deduplicateRecurring(tasks.filter(
                                     (t) => t.project === project.name && t.status !== 'archived' && t.status !== 'done',
-                                ).length;
+                                )).length;
                                 const isActive = currentView === 'project' && selectedProjectId === project.id;
                                 return (
                                     <SortableProjectItem

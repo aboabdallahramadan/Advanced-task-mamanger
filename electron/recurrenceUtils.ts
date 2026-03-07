@@ -8,17 +8,19 @@ export interface RecurrenceRuleData {
 }
 
 function addDaysToDate(dateStr: string, days: number): string {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d + days));
+    return date.toISOString().split('T')[0];
 }
 
 function getDayOfWeek(dateStr: string): number {
-    return new Date(dateStr + 'T00:00:00').getDay();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 
 function dateToNum(dateStr: string): number {
-    return new Date(dateStr + 'T00:00:00').getTime();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
 }
 
 export function generateOccurrenceDates(

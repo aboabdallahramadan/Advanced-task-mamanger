@@ -28,6 +28,7 @@ import {
     Play,
     GripVertical,
     Repeat,
+    ListTodo,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
@@ -554,6 +555,28 @@ function BoardTaskCard({
             >
                 {task.title}
             </h4>
+
+            {/* Subtask progress */}
+            {task.subtasks && task.subtasks.length > 0 && (
+                <div className="flex items-center gap-2 mb-2">
+                    <ListTodo className="w-3 h-3 text-surface-500 flex-shrink-0" />
+                    <div className="flex-1 h-1 bg-surface-800 rounded-full overflow-hidden">
+                        <div
+                            className={clsx(
+                                "h-full rounded-full transition-all duration-300",
+                                task.subtasks.every(s => s.completed) ? "bg-success-500" : "bg-accent-500/70"
+                            )}
+                            style={{ width: `${(task.subtasks.filter(s => s.completed).length / task.subtasks.length) * 100}%` }}
+                        />
+                    </div>
+                    <span className={clsx(
+                        "text-2xs font-medium tabular-nums",
+                        task.subtasks.every(s => s.completed) ? "text-success-400" : "text-surface-500"
+                    )}>
+                        {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length}
+                    </span>
+                </div>
+            )}
 
             {/* Footer */}
             <div className="flex items-center justify-between">

@@ -14,8 +14,7 @@ import {
     Trash2,
     Flag,
     Bell,
-    CheckSquare,
-    Square,
+    Check,
     ListTodo,
     Repeat,
 } from 'lucide-react';
@@ -345,22 +344,46 @@ export function TaskDetailDialog() {
                                     </span>
                                 )}
                             </label>
-                            <div className="space-y-1">
+
+                            {/* Progress bar */}
+                            {subtasks.length > 0 && (
+                                <div className="h-1.5 w-full bg-surface-800 rounded-full overflow-hidden mb-3">
+                                    <div
+                                        className="h-full bg-success-500 rounded-full transition-all duration-500 ease-out"
+                                        style={{ width: `${(subtasks.filter(s => s.completed).length / subtasks.length) * 100}%` }}
+                                    />
+                                </div>
+                            )}
+
+                            <div className="space-y-1 bg-surface-950/50 rounded-xl border border-surface-800/40 p-2">
                                 {subtasks.map((st) => (
-                                    <div key={st.id} className="flex items-center gap-2 group/subtask">
+                                    <div
+                                        key={st.id}
+                                        className={clsx(
+                                            "flex items-center gap-2.5 group/subtask rounded-lg px-2.5 py-2 transition-all",
+                                            st.completed
+                                                ? "bg-transparent"
+                                                : "hover:bg-surface-800/40"
+                                        )}
+                                    >
                                         <button
                                             onClick={() => handleToggleSubtask(st)}
-                                            className="flex-shrink-0 text-surface-400 hover:text-accent-400 transition-colors"
+                                            className="flex-shrink-0 transition-all duration-200"
                                         >
-                                            {st.completed ? (
-                                                <CheckSquare className="w-4 h-4 text-success-500" />
-                                            ) : (
-                                                <Square className="w-4 h-4" />
-                                            )}
+                                            <div className={clsx(
+                                                "w-[18px] h-[18px] rounded-full border-2 flex items-center justify-center transition-all duration-200",
+                                                st.completed
+                                                    ? "bg-success-500 border-success-500 scale-100"
+                                                    : "border-surface-600 hover:border-accent-500 hover:scale-110"
+                                            )}>
+                                                {st.completed && <Check className="w-2.5 h-2.5 text-white" strokeWidth={3} />}
+                                            </div>
                                         </button>
                                         {editingSubtaskId === st.id ? (
                                             <input
                                                 type="text"
+                                                dir={getTextDirection(editingSubtaskTitle)}
+                                                style={getDirectionStyle(editingSubtaskTitle)}
                                                 value={editingSubtaskTitle}
                                                 onChange={(e) => setEditingSubtaskTitle(e.target.value)}
                                                 onBlur={() => handleSaveSubtaskEdit(st)}
@@ -369,17 +392,21 @@ export function TaskDetailDialog() {
                                                     if (e.key === 'Escape') setEditingSubtaskId(null);
                                                 }}
                                                 autoFocus
-                                                className="flex-1 bg-transparent text-sm text-surface-100 outline-none border-b border-accent-500/50 pb-0.5"
+                                                className="flex-1 bg-surface-900 text-sm text-surface-100 outline-none border border-accent-500/40 rounded-lg px-2.5 py-1 focus:ring-1 focus:ring-accent-500/20 transition-all"
                                             />
                                         ) : (
                                             <span
+                                                dir={getTextDirection(st.title)}
+                                                style={getDirectionStyle(st.title)}
                                                 onClick={() => {
                                                     setEditingSubtaskId(st.id);
                                                     setEditingSubtaskTitle(st.title);
                                                 }}
                                                 className={clsx(
-                                                    'flex-1 text-sm cursor-text',
-                                                    st.completed ? 'line-through text-surface-500' : 'text-surface-200',
+                                                    'flex-1 text-sm cursor-text transition-all duration-200',
+                                                    st.completed
+                                                        ? 'line-through text-surface-600'
+                                                        : 'text-surface-200',
                                                 )}
                                             >
                                                 {st.title}
@@ -387,17 +414,21 @@ export function TaskDetailDialog() {
                                         )}
                                         <button
                                             onClick={() => handleDeleteSubtask(st.id)}
-                                            className="flex-shrink-0 opacity-0 group-hover/subtask:opacity-100 text-surface-500 hover:text-red-400 transition-all p-0.5"
+                                            className="flex-shrink-0 opacity-0 group-hover/subtask:opacity-100 text-surface-600 hover:text-red-400 transition-all p-1 rounded-md hover:bg-red-500/10"
                                         >
-                                            <X className="w-3.5 h-3.5" />
+                                            <Trash2 className="w-3 h-3" />
                                         </button>
                                     </div>
                                 ))}
                                 {/* Add new subtask */}
-                                <div className="flex items-center gap-2 mt-1">
-                                    <Plus className="w-4 h-4 text-surface-500 flex-shrink-0" />
+                                <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-surface-800/30 transition-colors">
+                                    <div className="w-[18px] h-[18px] flex items-center justify-center flex-shrink-0">
+                                        <Plus className="w-3.5 h-3.5 text-surface-600" />
+                                    </div>
                                     <input
                                         type="text"
+                                        dir={getTextDirection(newSubtaskTitle)}
+                                        style={getDirectionStyle(newSubtaskTitle)}
                                         value={newSubtaskTitle}
                                         onChange={(e) => setNewSubtaskTitle(e.target.value)}
                                         onKeyDown={(e) => {
@@ -408,7 +439,7 @@ export function TaskDetailDialog() {
                                             }
                                         }}
                                         placeholder="Add a subtask..."
-                                        className="flex-1 bg-transparent text-sm text-surface-200 placeholder-surface-600 outline-none border-b border-transparent focus:border-surface-700 pb-0.5 transition-colors"
+                                        className="flex-1 bg-transparent text-sm text-surface-200 placeholder-surface-600 outline-none transition-colors"
                                     />
                                 </div>
                             </div>

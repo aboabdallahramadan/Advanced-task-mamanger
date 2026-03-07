@@ -2,15 +2,17 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateOccurrenceDates = generateOccurrenceDates;
 function addDaysToDate(dateStr, days) {
-    const d = new Date(dateStr + 'T00:00:00');
-    d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d + days));
+    return date.toISOString().split('T')[0];
 }
 function getDayOfWeek(dateStr) {
-    return new Date(dateStr + 'T00:00:00').getDay();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
 }
 function dateToNum(dateStr) {
-    return new Date(dateStr + 'T00:00:00').getTime();
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return Date.UTC(y, m - 1, d);
 }
 function generateOccurrenceDates(rule, startDate, rangeStart, rangeEnd, existingDates, exceptionDates) {
     const results = [];

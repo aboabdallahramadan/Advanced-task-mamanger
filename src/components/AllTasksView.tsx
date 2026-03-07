@@ -24,6 +24,7 @@ import {
     Layers,
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { format } from 'date-fns';
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../priorityUtils';
 
 type SortField = 'createdAt' | 'priority' | 'plannedDate' | 'title' | 'status';
@@ -63,20 +64,72 @@ const GROUP_LABELS: Record<GroupBy, string> = {
     priority: 'Priority',
 };
 
+const STORAGE_KEY = 'allTasksFilters';
+
+interface SavedFilters {
+    selectedStatuses: TaskStatus[];
+    showArchived: boolean;
+    selectedPriorities: (number | null)[];
+    selectedProjects: string[] | null;
+    dateFrom: string;
+    dateTo: string;
+    sortField: SortField;
+    sortDirection: SortDirection;
+    groupBy: GroupBy;
+}
+
+function loadFilters(): Partial<SavedFilters> {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    return {};
+}
+
+function saveFilters(filters: SavedFilters) {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
+    } catch { /* ignore */ }
+}
+
 export function AllTasksView() {
     const { tasks, projects, reorderTasks } = useStore();
 
+    // Load saved filters once
+    const saved = useRef(loadFilters()).current;
+
     // Filter state
     const [search, setSearch] = useState('');
-    const [selectedStatuses, setSelectedStatuses] = useState<Set<TaskStatus>>(new Set(ALL_STATUSES));
-    const [showArchived, setShowArchived] = useState(false);
-    const [selectedPriorities, setSelectedPriorities] = useState<Set<number | null>>(new Set([1, 2, 3, 4, null]));
-    const [selectedProjects, setSelectedProjects] = useState<Set<string> | null>(null); // null = all
-    const [dateFrom, setDateFrom] = useState('');
-    const [dateTo, setDateTo] = useState('');
-    const [sortField, setSortField] = useState<SortField>('createdAt');
-    const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
-    const [groupBy, setGroupBy] = useState<GroupBy>('none');
+    const [selectedStatuses, setSelectedStatuses] = useState<Set<TaskStatus>>(
+        () => new Set(saved.selectedStatuses ?? ALL_STATUSES)
+    );
+    const [showArchived, setShowArchived] = useState(saved.showArchived ?? false);
+    const [selectedPriorities, setSelectedPriorities] = useState<Set<number | null>>(
+        () => new Set(saved.selectedPriorities ?? [1, 2, 3, 4, null])
+    );
+    const [selectedProjects, setSelectedProjects] = useState<Set<string> | null>(
+        () => saved.selectedProjects ? new Set(saved.selectedProjects) : null
+    );
+    const [dateFrom, setDateFrom] = useState(saved.dateFrom ?? '');
+    const [dateTo, setDateTo] = useState(saved.dateTo ?? '');
+    const [sortField, setSortField] = useState<SortField>(saved.sortField ?? 'createdAt');
+    const [sortDirection, setSortDirection] = useState<SortDirection>(saved.sortDirection ?? 'desc');
+    const [groupBy, setGroupBy] = useState<GroupBy>(saved.groupBy ?? 'none');
+
+    // Persist filters whenever they change
+    useEffect(() => {
+        saveFilters({
+            selectedStatuses: Array.from(selectedStatuses),
+            showArchived,
+            selectedPriorities: Array.from(selectedPriorities),
+            selectedProjects: selectedProjects ? Array.from(selectedProjects) : null,
+            dateFrom,
+            dateTo,
+            sortField,
+            sortDirection,
+            groupBy,
+        });
+    }, [selectedStatuses, showArchived, selectedPriorities, selectedProjects, dateFrom, dateTo, sortField, sortDirection, groupBy]);
 
     const sensors = useSensors(
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -157,6 +210,32 @@ export function AllTasksView() {
             }
             return sortDirection === 'asc' ? cmp : -cmp;
         });
+
+        // Collapse recurring instances: show only the next upcoming per recurrence rule
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const bestByRule = new Map<string, Task>();
+        const nonRecurring: Task[] = [];
+        for (const t of result) {
+            if (!t.recurrenceRuleId) {
+                nonRecurring.push(t);
+                continue;
+            }
+            const existing = bestByRule.get(t.recurrenceRuleId);
+            if (!existing) {
+                bestByRule.set(t.recurrenceRuleId, t);
+                continue;
+            }
+            const tIsUpcoming = t.plannedDate ? t.plannedDate >= today : false;
+            const eIsUpcoming = existing.plannedDate ? existing.plannedDate >= today : false;
+            if (tIsUpcoming && !eIsUpcoming) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            } else if (tIsUpcoming && eIsUpcoming && t.plannedDate! < existing.plannedDate!) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            } else if (!tIsUpcoming && !eIsUpcoming && t.plannedDate! > existing.plannedDate!) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            }
+        }
+        result = [...nonRecurring, ...bestByRule.values()];
 
         return result;
     }, [tasks, search, selectedStatuses, showArchived, selectedPriorities, selectedProjects, dateFrom, dateTo, sortField, sortDirection]);

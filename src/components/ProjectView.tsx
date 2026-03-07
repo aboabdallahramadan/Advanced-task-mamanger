@@ -62,7 +62,7 @@ export function ProjectView() {
 
     const projectTasks = useMemo(() => {
         if (!project) return [];
-        return tasks
+        let result = tasks
             .filter(t => t.project === project.name && t.status !== 'archived')
             .sort((a, b) => {
                 // Sort: active first, then done; within each group by order
@@ -70,6 +70,34 @@ export function ProjectView() {
                 if (a.status !== 'done' && b.status === 'done') return -1;
                 return a.order - b.order;
             });
+
+        // Collapse recurring instances: show only the next upcoming per recurrence rule
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const bestByRule = new Map<string, Task>();
+        const nonRecurring: Task[] = [];
+        for (const t of result) {
+            if (!t.recurrenceRuleId) {
+                nonRecurring.push(t);
+                continue;
+            }
+            const existing = bestByRule.get(t.recurrenceRuleId);
+            if (!existing) {
+                bestByRule.set(t.recurrenceRuleId, t);
+                continue;
+            }
+            const tIsUpcoming = t.plannedDate ? t.plannedDate >= today : false;
+            const eIsUpcoming = existing.plannedDate ? existing.plannedDate >= today : false;
+            if (tIsUpcoming && !eIsUpcoming) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            } else if (tIsUpcoming && eIsUpcoming && t.plannedDate! < existing.plannedDate!) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            } else if (!tIsUpcoming && !eIsUpcoming && t.plannedDate! > existing.plannedDate!) {
+                bestByRule.set(t.recurrenceRuleId, t);
+            }
+        }
+        result = [...nonRecurring, ...bestByRule.values()];
+
+        return result;
     }, [tasks, project]);
 
     const activeTasks = projectTasks.filter(t => t.status !== 'done');

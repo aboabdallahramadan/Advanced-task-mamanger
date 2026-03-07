@@ -366,8 +366,8 @@ export class TaskService {
         const startDate = taskInput.plannedDate || new Date().toISOString().split('T')[0];
 
         this.db.run(
-            `INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_original_date, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+            `INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_original_date, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
             [
                 templateId,
                 taskInput.title || 'Untitled',
@@ -377,6 +377,8 @@ export class TaskService {
                 taskInput.source || 'local',
                 taskInput.status || 'planned',
                 startDate,
+                taskInput.scheduledStart || null,
+                taskInput.scheduledEnd || null,
                 taskInput.durationMinutes || 30,
                 0,
                 taskInput.priority ?? null,
@@ -457,8 +459,8 @@ export class TaskService {
                 ? (maxResult[0].values[0][0] as number) : 0;
 
             this.db.run(
-                `INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+                `INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
                 [
                     id,
                     template.title,
@@ -468,6 +470,8 @@ export class TaskService {
                     template.source,
                     'planned',
                     date,
+                    template.scheduledStart || null,
+                    template.scheduledEnd || null,
                     template.durationMinutes,
                     0,
                     template.priority,
@@ -525,6 +529,8 @@ export class TaskService {
         if (updates.durationMinutes !== undefined) { sets.push('duration_minutes = ?'); values.push(updates.durationMinutes); }
         if (updates.priority !== undefined) { sets.push('priority = ?'); values.push(updates.priority); }
         if (updates.reminderMinutes !== undefined) { sets.push('reminder_minutes = ?'); values.push(updates.reminderMinutes); }
+        if (updates.scheduledStart !== undefined) { sets.push('scheduled_start = ?'); values.push(updates.scheduledStart); }
+        if (updates.scheduledEnd !== undefined) { sets.push('scheduled_end = ?'); values.push(updates.scheduledEnd); }
 
         if (sets.length === 0) return;
 
