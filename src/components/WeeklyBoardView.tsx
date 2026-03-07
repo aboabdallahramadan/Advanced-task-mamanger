@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
     DndContext,
     DragOverlay,
@@ -27,6 +27,7 @@ import {
     ChevronRight,
     Play,
     GripVertical,
+    Repeat,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import {
@@ -49,6 +50,7 @@ export function WeeklyBoardView() {
         openTaskDialog,
         startFocusSession,
         focusMode,
+        ensureRecurrenceInstances,
     } = useStore();
 
     const [weekOffset, setWeekOffset] = useState(0);
@@ -66,6 +68,13 @@ export function WeeklyBoardView() {
     }, [weekOffset]);
 
     const dateKeys = useMemo(() => weekDays.map(d => format(d, 'yyyy-MM-dd')), [weekDays]);
+
+    // Ensure recurring instances are generated for the visible week + buffer
+    useEffect(() => {
+        const startDate = format(weekDays[0], 'yyyy-MM-dd');
+        const endDate = format(addDays(weekDays[6], 7), 'yyyy-MM-dd');
+        ensureRecurrenceInstances(startDate, endDate);
+    }, [weekOffset]);
 
     // Group tasks by planned date
     const tasksByDate = useMemo(() => {
@@ -325,7 +334,7 @@ function DayColumn({
         <div
             ref={setNodeRef}
             className={clsx(
-                "flex-1 min-w-[180px] max-w-[260px] flex flex-col border-r border-surface-800/30 last:border-r-0 transition-colors",
+                "flex-1 min-w-[180px] max-w-[260px] shrink-0 flex flex-col border-r border-surface-800/30 last:border-r-0 transition-colors",
                 today && "bg-surface-900/30",
                 isOver && "bg-accent-500/5 border-accent-500/20"
             )}
@@ -515,11 +524,16 @@ function BoardTaskCard({
                             <GripVertical className="w-3 h-3 text-surface-600" />
                         </div>
                     )}
-                    {timeLabel ? (
-                        <span className="text-2xs text-warning-400 font-medium">~{timeLabel}</span>
-                    ) : (
-                        <span />
-                    )}
+                    <div className="flex items-center gap-1">
+                        {task.recurrenceRuleId && (
+                            <Repeat className="w-3 h-3 text-accent-500/60" />
+                        )}
+                        {timeLabel ? (
+                            <span className="text-2xs text-warning-400 font-medium">~{timeLabel}</span>
+                        ) : (
+                            <span />
+                        )}
+                    </div>
                 </div>
                 <span className="chip text-2xs">
                     {task.durationMinutes >= 60

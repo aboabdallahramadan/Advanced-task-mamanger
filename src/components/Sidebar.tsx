@@ -3,6 +3,7 @@ import {
     Calendar,
     Inbox,
     Archive,
+    ListChecks,
     LayoutList,
     ChevronLeft,
     ChevronRight,
@@ -40,6 +41,7 @@ const navItems: { id: ViewMode; label: string; icon: React.ReactNode }[] = [
     { id: 'week', label: 'This Week', icon: <LayoutList className="w-4 h-4" /> },
     { id: 'inbox', label: 'Inbox', icon: <Inbox className="w-4 h-4" /> },
     { id: 'backlog', label: 'Backlog', icon: <Archive className="w-4 h-4" /> },
+    { id: 'all', label: 'All Tasks', icon: <ListChecks className="w-4 h-4" /> },
 ];
 
 export function Sidebar() {
@@ -73,6 +75,7 @@ export function Sidebar() {
             case 'today': return todayCount;
             case 'inbox': return inboxCount;
             case 'backlog': return backlogCount;
+            case 'all': return tasks.filter(t => t.status !== 'archived').length;
             default: return 0;
         }
     };

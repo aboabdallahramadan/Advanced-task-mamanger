@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Task, Subtask, ViewMode, Project } from './types';
+import { Task, Subtask, ViewMode, Project, RecurrenceFrequency, RecurrenceEndType, RecurrenceRule } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 
 interface AppState {
@@ -62,6 +62,14 @@ interface AppState {
     moveToToday: (id: string) => Promise<void>;
     moveToBacklog: (id: string) => Promise<void>;
     archiveTask: (id: string) => Promise<void>;
+
+    // Recurrence Actions
+    createRecurringTask: (task: Partial<Task>, rule: { frequency: RecurrenceFrequency; interval: number; daysOfWeek: number[]; endType: RecurrenceEndType; endCount?: number; endDate?: string }) => Promise<Task | null>;
+    updateRecurrenceSeries: (ruleId: string, updates: Partial<Task>) => Promise<void>;
+    deleteRecurrenceSeries: (ruleId: string) => Promise<void>;
+    deleteRecurrenceSeriesFuture: (ruleId: string, fromDate: string) => Promise<void>;
+    detachRecurrenceInstance: (taskId: string) => Promise<void>;
+    ensureRecurrenceInstances: (startDate: string, endDate: string) => Promise<void>;
 
     // Subtask Actions
     createSubtask: (taskId: string, title: string) => Promise<Subtask | null>;
@@ -162,6 +170,7 @@ export const useStore = create<AppState>((set, get) => ({
             const today = format(new Date(), 'yyyy-MM-dd');
 
             // Auto-rollover: move past unfinished tasks to today
+            // For recurring instances, archive past missed ones instead of rolling forward
             const rolloverPromises: Promise<any>[] = [];
             const updatedTasks = tasks.map((task: Task) => {
                 if (
@@ -171,6 +180,12 @@ export const useStore = create<AppState>((set, get) => ({
                     task.status !== 'archived' &&
                     task.status !== 'backlog'
                 ) {
+                    // Recurring instances: archive past missed ones
+                    if (task.recurrenceRuleId && task.recurrenceOriginalDate) {
+                        rolloverPromises.push(window.api.tasks.update(task.id, { status: 'archived' }));
+                        return { ...task, status: 'archived' as Task['status'] };
+                    }
+
                     const updates: Partial<Task> = {
                         plannedDate: today,
                         scheduledStart: undefined,
@@ -196,6 +211,17 @@ export const useStore = create<AppState>((set, get) => ({
             }
 
             set({ tasks: updatedTasks, loading: false });
+
+            // Ensure recurring task instances are generated for the next 2 weeks
+            try {
+                const twoWeeks = format(addDays(new Date(), 14), 'yyyy-MM-dd');
+                const newInstances = await window.api.recurrence.ensureInstances(today, twoWeeks);
+                if (newInstances && newInstances.length > 0) {
+                    set((s) => ({ tasks: [...s.tasks, ...newInstances] }));
+                }
+            } catch (e) {
+                console.error('Failed to ensure recurrence instances:', e);
+            }
         } catch (e) {
             console.error('Failed to load tasks:', e);
             set({ loading: false });
@@ -302,6 +328,68 @@ export const useStore = create<AppState>((set, get) => ({
     archiveTask: async (id: string) => {
         const { updateTask } = get();
         await updateTask(id, { status: 'archived' });
+    },
+
+    // ─── Recurrence Actions ─────────────────────────────────
+    createRecurringTask: async (task, rule) => {
+        try {
+            await window.api.recurrence.create(task, rule);
+            // Reload all tasks since multiple instances were created
+            await get().loadTasks();
+            return null;
+        } catch (e) {
+            console.error('Failed to create recurring task:', e);
+            return null;
+        }
+    },
+
+    updateRecurrenceSeries: async (ruleId, updates) => {
+        try {
+            await window.api.recurrence.updateSeries(ruleId, updates);
+            await get().loadTasks();
+        } catch (e) {
+            console.error('Failed to update recurrence series:', e);
+        }
+    },
+
+    deleteRecurrenceSeries: async (ruleId) => {
+        try {
+            await window.api.recurrence.deleteSeries(ruleId);
+            await get().loadTasks();
+        } catch (e) {
+            console.error('Failed to delete recurrence series:', e);
+        }
+    },
+
+    deleteRecurrenceSeriesFuture: async (ruleId, fromDate) => {
+        try {
+            await window.api.recurrence.deleteSeriesFuture(ruleId, fromDate);
+            await get().loadTasks();
+        } catch (e) {
+            console.error('Failed to delete future recurrence instances:', e);
+        }
+    },
+
+    detachRecurrenceInstance: async (taskId) => {
+        try {
+            await window.api.recurrence.detachInstance(taskId);
+            set((s) => ({
+                tasks: s.tasks.map((t) => t.id === taskId ? { ...t, recurrenceDetached: true } : t),
+            }));
+        } catch (e) {
+            console.error('Failed to detach recurrence instance:', e);
+        }
+    },
+
+    ensureRecurrenceInstances: async (startDate, endDate) => {
+        try {
+            const newInstances = await window.api.recurrence.ensureInstances(startDate, endDate);
+            if (newInstances && newInstances.length > 0) {
+                set((s) => ({ tasks: [...s.tasks, ...newInstances] }));
+            }
+        } catch (e) {
+            console.error('Failed to ensure recurrence instances:', e);
+        }
     },
 
     // ─── Subtask Actions ─────────────────────────────────────

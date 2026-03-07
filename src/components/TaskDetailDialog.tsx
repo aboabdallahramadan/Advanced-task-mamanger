@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store';
-import { Task, Subtask } from '../types';
+import { Task, Subtask, RecurrenceFrequency, RecurrenceEndType } from '../types';
 import {
     X,
     Calendar,
@@ -17,11 +17,14 @@ import {
     CheckSquare,
     Square,
     ListTodo,
+    Repeat,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
 import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 import { PRIORITY_COLORS, PRIORITY_LABELS } from '../priorityUtils';
+import { RecurrenceEditor } from './RecurrenceEditor';
+import { RecurrenceActionDialog } from './RecurrenceActionDialog';
 
 const DURATION_PRESETS = [15, 30, 45, 60, 90, 120];
 const TRACKED_PRESETS = [0, 15, 30, 60, 90, 120];
@@ -46,6 +49,11 @@ export function TaskDetailDialog() {
         createSubtask,
         updateSubtask,
         deleteSubtask,
+        createRecurringTask,
+        updateRecurrenceSeries,
+        deleteRecurrenceSeries,
+        deleteRecurrenceSeriesFuture,
+        detachRecurrenceInstance,
     } = useStore();
 
     const titleRef = useRef<HTMLInputElement>(null);
@@ -58,13 +66,22 @@ export function TaskDetailDialog() {
     const [durationMinutes, setDurationMinutes] = useState(30);
     const [actualTimeMinutes, setActualTimeMinutes] = useState(0);
     const [status, setStatus] = useState<Task['status']>('planned');
-    const [dueDate, setDueDate] = useState('');
     const [scheduledStart, setScheduledStart] = useState('');
     const [priority, setPriority] = useState<Task['priority']>(null);
     const [reminderMinutes, setReminderMinutes] = useState<number | null>(0);
     const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
     const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
     const [editingSubtaskTitle, setEditingSubtaskTitle] = useState('');
+
+    // Recurrence state
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [recurrenceFrequency, setRecurrenceFrequency] = useState<RecurrenceFrequency>('daily');
+    const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+    const [recurrenceDaysOfWeek, setRecurrenceDaysOfWeek] = useState<number[]>([0]);
+    const [recurrenceEndType, setRecurrenceEndType] = useState<RecurrenceEndType>('never');
+    const [recurrenceEndCount, setRecurrenceEndCount] = useState(10);
+    const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+    const [recurrenceActionDialog, setRecurrenceActionDialog] = useState<{ mode: 'edit' | 'delete'; pendingData?: Partial<Task> } | null>(null);
 
 
     // Populate form on open
@@ -81,10 +98,24 @@ export function TaskDetailDialog() {
                 setDurationMinutes(task.durationMinutes || 30);
                 setActualTimeMinutes(task.actualTimeMinutes || 0);
                 setStatus(task.status);
-                setDueDate(task.dueDate || '');
                 setScheduledStart(task.scheduledStart ? task.scheduledStart.split('T')[1]?.substring(0, 5) || '' : '');
                 setPriority(task.priority ?? null);
                 setReminderMinutes(task.reminderMinutes ?? 0);
+                setIsRecurring(!!task.recurrenceRuleId);
+
+                // Load recurrence rule if exists
+                if (task.recurrenceRuleId) {
+                    window.api.recurrence.getRule(task.recurrenceRuleId).then((rule) => {
+                        if (rule) {
+                            setRecurrenceFrequency(rule.frequency);
+                            setRecurrenceInterval(rule.interval);
+                            setRecurrenceDaysOfWeek(rule.daysOfWeek.length > 0 ? rule.daysOfWeek : [0]);
+                            setRecurrenceEndType(rule.endType);
+                            setRecurrenceEndCount(rule.endCount ?? 10);
+                            setRecurrenceEndDate(rule.endDate ?? '');
+                        }
+                    });
+                }
             }
         } else {
             // Create mode — reset form
@@ -95,11 +126,18 @@ export function TaskDetailDialog() {
             setDurationMinutes(30);
             setActualTimeMinutes(0);
             setStatus('planned');
-            setDueDate('');
             setScheduledStart('');
             setPriority(null);
             setReminderMinutes(0);
+            setIsRecurring(false);
+            setRecurrenceFrequency('daily');
+            setRecurrenceInterval(1);
+            setRecurrenceDaysOfWeek([0]);
+            setRecurrenceEndType('never');
+            setRecurrenceEndCount(10);
+            setRecurrenceEndDate('');
         }
+        setRecurrenceActionDialog(null);
 
         // Auto-focus title
         setTimeout(() => titleRef.current?.focus(), 100);
@@ -146,7 +184,6 @@ export function TaskDetailDialog() {
             durationMinutes,
             actualTimeMinutes,
             status,
-            dueDate: dueDate || null,
             priority,
             reminderMinutes,
         };
@@ -161,11 +198,52 @@ export function TaskDetailDialog() {
         }
 
         if (taskDialog.mode === 'edit' && taskDialog.taskId) {
+            // If editing a recurring task, show action dialog
+            if (currentTask?.recurrenceRuleId && !currentTask.recurrenceDetached) {
+                setRecurrenceActionDialog({ mode: 'edit', pendingData: taskData });
+                return;
+            }
             await updateTask(taskDialog.taskId, taskData);
         } else {
-            await createTask(taskData);
+            // Create mode
+            if (isRecurring) {
+                await createRecurringTask(taskData, {
+                    frequency: recurrenceFrequency,
+                    interval: recurrenceInterval,
+                    daysOfWeek: recurrenceFrequency === 'weekly' ? recurrenceDaysOfWeek : [],
+                    endType: recurrenceEndType,
+                    endCount: recurrenceEndType === 'count' ? recurrenceEndCount : undefined,
+                    endDate: recurrenceEndType === 'date' ? recurrenceEndDate : undefined,
+                });
+            } else {
+                await createTask(taskData);
+            }
         }
 
+        closeTaskDialog();
+    };
+
+    const handleRecurrenceAction = async (scope: 'this' | 'future' | 'all') => {
+        if (!recurrenceActionDialog || !taskDialog.taskId || !currentTask?.recurrenceRuleId) return;
+
+        if (recurrenceActionDialog.mode === 'edit' && recurrenceActionDialog.pendingData) {
+            if (scope === 'this') {
+                await updateTask(taskDialog.taskId, recurrenceActionDialog.pendingData);
+                await detachRecurrenceInstance(taskDialog.taskId);
+            } else if (scope === 'future') {
+                await updateRecurrenceSeries(currentTask.recurrenceRuleId, recurrenceActionDialog.pendingData);
+            }
+        } else if (recurrenceActionDialog.mode === 'delete') {
+            if (scope === 'this') {
+                await deleteTask(taskDialog.taskId);
+            } else if (scope === 'future') {
+                await deleteRecurrenceSeriesFuture(currentTask.recurrenceRuleId, currentTask.plannedDate || format(new Date(), 'yyyy-MM-dd'));
+            } else if (scope === 'all') {
+                await deleteRecurrenceSeries(currentTask.recurrenceRuleId);
+            }
+        }
+
+        setRecurrenceActionDialog(null);
         closeTaskDialog();
     };
 
@@ -212,6 +290,16 @@ export function TaskDetailDialog() {
 
                 {/* Form Body */}
                 <div className="p-6 space-y-5 overflow-y-auto max-h-[65vh] custom-scrollbar">
+                    {/* Recurring task banner */}
+                    {isEdit && currentTask?.recurrenceRuleId && (
+                        <div className="flex items-center gap-2 px-3 py-2 bg-accent-600/10 border border-accent-500/20 rounded-xl">
+                            <Repeat className="w-4 h-4 text-accent-400" />
+                            <span className="text-xs text-accent-300">
+                                {currentTask.recurrenceDetached ? 'Detached from recurring series' : 'This is a recurring task'}
+                            </span>
+                        </div>
+                    )}
+
                     {/* Title */}
                     <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2">
@@ -358,6 +446,26 @@ export function TaskDetailDialog() {
                         </div>
                     </div>
 
+                    {/* Recurrence (create mode or editing a recurring task's rule) */}
+                    {!isEdit && (
+                        <RecurrenceEditor
+                            enabled={isRecurring}
+                            onToggle={setIsRecurring}
+                            frequency={recurrenceFrequency}
+                            onFrequencyChange={setRecurrenceFrequency}
+                            interval={recurrenceInterval}
+                            onIntervalChange={setRecurrenceInterval}
+                            daysOfWeek={recurrenceDaysOfWeek}
+                            onDaysOfWeekChange={setRecurrenceDaysOfWeek}
+                            endType={recurrenceEndType}
+                            onEndTypeChange={setRecurrenceEndType}
+                            endCount={recurrenceEndCount}
+                            onEndCountChange={setRecurrenceEndCount}
+                            endDate={recurrenceEndDate}
+                            onEndDateChange={setRecurrenceEndDate}
+                        />
+                    )}
+
                     {/* Duration */}
                     <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2 flex items-center gap-1.5">
@@ -433,20 +541,6 @@ export function TaskDetailDialog() {
                             )}
                         </div>
                     )}
-
-                    {/* Due Date */}
-                    <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2 flex items-center gap-1.5">
-                            <Calendar className="w-3.5 h-3.5" />
-                            Due Date <span className="text-surface-600 font-normal normal-case">(optional)</span>
-                        </label>
-                        <input
-                            type="date"
-                            value={dueDate}
-                            onChange={(e) => setDueDate(e.target.value)}
-                            className="w-full px-4 py-2.5 bg-surface-950 border border-surface-700/60 rounded-xl text-surface-100 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all [color-scheme:dark]"
-                        />
-                    </div>
 
                     {/* Project */}
                     <div>
@@ -574,7 +668,10 @@ export function TaskDetailDialog() {
                         {isEdit && taskDialog.taskId && (
                             <button
                                 onClick={async () => {
-                                    if (taskDialog.taskId) {
+                                    if (!taskDialog.taskId) return;
+                                    if (currentTask?.recurrenceRuleId) {
+                                        setRecurrenceActionDialog({ mode: 'delete' });
+                                    } else {
                                         await deleteTask(taskDialog.taskId);
                                         closeTaskDialog();
                                     }
@@ -609,6 +706,15 @@ export function TaskDetailDialog() {
                     </div>
                 </div>
             </div>
+
+            {/* Recurrence Action Dialog */}
+            {recurrenceActionDialog && (
+                <RecurrenceActionDialog
+                    mode={recurrenceActionDialog.mode}
+                    onAction={handleRecurrenceAction}
+                    onCancel={() => setRecurrenceActionDialog(null)}
+                />
+            )}
         </div>
     );
 }

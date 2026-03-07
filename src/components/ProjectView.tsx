@@ -378,11 +378,6 @@ function ProjectTaskRow({ task, projectColor, onToggleDone, onClick, onStartTime
                             {format(parseISO(task.plannedDate), 'MMM d')}
                         </span>
                     )}
-                    {task.dueDate && (
-                        <span className="text-2xs text-warning-400">
-                            Due {format(parseISO(task.dueDate), 'MMM d')}
-                        </span>
-                    )}
                 </div>
             </div>
 

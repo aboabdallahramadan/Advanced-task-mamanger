@@ -149,4 +149,34 @@ const migrations = [
         name: '006_add_reminder_minutes',
         sql: `ALTER TABLE tasks ADD COLUMN reminder_minutes INTEGER DEFAULT 0`,
     },
+    {
+        name: '007_add_recurrence',
+        sql: `
+      CREATE TABLE IF NOT EXISTS recurrence_rules (
+        id TEXT PRIMARY KEY,
+        frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly')),
+        interval_value INTEGER NOT NULL DEFAULT 1,
+        days_of_week TEXT DEFAULT '[]',
+        end_type TEXT NOT NULL DEFAULT 'never' CHECK (end_type IN ('never', 'count', 'date')),
+        end_count INTEGER,
+        end_date TEXT,
+        generated_until TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS recurrence_exceptions (
+        id TEXT PRIMARY KEY,
+        recurrence_rule_id TEXT NOT NULL,
+        exception_date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (recurrence_rule_id) REFERENCES recurrence_rules(id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_recurrence_exceptions_unique ON recurrence_exceptions(recurrence_rule_id, exception_date);
+      ALTER TABLE tasks ADD COLUMN recurrence_rule_id TEXT REFERENCES recurrence_rules(id) ON DELETE SET NULL;
+      ALTER TABLE tasks ADD COLUMN is_recurrence_template INTEGER DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN recurrence_detached INTEGER DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN recurrence_original_date TEXT;
+      CREATE INDEX IF NOT EXISTS idx_tasks_recurrence_rule ON tasks(recurrence_rule_id)
+        `,
+    },
 ];

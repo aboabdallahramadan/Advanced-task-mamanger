@@ -4,13 +4,13 @@ export interface TaskInput {
     project?: string;
     labels?: string[];
     status?: string;
-    dueDate?: string;
     plannedDate?: string;
     scheduledStart?: string;
     scheduledEnd?: string;
     durationMinutes?: number;
     actualTimeMinutes?: number;
     priority?: 1 | 2 | 3 | 4 | null;
+    reminderMinutes?: number | null;
 }
 export interface TaskUpdate {
     title?: string;
@@ -18,13 +18,13 @@ export interface TaskUpdate {
     project?: string;
     labels?: string[];
     status?: string;
-    dueDate?: string;
     plannedDate?: string;
     scheduledStart?: string;
     scheduledEnd?: string;
     durationMinutes?: number;
     actualTimeMinutes?: number;
     priority?: 1 | 2 | 3 | 4 | null;
+    reminderMinutes?: number | null;
     order?: number;
 }
 declare const api: {
@@ -40,6 +40,15 @@ declare const api: {
             order: number;
         }[]) => Promise<any>;
         search: (query: string) => Promise<any>;
+    };
+    subtasks: {
+        create: (taskId: string, title: string) => Promise<any>;
+        update: (id: string, updates: {
+            title?: string;
+            completed?: boolean;
+            order?: number;
+        }) => Promise<any>;
+        delete: (id: string) => Promise<any>;
     };
     projects: {
         getAll: () => Promise<any>;
@@ -67,10 +76,22 @@ declare const api: {
     app: {
         getVersion: () => Promise<any>;
         showNotification: (title: string, body: string) => Promise<any>;
+        getAutoLaunch: () => Promise<any>;
+        setAutoLaunch: (enabled: boolean) => Promise<any>;
     };
     data: {
         exportAll: (settings: any) => Promise<any>;
         importAll: () => Promise<any>;
+    };
+    recurrence: {
+        create: (task: any, rule: any) => Promise<any>;
+        updateSeries: (ruleId: string, updates: any) => Promise<any>;
+        deleteSeries: (ruleId: string) => Promise<any>;
+        deleteSeriesFuture: (ruleId: string, fromDate: string) => Promise<any>;
+        detachInstance: (taskId: string) => Promise<any>;
+        ensureInstances: (startDate: string, endDate: string) => Promise<any>;
+        updateRule: (ruleId: string, ruleUpdates: any) => Promise<any>;
+        getRule: (ruleId: string) => Promise<any>;
     };
     focus: {
         updateTray: (data: {

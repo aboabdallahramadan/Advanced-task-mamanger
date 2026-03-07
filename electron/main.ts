@@ -89,6 +89,8 @@ if (!gotTheLock) {
         }
     });
 
+    app.setAppUserModelId('com.tmap.app');
+
     app.whenReady().then(async () => {
         const dbPath = path.join(app.getPath('userData'), 'tmap.db');
         await initDatabase(dbPath);
@@ -128,6 +130,7 @@ if (!gotTheLock) {
                         const notification = new Notification({
                             title: task.title,
                             body,
+                            icon: path.join(__dirname, '../build/icon.png'),
                         });
                         notification.on('click', () => {
                             mainWindow?.show();
@@ -313,7 +316,7 @@ function registerIpcHandlers() {
     });
 
     ipcMain.handle('app:showNotification', (_e: any, title: string, body: string) => {
-        new Notification({ title, body }).show();
+        new Notification({ title, body, icon: path.join(__dirname, '../build/icon.png') }).show();
     });
 
     // ─── Auto-Launch ─────────────────────────────────────────
@@ -355,6 +358,39 @@ function registerIpcHandlers() {
     ipcMain.handle('settings:save', (_e: any, settings: Record<string, any>) => {
         persistSettings(settings);
         return true;
+    });
+
+    // ─── Recurrence IPC Handlers ─────────────────────────────
+    ipcMain.handle('recurrence:create', (_e: any, task: any, rule: any) => {
+        return taskService.createRecurringTask(task, rule);
+    });
+
+    ipcMain.handle('recurrence:updateSeries', (_e: any, ruleId: string, updates: any) => {
+        return taskService.updateSeries(ruleId, updates);
+    });
+
+    ipcMain.handle('recurrence:deleteSeries', (_e: any, ruleId: string) => {
+        return taskService.deleteSeries(ruleId);
+    });
+
+    ipcMain.handle('recurrence:deleteSeriesFuture', (_e: any, ruleId: string, fromDate: string) => {
+        return taskService.deleteSeriesFuture(ruleId, fromDate);
+    });
+
+    ipcMain.handle('recurrence:detachInstance', (_e: any, taskId: string) => {
+        return taskService.detachInstance(taskId);
+    });
+
+    ipcMain.handle('recurrence:ensureInstances', (_e: any, startDate: string, endDate: string) => {
+        return taskService.ensureInstancesForDateRange(startDate, endDate);
+    });
+
+    ipcMain.handle('recurrence:updateRule', (_e: any, ruleId: string, ruleUpdates: any) => {
+        return taskService.updateRecurrenceRule(ruleId, ruleUpdates);
+    });
+
+    ipcMain.handle('recurrence:getRule', (_e: any, ruleId: string) => {
+        return taskService.getRecurrenceRule(ruleId);
     });
 
     // ─── Focus Timer Tray Widget ────────────────────────────
@@ -497,6 +533,30 @@ function registerIpcHandlers() {
                 }
             }
 
+            // Query recurrence rules
+            const rulesResult = db.exec('SELECT * FROM recurrence_rules');
+            const recurrenceRules: any[] = [];
+            if (rulesResult.length > 0) {
+                const cols = rulesResult[0].columns;
+                for (const row of rulesResult[0].values) {
+                    const obj: any = {};
+                    cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
+                    recurrenceRules.push(obj);
+                }
+            }
+
+            // Query recurrence exceptions
+            const excResult = db.exec('SELECT * FROM recurrence_exceptions');
+            const recurrenceExceptions: any[] = [];
+            if (excResult.length > 0) {
+                const cols = excResult[0].columns;
+                for (const row of excResult[0].values) {
+                    const obj: any = {};
+                    cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
+                    recurrenceExceptions.push(obj);
+                }
+            }
+
             const exportData = {
                 meta: {
                     appName: 'TMap',
@@ -506,6 +566,8 @@ function registerIpcHandlers() {
                 settings: settings || {},
                 tasks,
                 projects,
+                recurrenceRules,
+                recurrenceExceptions,
             };
 
             const { canceled, filePath } = await dialog.showSaveDialog(mainWindow!, {
@@ -559,14 +621,34 @@ function registerIpcHandlers() {
             db.run('BEGIN TRANSACTION;');
             try {
                 // Clear existing data
+                db.run('DELETE FROM recurrence_exceptions;');
                 db.run('DELETE FROM tasks;');
+                db.run('DELETE FROM recurrence_rules;');
                 db.run('DELETE FROM projects;');
+
+                // Insert recurrence rules
+                if (parsed.recurrenceRules && Array.isArray(parsed.recurrenceRules)) {
+                    for (const r of parsed.recurrenceRules) {
+                        db.run(
+                            `INSERT INTO recurrence_rules (id, frequency, interval_value, days_of_week, end_type, end_count, end_date, generated_until, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                r.id, r.frequency, r.interval_value ?? 1,
+                                r.days_of_week || '[]', r.end_type || 'never',
+                                r.end_count ?? null, r.end_date ?? null,
+                                r.generated_until ?? null,
+                                r.created_at || new Date().toISOString(),
+                                r.updated_at || new Date().toISOString(),
+                            ]
+                        );
+                    }
+                }
 
                 // Insert tasks
                 for (const t of parsed.tasks) {
                     db.run(
-                        `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             t.id, t.title, t.notes || '', t.project || '',
                             Array.isArray(t.labels) ? JSON.stringify(t.labels) : (t.labels || '[]'),
@@ -576,10 +658,25 @@ function registerIpcHandlers() {
                             t.duration_minutes ?? 30, t.actual_time_minutes ?? 0,
                             t.priority ?? null, t.reminder_minutes ?? 0,
                             t.sort_order ?? 0,
+                            t.recurrence_rule_id ?? null,
+                            t.is_recurrence_template ?? 0,
+                            t.recurrence_detached ?? 0,
+                            t.recurrence_original_date ?? null,
                             t.created_at || new Date().toISOString(),
                             t.updated_at || new Date().toISOString(),
                         ]
                     );
+                }
+
+                // Insert recurrence exceptions
+                if (parsed.recurrenceExceptions && Array.isArray(parsed.recurrenceExceptions)) {
+                    for (const e of parsed.recurrenceExceptions) {
+                        db.run(
+                            `INSERT INTO recurrence_exceptions (id, recurrence_rule_id, exception_date, created_at)
+                             VALUES (?, ?, ?, ?)`,
+                            [e.id, e.recurrence_rule_id, e.exception_date, e.created_at || new Date().toISOString()]
+                        );
+                    }
                 }
 
                 // Insert projects

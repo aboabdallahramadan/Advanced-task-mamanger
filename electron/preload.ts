@@ -6,7 +6,6 @@ export interface TaskInput {
     project?: string;
     labels?: string[];
     status?: string;
-    dueDate?: string;
     plannedDate?: string;
     scheduledStart?: string;
     scheduledEnd?: string;
@@ -22,7 +21,6 @@ export interface TaskUpdate {
     project?: string;
     labels?: string[];
     status?: string;
-    dueDate?: string;
     plannedDate?: string;
     scheduledStart?: string;
     scheduledEnd?: string;
@@ -70,6 +68,16 @@ const api = {
     data: {
         exportAll: (settings: any) => ipcRenderer.invoke('data:export', settings),
         importAll: () => ipcRenderer.invoke('data:import'),
+    },
+    recurrence: {
+        create: (task: any, rule: any) => ipcRenderer.invoke('recurrence:create', task, rule),
+        updateSeries: (ruleId: string, updates: any) => ipcRenderer.invoke('recurrence:updateSeries', ruleId, updates),
+        deleteSeries: (ruleId: string) => ipcRenderer.invoke('recurrence:deleteSeries', ruleId),
+        deleteSeriesFuture: (ruleId: string, fromDate: string) => ipcRenderer.invoke('recurrence:deleteSeriesFuture', ruleId, fromDate),
+        detachInstance: (taskId: string) => ipcRenderer.invoke('recurrence:detachInstance', taskId),
+        ensureInstances: (startDate: string, endDate: string) => ipcRenderer.invoke('recurrence:ensureInstances', startDate, endDate),
+        updateRule: (ruleId: string, ruleUpdates: any) => ipcRenderer.invoke('recurrence:updateRule', ruleId, ruleUpdates),
+        getRule: (ruleId: string) => ipcRenderer.invoke('recurrence:getRule', ruleId),
     },
     focus: {
         updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) =>

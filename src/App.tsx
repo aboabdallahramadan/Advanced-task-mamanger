@@ -19,6 +19,7 @@ import { ProjectDialog } from './components/ProjectDialog';
 import { SettingsDialog } from './components/SettingsDialog';
 import { WeeklyBoardView } from './components/WeeklyBoardView';
 import { ProjectView } from './components/ProjectView';
+import { AllTasksView } from './components/AllTasksView';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
@@ -122,6 +123,8 @@ export default function App() {
                     <WeeklyBoardView />
                 ) : currentView === 'project' ? (
                     <ProjectView />
+                ) : currentView === 'all' ? (
+                    <AllTasksView />
                 ) : (
                     <div className="flex-1 flex min-w-0">
                         {/* Task List Panel */}
