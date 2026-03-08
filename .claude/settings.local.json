@@ -4,7 +4,10 @@
       "Bash(npx tsc:*)",
       "Bash(npm run:*)",
       "Bash(npx vite:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(wc:*)",
+      "Bash(find /c/Users/aboab/Desktop/Projects/\"sunsama clone\"/src/components -name \"*.tsx\" -exec wc -l {} +)",
+      "Bash(find /c/Users/aboab/Desktop/Projects/\"sunsama clone\"/electron -name \"*.ts\" -exec wc -l {} +)"
     ]
   }
 }

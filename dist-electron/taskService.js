@@ -295,8 +295,8 @@ class TaskService {
         // Create template task
         const templateId = (0, uuid_1.v4)();
         const startDate = taskInput.plannedDate || new Date().toISOString().split('T')[0];
-        this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_original_date, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`, [
+        this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_original_date, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`, [
             templateId,
             taskInput.title || 'Untitled',
             taskInput.notes || '',
@@ -305,6 +305,8 @@ class TaskService {
             taskInput.source || 'local',
             taskInput.status || 'planned',
             startDate,
+            taskInput.scheduledStart || null,
+            taskInput.scheduledEnd || null,
             taskInput.durationMinutes || 30,
             0,
             taskInput.priority ?? null,
@@ -366,8 +368,8 @@ class TaskService {
             const maxResult = this.db.exec('SELECT MAX(sort_order) as max_order FROM tasks');
             const maxOrder = maxResult.length > 0 && maxResult[0].values[0][0] != null
                 ? maxResult[0].values[0][0] : 0;
-            this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`, [
+            this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`, [
                 id,
                 template.title,
                 template.notes,
@@ -376,6 +378,8 @@ class TaskService {
                 template.source,
                 'planned',
                 date,
+                template.scheduledStart || null,
+                template.scheduledEnd || null,
                 template.durationMinutes,
                 0,
                 template.priority,
@@ -437,6 +441,14 @@ class TaskService {
         if (updates.reminderMinutes !== undefined) {
             sets.push('reminder_minutes = ?');
             values.push(updates.reminderMinutes);
+        }
+        if (updates.scheduledStart !== undefined) {
+            sets.push('scheduled_start = ?');
+            values.push(updates.scheduledStart);
+        }
+        if (updates.scheduledEnd !== undefined) {
+            sets.push('scheduled_end = ?');
+            values.push(updates.scheduledEnd);
         }
         if (sets.length === 0)
             return;

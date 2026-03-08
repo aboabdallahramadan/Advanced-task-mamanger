@@ -391,6 +391,17 @@ export class TaskService {
             ],
         );
 
+        // Copy subtasks to the template task
+        if (taskInput.subtasks && taskInput.subtasks.length > 0) {
+            for (const st of taskInput.subtasks) {
+                const stId = uuid();
+                this.db.run(
+                    `INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)`,
+                    [stId, templateId, st.title, st.order ?? 0, now],
+                );
+            }
+        }
+
         // Generate instances for the next 14 days
         const today = new Date().toISOString().split('T')[0];
         const twoWeeks = new Date(Date.now() + 14 * 86400000).toISOString().split('T')[0];
@@ -452,6 +463,18 @@ export class TaskService {
         const now = new Date().toISOString();
         const newTasks: Task[] = [];
 
+        // Load template subtasks to copy to each instance
+        const templateSubtasksResult = this.db.exec(
+            'SELECT title, sort_order FROM subtasks WHERE task_id = ? ORDER BY sort_order',
+            [template.id],
+        );
+        const templateSubtasks: { title: string; order: number }[] = [];
+        if (templateSubtasksResult.length > 0) {
+            for (const row of templateSubtasksResult[0].values) {
+                templateSubtasks.push({ title: row[0] as string, order: row[1] as number });
+            }
+        }
+
         for (const date of dates) {
             const id = uuid();
             const maxResult = this.db.exec('SELECT MAX(sort_order) as max_order FROM tasks');
@@ -483,6 +506,15 @@ export class TaskService {
                     now,
                 ],
             );
+
+            // Copy template subtasks to the new instance
+            for (const st of templateSubtasks) {
+                const stId = uuid();
+                this.db.run(
+                    `INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)`,
+                    [stId, id, st.title, st.order, now],
+                );
+            }
 
             const task = this.getById(id);
             if (task) newTasks.push(task);
@@ -532,18 +564,61 @@ export class TaskService {
         if (updates.scheduledStart !== undefined) { sets.push('scheduled_start = ?'); values.push(updates.scheduledStart); }
         if (updates.scheduledEnd !== undefined) { sets.push('scheduled_end = ?'); values.push(updates.scheduledEnd); }
 
-        if (sets.length === 0) return;
+        if (sets.length === 0 && !updates.subtasks) return;
 
-        sets.push('updated_at = ?');
-        values.push(now);
+        if (sets.length > 0) {
+            sets.push('updated_at = ?');
+            values.push(now);
 
-        // Update the template
-        const templateValues = [...values, ruleId];
-        this.db.run(`UPDATE tasks SET ${sets.join(', ')} WHERE recurrence_rule_id = ? AND is_recurrence_template = 1`, templateValues);
+            // Update the template
+            const templateValues = [...values, ruleId];
+            this.db.run(`UPDATE tasks SET ${sets.join(', ')} WHERE recurrence_rule_id = ? AND is_recurrence_template = 1`, templateValues);
 
-        // Update non-detached future instances
-        const instanceValues = [...values, ruleId, today];
-        this.db.run(`UPDATE tasks SET ${sets.join(', ')} WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_detached = 0 AND planned_date >= ? AND status != 'done'`, instanceValues);
+            // Update non-detached future instances
+            const instanceValues = [...values, ruleId, today];
+            this.db.run(`UPDATE tasks SET ${sets.join(', ')} WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_detached = 0 AND planned_date >= ? AND status != 'done'`, instanceValues);
+        }
+
+        // Sync subtasks if provided
+        if (updates.subtasks) {
+            // Find the template task ID
+            const templateResult = this.db.exec(
+                'SELECT id FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 1',
+                [ruleId],
+            );
+            if (templateResult.length > 0 && templateResult[0].values.length > 0) {
+                const templateId = templateResult[0].values[0][0] as string;
+
+                // Replace template subtasks
+                this.db.run('DELETE FROM subtasks WHERE task_id = ?', [templateId]);
+                for (const st of updates.subtasks) {
+                    const stId = uuid();
+                    this.db.run(
+                        `INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)`,
+                        [stId, templateId, st.title, st.order ?? 0, now],
+                    );
+                }
+
+                // Replace subtasks on future non-detached instances
+                const futureResult = this.db.exec(
+                    `SELECT id FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_detached = 0 AND planned_date >= ? AND status != 'done'`,
+                    [ruleId, today],
+                );
+                if (futureResult.length > 0) {
+                    for (const row of futureResult[0].values) {
+                        const instanceId = row[0] as string;
+                        this.db.run('DELETE FROM subtasks WHERE task_id = ?', [instanceId]);
+                        for (const st of updates.subtasks) {
+                            const stId = uuid();
+                            this.db.run(
+                                `INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)`,
+                                [stId, instanceId, st.title, st.order ?? 0, now],
+                            );
+                        }
+                    }
+                }
+            }
+        }
 
         saveDatabase();
     }
