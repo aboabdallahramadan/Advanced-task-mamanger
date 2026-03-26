@@ -20,13 +20,16 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { WeeklyBoardView } from './components/WeeklyBoardView';
 import { ProjectView } from './components/ProjectView';
 import { AllTasksView } from './components/AllTasksView';
+import { NoteGroupView } from './components/NoteGroupView';
+import { NoteEditorView } from './components/NoteEditorView';
+import { NoteGroupDialog } from './components/NoteGroupDialog';
 import { useStore } from './store';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock, Plus } from 'lucide-react';
 
 export default function App() {
-    const { loadTasks, loadProjects, scheduleTask, startPlanningFlow, currentView, loadSettings, openTaskDialog } = useStore();
+    const { loadTasks, loadProjects, loadNoteGroups, scheduleTask, startPlanningFlow, currentView, loadSettings, openTaskDialog } = useStore();
     const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
     const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -37,8 +40,9 @@ export default function App() {
     useEffect(() => {
         loadTasks();
         loadProjects();
+        loadNoteGroups();
         loadSettings();
-    }, [loadTasks, loadProjects, loadSettings]);
+    }, [loadTasks, loadProjects, loadNoteGroups, loadSettings]);
 
     // Global keyboard shortcuts
     useEffect(() => {
@@ -125,6 +129,10 @@ export default function App() {
                     <ProjectView />
                 ) : currentView === 'all' ? (
                     <AllTasksView />
+                ) : currentView === 'noteGroup' ? (
+                    <NoteGroupView />
+                ) : currentView === 'noteEditor' ? (
+                    <NoteEditorView />
                 ) : (
                     <div className="flex-1 flex min-w-0">
                         {/* Task List Panel */}
@@ -145,6 +153,7 @@ export default function App() {
             <FocusModeOverlay />
             <TaskDetailDialog />
             <ProjectDialog />
+            <NoteGroupDialog />
             <SettingsDialog />
 
             {/* Floating Add Task Button */}

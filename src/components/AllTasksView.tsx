@@ -176,7 +176,7 @@ export function AllTasksView() {
                 const q = search.toLowerCase();
                 if (
                     !t.title.toLowerCase().includes(q) &&
-                    !t.notes.toLowerCase().includes(q) &&
+                    !t.notes.replace(/<[^>]*>/g, ' ').toLowerCase().includes(q) &&
                     !t.project.toLowerCase().includes(q)
                 ) return false;
             }

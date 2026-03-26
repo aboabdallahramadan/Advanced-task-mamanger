@@ -11,6 +11,8 @@ import {
     ArrowLeft,
     CheckCircle2,
     GripVertical,
+    FileText,
+    StickyNote,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format, parseISO } from 'date-fns';
@@ -30,10 +32,12 @@ import {
 import {
     SortableContext,
     verticalListSortingStrategy,
+    rectSortingStrategy,
     sortableKeyboardCoordinates,
     useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { NoteCard } from './NoteCard';
 
 export function ProjectView() {
     const {
@@ -49,8 +53,15 @@ export function ProjectView() {
         setCurrentView,
         createTask,
         reorderTasks,
+        noteGroups,
+        selectNoteGroup,
+        openNoteGroupDialog,
+        projectActiveTab,
+        setProjectActiveTab,
     } = useStore();
 
+    const activeTab = projectActiveTab;
+    const setActiveTab = setProjectActiveTab;
     const [activeTask, setActiveTask] = useState<Task | null>(null);
 
     const sensors = useSensors(
@@ -214,8 +225,38 @@ export function ProjectView() {
                         </div>
                     )}
                 </div>
+
+                {/* Tabs */}
+                <div className="flex items-center gap-4 mt-3">
+                    <button
+                        onClick={() => setActiveTab('tasks')}
+                        className={clsx(
+                            'text-sm font-medium pb-1 border-b-2 transition-colors',
+                            activeTab === 'tasks'
+                                ? 'border-accent-500 text-accent-400'
+                                : 'border-transparent text-surface-500 hover:text-surface-300',
+                        )}
+                    >
+                        Tasks
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('notes')}
+                        className={clsx(
+                            'text-sm font-medium pb-1 border-b-2 transition-colors',
+                            activeTab === 'notes'
+                                ? 'border-accent-500 text-accent-400'
+                                : 'border-transparent text-surface-500 hover:text-surface-300',
+                        )}
+                    >
+                        Notes
+                    </button>
+                </div>
             </div>
 
+            {activeTab === 'notes' ? (
+                <ProjectNotesTab projectId={project.id} />
+            ) : (
+            <>
             {/* Quick Add */}
             <div className="px-6 py-3 border-b border-surface-800/20">
                 <div className="flex items-center gap-2">
@@ -315,6 +356,86 @@ export function ProjectView() {
                     </>
                 )}
             </div>
+            </>
+            )}
+        </div>
+    );
+}
+
+// ─── Project Notes Tab ──────────────────────────────────────────────
+function ProjectNotesTab({ projectId }: { projectId: string }) {
+    const { projectNotes, loadNotesByProject, createProjectNote, deleteNote, selectNote, reorderNotes } = useStore();
+
+    const noteSensors = useSensors(
+        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    );
+
+    React.useEffect(() => {
+        loadNotesByProject(projectId);
+    }, [projectId, loadNotesByProject]);
+
+    const handleCreateNote = async () => {
+        await createProjectNote(projectId);
+    };
+
+    const handleDragEnd = (event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+
+        const oldIndex = projectNotes.findIndex((n) => n.id === active.id);
+        const newIndex = projectNotes.findIndex((n) => n.id === over.id);
+        if (oldIndex === -1 || newIndex === -1) return;
+
+        const reordered = [...projectNotes];
+        const [moved] = reordered.splice(oldIndex, 1);
+        reordered.splice(newIndex, 0, moved);
+
+        const updates = reordered.map((n, i) => ({ id: n.id, order: i }));
+        reorderNotes(updates);
+    };
+
+    return (
+        <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+            <button
+                onClick={handleCreateNote}
+                className="flex items-center gap-2 text-sm text-surface-400 hover:text-accent-400 transition-colors mb-4"
+            >
+                <Plus className="w-4 h-4" />
+                <span>New note</span>
+            </button>
+
+            {projectNotes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-center">
+                    <StickyNote className="w-8 h-8 text-surface-600 mb-2" />
+                    <h3 className="text-sm font-medium text-surface-400">No notes</h3>
+                    <p className="text-xs text-surface-500 mt-1">
+                        Create a note to get started
+                    </p>
+                </div>
+            ) : (
+                <DndContext
+                    sensors={noteSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleDragEnd}
+                >
+                    <SortableContext
+                        items={projectNotes.map((n) => n.id)}
+                        strategy={rectSortingStrategy}
+                    >
+                        <div className="grid grid-cols-2 gap-3">
+                            {projectNotes.map((note) => (
+                                <NoteCard
+                                    key={note.id}
+                                    note={note}
+                                    sortable
+                                    onClick={() => selectNote(note.id)}
+                                    onDelete={() => deleteNote(note.id)}
+                                />
+                            ))}
+                        </div>
+                    </SortableContext>
+                </DndContext>
+            )}
         </div>
     );
 }

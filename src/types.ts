@@ -50,13 +50,34 @@ export interface Task {
 
 export type TaskStatus = Task['status'];
 
-export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board' | 'project' | 'all';
+export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board' | 'project' | 'all' | 'noteGroup' | 'noteEditor';
 
 export interface Project {
     id: string;
     name: string;
     color: string;
     emoji: string;
+    order: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface NoteGroup {
+    id: string;
+    name: string;
+    emoji: string;
+    projectId: string | null;
+    order: number;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface Note {
+    id: string;
+    groupId: string | null;
+    projectId: string | null;
+    title: string;
+    content: string;
     order: number;
     createdAt: string;
     updatedAt: string;
@@ -88,6 +109,23 @@ export interface ElectronAPI {
         getAll: () => Promise<Project[]>;
         create: (input: { name: string; color?: string; emoji?: string }) => Promise<Project>;
         update: (id: string, updates: Partial<Project>) => Promise<Project>;
+        delete: (id: string) => Promise<boolean>;
+        reorder: (items: { id: string; order: number }[]) => Promise<void>;
+    };
+    noteGroups: {
+        getAll: () => Promise<NoteGroup[]>;
+        getByProject: (projectId: string) => Promise<NoteGroup[]>;
+        create: (input: { name: string; emoji?: string; projectId?: string }) => Promise<NoteGroup>;
+        update: (id: string, updates: Partial<{ name: string; emoji: string; projectId: string | null; order: number }>) => Promise<NoteGroup>;
+        delete: (id: string) => Promise<boolean>;
+        reorder: (items: { id: string; order: number }[]) => Promise<void>;
+    };
+    notes: {
+        getByGroup: (groupId: string) => Promise<Note[]>;
+        getByProject: (projectId: string) => Promise<Note[]>;
+        getById: (id: string) => Promise<Note | null>;
+        create: (input: { groupId?: string; projectId?: string; title?: string; content?: string }) => Promise<Note>;
+        update: (id: string, updates: Partial<{ title: string; content: string; groupId: string; projectId: string; order: number }>) => Promise<Note>;
         delete: (id: string) => Promise<boolean>;
         reorder: (items: { id: string; order: number }[]) => Promise<void>;
     };

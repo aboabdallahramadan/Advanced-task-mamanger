@@ -179,4 +179,54 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_tasks_recurrence_rule ON tasks(recurrence_rule_id)
         `,
     },
+    {
+        name: '008_create_notes',
+        sql: `
+      CREATE TABLE IF NOT EXISTS note_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        emoji TEXT DEFAULT '📝',
+        project_id TEXT DEFAULT NULL,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_note_groups_project ON note_groups(project_id);
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT 'Untitled',
+        content TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (group_id) REFERENCES note_groups(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id)
+        `,
+    },
+    {
+        name: '009_notes_project_id',
+        sql: `
+      CREATE TABLE IF NOT EXISTS notes_new (
+        id TEXT PRIMARY KEY,
+        group_id TEXT DEFAULT NULL,
+        project_id TEXT DEFAULT NULL,
+        title TEXT NOT NULL DEFAULT 'Untitled',
+        content TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (group_id) REFERENCES note_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+      INSERT INTO notes_new (id, group_id, title, content, sort_order, created_at, updated_at)
+        SELECT id, group_id, title, content, sort_order, created_at, updated_at FROM notes;
+      DROP TABLE notes;
+      ALTER TABLE notes_new RENAME TO notes;
+      CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id);
+      CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id)
+        `,
+    },
 ];

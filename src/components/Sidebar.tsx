@@ -7,12 +7,14 @@ import {
     LayoutList,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     Clock,
     Folder,
     Sun,
     LayoutGrid,
     Settings,
     GripVertical,
+    StickyNote,
 } from 'lucide-react';
 import {
     DndContext,
@@ -30,7 +32,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../store';
-import { ViewMode, Project, Task } from '../types';
+import { ViewMode, Project, NoteGroup, Task } from '../types';
 import { format } from 'date-fns';
 import { clsx } from 'clsx';
 import { getTextDirection, getDirectionStyle } from '../useTextDirection';
@@ -57,6 +59,16 @@ export function Sidebar() {
         openProjectDialog,
         selectProject,
         reorderProjects,
+        noteGroups,
+        selectedNoteGroupId,
+        selectNoteGroup,
+        openNoteGroupDialog,
+        reorderNoteGroups,
+        notesCollapsed,
+        setNotesCollapsed,
+        projectsCollapsed,
+        setProjectsCollapsed,
+        currentNotes,
     } = useStore();
 
     const sensors = useSensors(
@@ -139,6 +151,17 @@ export function Sidebar() {
                         )}
                     </button>
                 ))}
+                <div className="w-8 border-t border-surface-800/40 my-1" />
+                <button
+                    onClick={() => {
+                        setSidebarCollapsed(false);
+                    }}
+                    className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
+                    aria-label="Notes"
+                    title="Notes"
+                >
+                    <StickyNote className="w-4 h-4" />
+                </button>
             </div>
         );
     }
@@ -204,60 +227,130 @@ export function Sidebar() {
             {/* Separator */}
             <div className="mx-4 my-2 border-t border-surface-800/40" />
 
-            {/* Projects */}
-            <div className="px-4 py-2">
-                <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-2xs font-semibold uppercase tracking-wider text-surface-500">
-                        Projects
-                    </h3>
-                    <button
-                        onClick={() => openProjectDialog('create')}
-                        className="text-2xs text-surface-500 hover:text-accent-400 transition-colors"
-                    >
-                        + New
-                    </button>
+            {/* Scrollable sections */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {/* Projects */}
+                <div className="px-4 py-2">
+                    <div className="flex items-center justify-between mb-2">
+                        <button
+                            onClick={() => setProjectsCollapsed(!projectsCollapsed)}
+                            className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-surface-500 hover:text-surface-300 transition-colors"
+                        >
+                            <ChevronDown className={clsx('w-3 h-3 transition-transform', projectsCollapsed && '-rotate-90')} />
+                            Projects
+                        </button>
+                        <button
+                            onClick={() => openProjectDialog('create')}
+                            className="text-2xs text-surface-500 hover:text-accent-400 transition-colors"
+                        >
+                            + New
+                        </button>
+                    </div>
+                    {!projectsCollapsed && (
+                        <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={(event: DragEndEvent) => {
+                                const { active, over } = event;
+                                if (!over || active.id === over.id) return;
+                                const oldIndex = projects.findIndex((p) => p.id === active.id);
+                                const newIndex = projects.findIndex((p) => p.id === over.id);
+                                if (oldIndex === -1 || newIndex === -1) return;
+                                const reordered = arrayMove(projects, oldIndex, newIndex);
+                                const items = reordered.map((p, i) => ({ id: p.id, order: i }));
+                                reorderProjects(items);
+                            }}
+                        >
+                            <SortableContext items={projects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
+                                <div className="flex flex-col gap-0.5">
+                                    {projects.length === 0 && (
+                                        <p className="text-xs text-surface-600 italic px-1">No projects yet</p>
+                                    )}
+                                    {projects.map((project) => {
+                                        const count = deduplicateRecurring(tasks.filter(
+                                            (t) => t.project === project.name && t.status !== 'archived' && t.status !== 'done',
+                                        )).length;
+                                        const isActive = currentView === 'project' && selectedProjectId === project.id;
+                                        return (
+                                            <SortableProjectItem
+                                                key={project.id}
+                                                project={project}
+                                                count={count}
+                                                isActive={isActive}
+                                                onSelect={() => selectProject(project.id)}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </SortableContext>
+                        </DndContext>
+                    )}
                 </div>
-                <DndContext
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={(event: DragEndEvent) => {
-                        const { active, over } = event;
-                        if (!over || active.id === over.id) return;
-                        const oldIndex = projects.findIndex((p) => p.id === active.id);
-                        const newIndex = projects.findIndex((p) => p.id === over.id);
-                        if (oldIndex === -1 || newIndex === -1) return;
-                        const reordered = arrayMove(projects, oldIndex, newIndex);
-                        const items = reordered.map((p, i) => ({ id: p.id, order: i }));
-                        reorderProjects(items);
-                    }}
-                >
-                    <SortableContext items={projects.map((p) => p.id)} strategy={verticalListSortingStrategy}>
-                        <div className="flex flex-col gap-0.5">
-                            {projects.length === 0 && (
-                                <p className="text-xs text-surface-600 italic px-1">No projects yet</p>
-                            )}
-                            {projects.map((project) => {
-                                const count = deduplicateRecurring(tasks.filter(
-                                    (t) => t.project === project.name && t.status !== 'archived' && t.status !== 'done',
-                                )).length;
-                                const isActive = currentView === 'project' && selectedProjectId === project.id;
-                                return (
-                                    <SortableProjectItem
-                                        key={project.id}
-                                        project={project}
-                                        count={count}
-                                        isActive={isActive}
-                                        onSelect={() => selectProject(project.id)}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </SortableContext>
-                </DndContext>
+
+                {/* Separator */}
+                <div className="mx-4 my-2 border-t border-surface-800/40" />
+
+                {/* Notes */}
+                <div className="px-4 py-2">
+                    <div className="flex items-center justify-between mb-2">
+                        <button
+                            onClick={() => setNotesCollapsed(!notesCollapsed)}
+                            className="flex items-center gap-1 text-2xs font-semibold uppercase tracking-wider text-surface-500 hover:text-surface-300 transition-colors"
+                        >
+                            <ChevronDown className={clsx('w-3 h-3 transition-transform', notesCollapsed && '-rotate-90')} />
+                            Notes
+                        </button>
+                        <button
+                            onClick={() => openNoteGroupDialog('create')}
+                            className="text-2xs text-surface-500 hover:text-accent-400 transition-colors"
+                        >
+                            + New
+                        </button>
+                    </div>
+                    {!notesCollapsed && (
+                        <DndContext
+                            sensors={sensors}
+                            collisionDetection={closestCenter}
+                            onDragEnd={(event: DragEndEvent) => {
+                                const { active, over } = event;
+                                if (!over || active.id === over.id) return;
+                                const oldIndex = noteGroups.findIndex((g) => g.id === active.id);
+                                const newIndex = noteGroups.findIndex((g) => g.id === over.id);
+                                if (oldIndex === -1 || newIndex === -1) return;
+                                const reordered = arrayMove(noteGroups, oldIndex, newIndex);
+                                const items = reordered.map((g, i) => ({ id: g.id, order: i }));
+                                reorderNoteGroups(items);
+                            }}
+                        >
+                            <SortableContext items={noteGroups.map((g) => g.id)} strategy={verticalListSortingStrategy}>
+                                <div className="flex flex-col gap-0.5">
+                                    {noteGroups.length === 0 && (
+                                        <p className="text-xs text-surface-600 italic px-1">No note groups yet</p>
+                                    )}
+                                    {noteGroups.map((group) => {
+                                        const isActive = currentView === 'noteGroup' && selectedNoteGroupId === group.id;
+                                        const linkedProject = group.projectId
+                                            ? projects.find((p) => p.id === group.projectId)
+                                            : null;
+                                        return (
+                                            <SortableNoteGroupItem
+                                                key={group.id}
+                                                group={group}
+                                                isActive={isActive}
+                                                projectName={linkedProject?.name}
+                                                onSelect={() => selectNoteGroup(group.id)}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </SortableContext>
+                        </DndContext>
+                    )}
+                </div>
             </div>
 
             {/* Footer: free time indicator + settings */}
-            <div className="mt-auto px-4 py-3 border-t border-surface-800/40 space-y-2">
+            <div className="px-4 py-3 border-t border-surface-800/40 space-y-2">
                 <FreeTimeIndicator />
                 <button
                     onClick={() => useStore.getState().setSettingsOpen(true)}
@@ -322,6 +415,62 @@ function SortableProjectItem({
             <span dir={getTextDirection(project.name)} style={getDirectionStyle(project.name)} className="flex-1 truncate">{project.name}</span>
             <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: project.color }} />
             <span className="text-xs text-surface-500">{count}</span>
+        </div>
+    );
+}
+
+function SortableNoteGroupItem({
+    group,
+    isActive,
+    projectName,
+    onSelect,
+}: {
+    group: NoteGroup;
+    isActive: boolean;
+    projectName?: string;
+    onSelect: () => void;
+}) {
+    const {
+        attributes,
+        listeners,
+        setNodeRef,
+        transform,
+        transition,
+        isDragging,
+    } = useSortable({ id: group.id });
+
+    const style = {
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+    };
+
+    return (
+        <div
+            ref={setNodeRef}
+            style={style}
+            onClick={onSelect}
+            className={clsx(
+                "flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all cursor-pointer group",
+                isActive
+                    ? "bg-accent-600/15 text-accent-300"
+                    : "text-surface-400 hover:text-surface-200 hover:bg-surface-800/40"
+            )}
+        >
+            <button
+                {...attributes}
+                {...listeners}
+                className="cursor-grab active:cursor-grabbing text-surface-600 hover:text-surface-400 opacity-0 group-hover:opacity-100 transition-opacity -ml-0.5 p-0.5"
+                onClick={(e) => e.stopPropagation()}
+                aria-label="Drag to reorder"
+            >
+                <GripVertical className="w-3 h-3" />
+            </button>
+            <span className="text-sm">{group.emoji}</span>
+            <span dir={getTextDirection(group.name)} style={getDirectionStyle(group.name)} className="flex-1 truncate">{group.name}</span>
+            {projectName && (
+                <span className="text-2xs text-surface-600 truncate max-w-[60px]">{projectName}</span>
+            )}
         </div>
     );
 }

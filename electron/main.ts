@@ -28,6 +28,7 @@ function persistSettings(settings: Record<string, any>): void {
 import { initDatabase, getDatabase, saveDatabase } from './database';
 import { TaskService } from './taskService';
 import { ProjectService } from './projectService';
+import { NoteService } from './noteService';
 import { seedDemoData } from './seed';
 
 let mainWindow: BrowserWindow | null = null;
@@ -35,6 +36,7 @@ let focusWidget: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let taskService: TaskService;
 let projectService: ProjectService;
+let noteService: NoteService;
 const notifiedTaskIds = new Set<string>();
 
 function createFocusWidget() {
@@ -96,6 +98,7 @@ if (!gotTheLock) {
         await initDatabase(dbPath);
         taskService = new TaskService(getDatabase());
         projectService = new ProjectService(getDatabase());
+        noteService = new NoteService(getDatabase());
 
         // Seed demo data if empty
         const tasks = taskService.getAll();
@@ -350,6 +353,60 @@ function registerIpcHandlers() {
         return projectService.reorder(items);
     });
 
+    // ─── Note Group IPC Handlers ─────────────────────────────
+    ipcMain.handle('noteGroups:getAll', () => {
+        return noteService.getAllGroups();
+    });
+
+    ipcMain.handle('noteGroups:getByProject', (_e: any, projectId: string) => {
+        return noteService.getGroupsByProject(projectId);
+    });
+
+    ipcMain.handle('noteGroups:create', (_e: any, input: any) => {
+        return noteService.createGroup(input);
+    });
+
+    ipcMain.handle('noteGroups:update', (_e: any, id: string, updates: any) => {
+        return noteService.updateGroup(id, updates);
+    });
+
+    ipcMain.handle('noteGroups:delete', (_e: any, id: string) => {
+        return noteService.deleteGroup(id);
+    });
+
+    ipcMain.handle('noteGroups:reorder', (_e: any, items: { id: string; order: number }[]) => {
+        return noteService.reorderGroups(items);
+    });
+
+    // ─── Note IPC Handlers ───────────────────────────────────
+    ipcMain.handle('notes:getByGroup', (_e: any, groupId: string) => {
+        return noteService.getNotesByGroup(groupId);
+    });
+
+    ipcMain.handle('notes:getByProject', (_e: any, projectId: string) => {
+        return noteService.getNotesByProject(projectId);
+    });
+
+    ipcMain.handle('notes:getById', (_e: any, id: string) => {
+        return noteService.getNoteById(id);
+    });
+
+    ipcMain.handle('notes:create', (_e: any, input: any) => {
+        return noteService.createNote(input);
+    });
+
+    ipcMain.handle('notes:update', (_e: any, id: string, updates: any) => {
+        return noteService.updateNote(id, updates);
+    });
+
+    ipcMain.handle('notes:delete', (_e: any, id: string) => {
+        return noteService.deleteNote(id);
+    });
+
+    ipcMain.handle('notes:reorder', (_e: any, items: { id: string; order: number }[]) => {
+        return noteService.reorderNotes(items);
+    });
+
     // ─── Settings IPC Handlers ───────────────────────────────
     ipcMain.handle('settings:get', () => {
         return loadSettings();
@@ -557,6 +614,30 @@ function registerIpcHandlers() {
                 }
             }
 
+            // Query note groups
+            const noteGroupsResult = db.exec('SELECT * FROM note_groups');
+            const noteGroupsData: any[] = [];
+            if (noteGroupsResult.length > 0) {
+                const cols = noteGroupsResult[0].columns;
+                for (const row of noteGroupsResult[0].values) {
+                    const obj: any = {};
+                    cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
+                    noteGroupsData.push(obj);
+                }
+            }
+
+            // Query notes
+            const notesResult = db.exec('SELECT * FROM notes');
+            const notesData: any[] = [];
+            if (notesResult.length > 0) {
+                const cols = notesResult[0].columns;
+                for (const row of notesResult[0].values) {
+                    const obj: any = {};
+                    cols.forEach((col: string, i: number) => { obj[col] = row[i]; });
+                    notesData.push(obj);
+                }
+            }
+
             const exportData = {
                 meta: {
                     appName: 'TMap',
@@ -568,6 +649,8 @@ function registerIpcHandlers() {
                 projects,
                 recurrenceRules,
                 recurrenceExceptions,
+                noteGroups: noteGroupsData,
+                notes: notesData,
             };
 
             const { canceled, filePath } = await dialog.showSaveDialog(mainWindow!, {
@@ -621,6 +704,8 @@ function registerIpcHandlers() {
             db.run('BEGIN TRANSACTION;');
             try {
                 // Clear existing data
+                db.run('DELETE FROM notes;');
+                db.run('DELETE FROM note_groups;');
                 db.run('DELETE FROM recurrence_exceptions;');
                 db.run('DELETE FROM tasks;');
                 db.run('DELETE FROM recurrence_rules;');
@@ -691,6 +776,39 @@ function registerIpcHandlers() {
                             p.updated_at || new Date().toISOString(),
                         ]
                     );
+                }
+
+                // Insert note groups
+                if (parsed.noteGroups && Array.isArray(parsed.noteGroups)) {
+                    for (const g of parsed.noteGroups) {
+                        db.run(
+                            `INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                g.id, g.name, g.emoji || '📝', g.project_id || null,
+                                g.sort_order ?? 0,
+                                g.created_at || new Date().toISOString(),
+                                g.updated_at || new Date().toISOString(),
+                            ]
+                        );
+                    }
+                }
+
+                // Insert notes
+                if (parsed.notes && Array.isArray(parsed.notes)) {
+                    for (const n of parsed.notes) {
+                        db.run(
+                            `INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                n.id, n.group_id || null, n.project_id || null,
+                                n.title || 'Untitled', n.content || '',
+                                n.sort_order ?? 0,
+                                n.created_at || new Date().toISOString(),
+                                n.updated_at || new Date().toISOString(),
+                            ]
+                        );
+                    }
                 }
 
                 db.run('COMMIT;');

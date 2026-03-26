@@ -1,6 +1,10 @@
 import { create } from 'zustand';
-import { Task, Subtask, ViewMode, Project, RecurrenceFrequency, RecurrenceEndType, RecurrenceRule } from './types';
+import { Task, Subtask, ViewMode, Project, NoteGroup, Note, RecurrenceFrequency, RecurrenceEndType, RecurrenceRule } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
+
+function stripHtml(html: string): string {
+    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
 
 interface AppState {
     // Tasks
@@ -15,6 +19,22 @@ interface AppState {
         mode: 'create' | 'edit';
         projectId: string | null;
     };
+
+    // Notes
+    noteGroups: NoteGroup[];
+    selectedNoteGroupId: string | null;
+    selectedNoteId: string | null;
+    currentNotes: Note[];
+    noteGroupDialog: {
+        isOpen: boolean;
+        mode: 'create' | 'edit';
+        groupId: string | null;
+        defaultProjectId?: string | null;
+    };
+    projectNotes: Note[];
+    projectActiveTab: 'tasks' | 'notes';
+    notesCollapsed: boolean;
+    projectsCollapsed: boolean;
 
     // View
     currentView: ViewMode;
@@ -113,6 +133,29 @@ interface AppState {
     loadSettings: () => Promise<void>;
     saveSettings: () => Promise<void>;
 
+    // Note Group Actions
+    loadNoteGroups: () => Promise<void>;
+    createNoteGroup: (input: { name: string; emoji?: string; projectId?: string }) => Promise<NoteGroup | null>;
+    updateNoteGroup: (id: string, updates: Partial<NoteGroup>) => Promise<void>;
+    deleteNoteGroup: (id: string) => Promise<void>;
+    openNoteGroupDialog: (mode: 'create' | 'edit', groupId?: string, defaultProjectId?: string) => void;
+    closeNoteGroupDialog: () => void;
+    selectNoteGroup: (groupId: string) => void;
+    reorderNoteGroups: (items: { id: string; order: number }[]) => Promise<void>;
+
+    // Note Actions
+    loadNotesByProject: (projectId: string) => Promise<void>;
+    createProjectNote: (projectId: string) => Promise<Note | null>;
+    loadNotesByGroup: (groupId: string) => Promise<void>;
+    createNote: (groupId: string) => Promise<Note | null>;
+    updateNote: (id: string, updates: Partial<{ title: string; content: string; groupId: string; projectId: string; order: number }>) => Promise<void>;
+    deleteNote: (id: string) => Promise<void>;
+    selectNote: (noteId: string) => void;
+    reorderNotes: (items: { id: string; order: number }[]) => Promise<void>;
+    setProjectActiveTab: (tab: 'tasks' | 'notes') => void;
+    setNotesCollapsed: (collapsed: boolean) => void;
+    setProjectsCollapsed: (collapsed: boolean) => void;
+
     // Project Reorder
     reorderProjects: (items: { id: string; order: number }[]) => Promise<void>;
 
@@ -135,6 +178,20 @@ export const useStore = create<AppState>((set, get) => ({
         mode: 'create',
         projectId: null,
     },
+    noteGroups: [],
+    selectedNoteGroupId: null,
+    selectedNoteId: null,
+    currentNotes: [],
+    noteGroupDialog: {
+        isOpen: false,
+        mode: 'create',
+        groupId: null,
+        defaultProjectId: null,
+    },
+    projectNotes: [],
+    projectActiveTab: 'tasks',
+    notesCollapsed: false,
+    projectsCollapsed: false,
     currentView: 'board',
     selectedDate: format(new Date(), 'yyyy-MM-dd'),
     selectedTaskIds: new Set(),
@@ -481,6 +538,8 @@ export const useStore = create<AppState>((set, get) => ({
             set((s) => ({
                 projects: s.projects.filter((p) => p.id !== id),
             }));
+            // Refresh note groups since project_id is set to NULL on cascade
+            get().loadNoteGroups();
         } catch (e) {
             console.error('Failed to delete project:', e);
         }
@@ -490,6 +549,202 @@ export const useStore = create<AppState>((set, get) => ({
     closeProjectDialog: () => set({ projectDialog: { isOpen: false, mode: 'create', projectId: null } }),
 
     selectProject: (projectId: string) => set({ selectedProjectId: projectId, currentView: 'project' as ViewMode }),
+
+    // ─── Note Group Actions ──────────────────────────────────
+    loadNoteGroups: async () => {
+        try {
+            const noteGroups = await window.api.noteGroups.getAll();
+            set({ noteGroups });
+        } catch (e) {
+            console.error('Failed to load note groups:', e);
+        }
+    },
+
+    createNoteGroup: async (input) => {
+        try {
+            const group = await window.api.noteGroups.create(input);
+            set((s) => ({ noteGroups: [...s.noteGroups, group] }));
+            return group;
+        } catch (e) {
+            console.error('Failed to create note group:', e);
+            return null;
+        }
+    },
+
+    updateNoteGroup: async (id, updates) => {
+        try {
+            const updated = await window.api.noteGroups.update(id, updates);
+            set((s) => ({
+                noteGroups: s.noteGroups.map((g) => (g.id === id ? updated : g)),
+            }));
+        } catch (e) {
+            console.error('Failed to update note group:', e);
+        }
+    },
+
+    deleteNoteGroup: async (id) => {
+        try {
+            await window.api.noteGroups.delete(id);
+            set((s) => ({
+                noteGroups: s.noteGroups.filter((g) => g.id !== id),
+                selectedNoteGroupId: s.selectedNoteGroupId === id ? null : s.selectedNoteGroupId,
+            }));
+        } catch (e) {
+            console.error('Failed to delete note group:', e);
+        }
+    },
+
+    openNoteGroupDialog: (mode, groupId?, defaultProjectId?) =>
+        set({ noteGroupDialog: { isOpen: true, mode, groupId: groupId || null, defaultProjectId: defaultProjectId || null } }),
+    closeNoteGroupDialog: () =>
+        set({ noteGroupDialog: { isOpen: false, mode: 'create', groupId: null, defaultProjectId: null } }),
+
+    selectNoteGroup: (groupId: string) => {
+        set({ selectedNoteGroupId: groupId, currentView: 'noteGroup' as ViewMode });
+        get().loadNotesByGroup(groupId);
+    },
+
+    reorderNoteGroups: async (items) => {
+        try {
+            await window.api.noteGroups.reorder(items);
+            set((s) => {
+                const orderMap = new Map(items.map((i) => [i.id, i.order]));
+                return {
+                    noteGroups: s.noteGroups
+                        .map((g) => (orderMap.has(g.id) ? { ...g, order: orderMap.get(g.id)! } : g))
+                        .sort((a, b) => a.order - b.order),
+                };
+            });
+        } catch (e) {
+            console.error('Failed to reorder note groups:', e);
+        }
+    },
+
+    // ─── Note Actions ────────────────────────────────────────
+    loadNotesByProject: async (projectId) => {
+        try {
+            const notes = await window.api.notes.getByProject(projectId);
+            set({ projectNotes: notes });
+        } catch (e) {
+            console.error('Failed to load project notes:', e);
+        }
+    },
+
+    createProjectNote: async (projectId) => {
+        try {
+            const note = await window.api.notes.create({ projectId });
+            set((s) => ({
+                projectNotes: [...s.projectNotes, note],
+                selectedNoteId: note.id,
+                currentView: 'noteEditor' as ViewMode,
+            }));
+            return note;
+        } catch (e) {
+            console.error('Failed to create project note:', e);
+            return null;
+        }
+    },
+
+    loadNotesByGroup: async (groupId) => {
+        try {
+            const notes = await window.api.notes.getByGroup(groupId);
+            set({ currentNotes: notes });
+        } catch (e) {
+            console.error('Failed to load notes:', e);
+        }
+    },
+
+    createNote: async (groupId) => {
+        try {
+            const note = await window.api.notes.create({ groupId });
+            set((s) => ({
+                currentNotes: [...s.currentNotes, note],
+                selectedNoteId: note.id,
+                currentView: 'noteEditor' as ViewMode,
+            }));
+            return note;
+        } catch (e) {
+            console.error('Failed to create note:', e);
+            return null;
+        }
+    },
+
+    updateNote: async (id, updates) => {
+        try {
+            const updated = await window.api.notes.update(id, updates);
+            set((s) => ({
+                currentNotes: s.currentNotes.map((n) => (n.id === id ? updated : n)),
+                projectNotes: s.projectNotes.map((n) => (n.id === id ? updated : n)),
+            }));
+        } catch (e) {
+            console.error('Failed to update note:', e);
+        }
+    },
+
+    deleteNote: async (id) => {
+        try {
+            // Capture note context before deleting for smart navigation
+            const note = get().currentNotes.find((n) => n.id === id)
+                || get().projectNotes.find((n) => n.id === id);
+
+            await window.api.notes.delete(id);
+            const { selectedNoteId, selectedNoteGroupId } = get();
+
+            let viewUpdate: Record<string, any> = {};
+            if (selectedNoteId === id) {
+                if (note?.projectId && !note.groupId) {
+                    // Project note — go back to project view, notes tab
+                    viewUpdate = { selectedNoteId: null, currentView: 'project' as ViewMode };
+                    get().setProjectActiveTab('notes');
+                } else if (selectedNoteGroupId) {
+                    viewUpdate = { selectedNoteId: null, currentView: 'noteGroup' as ViewMode };
+                } else {
+                    viewUpdate = { selectedNoteId: null, currentView: 'board' as ViewMode };
+                }
+            }
+
+            set((s) => ({
+                currentNotes: s.currentNotes.filter((n) => n.id !== id),
+                projectNotes: s.projectNotes.filter((n) => n.id !== id),
+                ...viewUpdate,
+            }));
+        } catch (e) {
+            console.error('Failed to delete note:', e);
+        }
+    },
+
+    selectNote: (noteId: string) =>
+        set({ selectedNoteId: noteId, currentView: 'noteEditor' as ViewMode }),
+
+    reorderNotes: async (items) => {
+        try {
+            await window.api.notes.reorder(items);
+            set((s) => {
+                const orderMap = new Map(items.map((i) => [i.id, i.order]));
+                return {
+                    currentNotes: s.currentNotes
+                        .map((n) => (orderMap.has(n.id) ? { ...n, order: orderMap.get(n.id)! } : n))
+                        .sort((a, b) => a.order - b.order),
+                    projectNotes: s.projectNotes
+                        .map((n) => (orderMap.has(n.id) ? { ...n, order: orderMap.get(n.id)! } : n))
+                        .sort((a, b) => a.order - b.order),
+                };
+            });
+        } catch (e) {
+            console.error('Failed to reorder notes:', e);
+        }
+    },
+
+    setProjectActiveTab: (tab: 'tasks' | 'notes') => set({ projectActiveTab: tab }),
+
+    setNotesCollapsed: (collapsed: boolean) => {
+        set({ notesCollapsed: collapsed });
+        get().saveSettings();
+    },
+    setProjectsCollapsed: (collapsed: boolean) => {
+        set({ projectsCollapsed: collapsed });
+        get().saveSettings();
+    },
 
     setCurrentView: (view: ViewMode) => {
         const now = new Date();
@@ -549,6 +804,8 @@ export const useStore = create<AppState>((set, get) => ({
                 if (typeof settings.workEndHour === 'number') updates.workEndHour = settings.workEndHour;
                 if (typeof settings.timeIncrement === 'number') updates.timeIncrement = settings.timeIncrement;
                 if (typeof settings.sidebarCollapsed === 'boolean') updates.sidebarCollapsed = settings.sidebarCollapsed;
+                if (typeof settings.notesCollapsed === 'boolean') updates.notesCollapsed = settings.notesCollapsed;
+                if (typeof settings.projectsCollapsed === 'boolean') updates.projectsCollapsed = settings.projectsCollapsed;
                 set(updates);
             }
         } catch (e) {
@@ -558,12 +815,14 @@ export const useStore = create<AppState>((set, get) => ({
 
     saveSettings: async () => {
         try {
-            const { workStartHour, workEndHour, timeIncrement, sidebarCollapsed } = get();
+            const { workStartHour, workEndHour, timeIncrement, sidebarCollapsed, notesCollapsed, projectsCollapsed } = get();
             await window.api.settings.save({
                 workStartHour,
                 workEndHour,
                 timeIncrement,
                 sidebarCollapsed,
+                notesCollapsed,
+                projectsCollapsed,
             });
         } catch (e) {
             console.error('Failed to save settings:', e);
@@ -685,7 +944,7 @@ export const useStore = create<AppState>((set, get) => ({
             return filtered.filter(
                 (t) =>
                     t.title.toLowerCase().includes(q) ||
-                    t.notes.toLowerCase().includes(q) ||
+                    stripHtml(t.notes).toLowerCase().includes(q) ||
                     t.project.toLowerCase().includes(q),
             );
         }

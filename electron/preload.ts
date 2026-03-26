@@ -54,6 +54,29 @@ const api = {
         delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
         reorder: (items: { id: string; order: number }[]) => ipcRenderer.invoke('projects:reorder', items),
     },
+    noteGroups: {
+        getAll: () => ipcRenderer.invoke('noteGroups:getAll'),
+        getByProject: (projectId: string) =>
+            ipcRenderer.invoke('noteGroups:getByProject', projectId),
+        create: (input: { name: string; emoji?: string; projectId?: string }) =>
+            ipcRenderer.invoke('noteGroups:create', input),
+        update: (id: string, updates: any) =>
+            ipcRenderer.invoke('noteGroups:update', id, updates),
+        delete: (id: string) => ipcRenderer.invoke('noteGroups:delete', id),
+        reorder: (items: { id: string; order: number }[]) =>
+            ipcRenderer.invoke('noteGroups:reorder', items),
+    },
+    notes: {
+        getByGroup: (groupId: string) => ipcRenderer.invoke('notes:getByGroup', groupId),
+        getByProject: (projectId: string) => ipcRenderer.invoke('notes:getByProject', projectId),
+        getById: (id: string) => ipcRenderer.invoke('notes:getById', id),
+        create: (input: { groupId?: string; projectId?: string; title?: string; content?: string }) =>
+            ipcRenderer.invoke('notes:create', input),
+        update: (id: string, updates: any) => ipcRenderer.invoke('notes:update', id, updates),
+        delete: (id: string) => ipcRenderer.invoke('notes:delete', id),
+        reorder: (items: { id: string; order: number }[]) =>
+            ipcRenderer.invoke('notes:reorder', items),
+    },
     settings: {
         get: () => ipcRenderer.invoke('settings:get'),
         save: (settings: Record<string, any>) => ipcRenderer.invoke('settings:save', settings),

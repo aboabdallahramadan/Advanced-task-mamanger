@@ -124,3 +124,63 @@
   -webkit-app-region: no-drag;
   app-region: no-drag;
 }
+
+/* TipTap / ProseMirror editor styles */
+.ProseMirror {
+  @apply text-surface-200 text-sm leading-relaxed outline-none;
+  min-height: 300px;
+}
+.ProseMirror h1 {
+  @apply text-2xl font-bold text-surface-50 mb-3 mt-4;
+}
+.ProseMirror h2 {
+  @apply text-xl font-semibold text-surface-100 mb-2 mt-3;
+}
+.ProseMirror h3 {
+  @apply text-lg font-medium text-surface-200 mb-2 mt-3;
+}
+.ProseMirror p {
+  @apply mb-2;
+}
+.ProseMirror ul {
+  @apply list-disc pl-6 mb-2;
+}
+.ProseMirror ol {
+  @apply list-decimal pl-6 mb-2;
+}
+.ProseMirror li {
+  @apply mb-0.5;
+}
+.ProseMirror blockquote {
+  @apply border-l-4 border-accent-600/40 pl-4 italic text-surface-400 my-3;
+}
+.ProseMirror code {
+  @apply bg-surface-800 text-accent-300 px-1.5 py-0.5 rounded text-xs font-mono;
+}
+.ProseMirror pre {
+  @apply bg-surface-900 border border-surface-700/60 rounded-lg p-4 my-3 overflow-x-auto;
+}
+.ProseMirror pre code {
+  @apply bg-transparent p-0 text-surface-200;
+}
+.ProseMirror hr {
+  @apply border-surface-700/60 my-4;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  @apply text-surface-600;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.5rem;
+  margin: 0.5rem 0;
+  cursor: pointer;
+}
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid rgb(99 102 241);
+  outline-offset: 2px;
+}

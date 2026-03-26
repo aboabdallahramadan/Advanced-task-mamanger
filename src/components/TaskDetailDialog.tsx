@@ -1,4 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useEditor, EditorContent } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import { ResizableImage } from './ResizableImage';
 import { useStore } from '../store';
 import { Task, Subtask, RecurrenceFrequency, RecurrenceEndType } from '../types';
 import {
@@ -17,6 +21,10 @@ import {
     Check,
     ListTodo,
     Repeat,
+    Bold,
+    Italic,
+    Strikethrough,
+    ImagePlus,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { format } from 'date-fns';
@@ -59,7 +67,6 @@ export function TaskDetailDialog() {
 
     // Form state
     const [title, setTitle] = useState('');
-    const [notes, setNotes] = useState('');
     const [project, setProject] = useState('');
     const [plannedDate, setPlannedDate] = useState('');
     const [durationMinutes, setDurationMinutes] = useState(30);
@@ -82,6 +89,35 @@ export function TaskDetailDialog() {
     const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
     const [recurrenceActionDialog, setRecurrenceActionDialog] = useState<{ mode: 'edit' | 'delete'; pendingData?: Partial<Task> } | null>(null);
 
+    const descriptionEditor = useEditor({
+        extensions: [
+            StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+            Placeholder.configure({ placeholder: 'Add notes, details, or context...' }),
+            ResizableImage.configure({ inline: false, allowBase64: true }),
+        ],
+        content: '',
+        editorProps: {
+            attributes: {
+                class: 'focus:outline-none min-h-[60px] max-h-[150px] overflow-y-auto px-4 py-2.5 text-sm text-surface-100',
+            },
+        },
+    });
+
+    const handleInsertDescriptionImage = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                descriptionEditor?.chain().focus().setImage({ src: reader.result as string }).run();
+            };
+            reader.readAsDataURL(file);
+        };
+        input.click();
+    };
 
     // Populate form on open
     useEffect(() => {
@@ -91,7 +127,7 @@ export function TaskDetailDialog() {
             const task = tasks.find(t => t.id === taskDialog.taskId);
             if (task) {
                 setTitle(task.title);
-                setNotes(task.notes || '');
+                setTimeout(() => descriptionEditor?.commands.setContent(task.notes || ''), 0);
                 setProject(task.project || '');
                 setPlannedDate(task.plannedDate || '');
                 setDurationMinutes(task.durationMinutes || 30);
@@ -119,7 +155,7 @@ export function TaskDetailDialog() {
         } else {
             // Create mode — reset form
             setTitle('');
-            setNotes('');
+            setTimeout(() => descriptionEditor?.commands.setContent(''), 0);
             setProject('');
             setPlannedDate(selectedDate);
             setDurationMinutes(30);
@@ -177,7 +213,7 @@ export function TaskDetailDialog() {
 
         const taskData: Partial<Task> = {
             title: title.trim(),
-            notes,
+            notes: descriptionEditor?.getHTML() || '',
             project,
             plannedDate: plannedDate || null,
             durationMinutes,
@@ -321,15 +357,58 @@ export function TaskDetailDialog() {
                         <label className="block text-xs font-semibold uppercase tracking-wider text-surface-400 mb-2">
                             Description
                         </label>
-                        <textarea
-                            dir={getTextDirection(notes)}
-                            style={getDirectionStyle(notes)}
-                            value={notes}
-                            onChange={(e) => setNotes(e.target.value)}
-                            placeholder="Add notes, details, or context..."
-                            rows={3}
-                            className="w-full px-4 py-2.5 bg-surface-950 border border-surface-700/60 rounded-xl text-surface-100 placeholder-surface-600 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all resize-none"
-                        />
+                        <div className="bg-surface-950 border border-surface-700/60 rounded-xl focus-within:border-accent-500/50 focus-within:ring-1 focus-within:ring-accent-500/20 transition-all overflow-hidden">
+                            {descriptionEditor && (
+                                <div className="flex items-center gap-0.5 px-3 py-1.5 border-b border-surface-800/40">
+                                    <MiniToolbarButton
+                                        onClick={() => descriptionEditor.chain().focus().toggleBold().run()}
+                                        active={descriptionEditor.isActive('bold')}
+                                        title="Bold"
+                                    >
+                                        <Bold className="w-3 h-3" />
+                                    </MiniToolbarButton>
+                                    <MiniToolbarButton
+                                        onClick={() => descriptionEditor.chain().focus().toggleItalic().run()}
+                                        active={descriptionEditor.isActive('italic')}
+                                        title="Italic"
+                                    >
+                                        <Italic className="w-3 h-3" />
+                                    </MiniToolbarButton>
+                                    <MiniToolbarButton
+                                        onClick={() => descriptionEditor.chain().focus().toggleStrike().run()}
+                                        active={descriptionEditor.isActive('strike')}
+                                        title="Strikethrough"
+                                    >
+                                        <Strikethrough className="w-3 h-3" />
+                                    </MiniToolbarButton>
+                                    <div className="w-px h-3 bg-surface-700 mx-1" />
+                                    <MiniToolbarButton
+                                        onClick={handleInsertDescriptionImage}
+                                        active={false}
+                                        title="Insert image"
+                                    >
+                                        <ImagePlus className="w-3 h-3" />
+                                    </MiniToolbarButton>
+                                    {descriptionEditor.isActive('image') && (
+                                        <>
+                                            <div className="w-px h-3 bg-surface-700 mx-1" />
+                                            {['25%', '50%', '75%', '100%'].map((size) => (
+                                                <button
+                                                    key={size}
+                                                    type="button"
+                                                    onClick={() => descriptionEditor.chain().focus().updateAttributes('image', { width: size }).run()}
+                                                    className="px-1 py-0.5 text-2xs rounded text-surface-400 hover:text-surface-100 hover:bg-surface-700/50 transition-colors"
+                                                    title={`Resize to ${size}`}
+                                                >
+                                                    {size}
+                                                </button>
+                                            ))}
+                                        </>
+                                    )}
+                                </div>
+                            )}
+                            <EditorContent editor={descriptionEditor} />
+                        </div>
                     </div>
 
                     {/* Subtasks (edit mode only) */}
@@ -747,5 +826,33 @@ export function TaskDetailDialog() {
                 />
             )}
         </div>
+    );
+}
+
+function MiniToolbarButton({
+    onClick,
+    active,
+    title,
+    children,
+}: {
+    onClick: () => void;
+    active: boolean;
+    title: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            title={title}
+            className={clsx(
+                'p-1 rounded transition-colors',
+                active
+                    ? 'bg-accent-600/30 text-accent-300'
+                    : 'text-surface-400 hover:text-surface-200 hover:bg-surface-700/50',
+            )}
+        >
+            {children}
+        </button>
     );
 }
