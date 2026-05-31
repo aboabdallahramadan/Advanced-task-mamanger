@@ -30,6 +30,9 @@ import { TaskService } from './taskService';
 import { ProjectService } from './projectService';
 import { NoteService } from './noteService';
 import { seedDemoData } from './seed';
+import { FocusSessionService } from './focusSessionService';
+import { DailyPlanService } from './dailyPlanService';
+import { ReportService } from './reportService';
 
 let mainWindow: BrowserWindow | null = null;
 let focusWidget: BrowserWindow | null = null;
@@ -37,6 +40,9 @@ let tray: Tray | null = null;
 let taskService: TaskService;
 let projectService: ProjectService;
 let noteService: NoteService;
+let focusSessionService: FocusSessionService;
+let dailyPlanService: DailyPlanService;
+let reportService: ReportService;
 const notifiedTaskIds = new Set<string>();
 
 function createFocusWidget() {
@@ -99,6 +105,9 @@ if (!gotTheLock) {
         taskService = new TaskService(getDatabase());
         projectService = new ProjectService(getDatabase());
         noteService = new NoteService(getDatabase());
+        focusSessionService = new FocusSessionService(getDatabase());
+        dailyPlanService = new DailyPlanService(getDatabase());
+        reportService = new ReportService(getDatabase());
 
         // Seed demo data if empty
         const tasks = taskService.getAll();
@@ -673,6 +682,23 @@ function registerIpcHandlers() {
             console.error('Export failed:', err);
             return { success: false, error: err.message };
         }
+    });
+
+    // ─── Planning & Reports IPC Handlers ─────────────────────
+    ipcMain.handle('focusSessions:add', (_e: any, input: any) => {
+        return focusSessionService.add(input);
+    });
+
+    ipcMain.handle('dailyPlans:upsert', (_e: any, input: any) => {
+        return dailyPlanService.upsert(input);
+    });
+
+    ipcMain.handle('dailyPlans:get', (_e: any, date: string) => {
+        return dailyPlanService.get(date);
+    });
+
+    ipcMain.handle('reports:getData', (_e: any, start: string, end: string) => {
+        return reportService.getData(start, end);
     });
 
     ipcMain.handle('data:import', async () => {

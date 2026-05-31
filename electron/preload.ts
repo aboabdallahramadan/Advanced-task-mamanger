@@ -123,6 +123,24 @@ const api = {
     hideWidget: () => ipcRenderer.send('focus:hideWidget'),
     sendWidgetState: (data: any) => ipcRenderer.send('focus:widgetState', data),
   },
+  focusSessions: {
+    add: (session: {
+      taskId: string | null;
+      project: string;
+      startedAt: string;
+      endedAt: string;
+      minutes: number;
+      date: string;
+    }) => ipcRenderer.invoke('focusSessions:add', session),
+  },
+  dailyPlans: {
+    upsert: (plan: { date: string; plannedTaskIds: string[]; plannedMinutes: number }) =>
+      ipcRenderer.invoke('dailyPlans:upsert', plan),
+    get: (date: string) => ipcRenderer.invoke('dailyPlans:get', date),
+  },
+  reports: {
+    getData: (start: string, end: string) => ipcRenderer.invoke('reports:getData', start, end),
+  },
   on: (channel: string, callback: (...args: any[]) => void) => {
     ipcRenderer.on(channel, (_e, ...args) => callback(...args));
   },
