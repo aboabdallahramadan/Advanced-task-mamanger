@@ -1,4 +1,4 @@
-import { Database } from 'sql.js';
+import { Database as SqlJsDatabase } from 'sql.js';
 import { saveDatabase } from './database';
 
 export interface DailyPlanInput {
@@ -8,7 +8,7 @@ export interface DailyPlanInput {
 }
 
 export class DailyPlanService {
-    constructor(private db: Database) {}
+    constructor(private db: SqlJsDatabase) {}
 
     upsert(input: DailyPlanInput) {
         const now = new Date().toISOString();

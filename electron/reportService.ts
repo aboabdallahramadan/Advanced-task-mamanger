@@ -1,7 +1,7 @@
-import { Database } from 'sql.js';
+import { Database as SqlJsDatabase } from 'sql.js';
 
 export class ReportService {
-    constructor(private db: Database) {}
+    constructor(private db: SqlJsDatabase) {}
 
     private query(sql: string, params: any[] = []): any[] {
         const stmt = this.db.prepare(sql);

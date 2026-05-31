@@ -1,4 +1,4 @@
-import { Database } from 'sql.js';
+import { Database as SqlJsDatabase } from 'sql.js';
 import { v4 as uuid } from 'uuid';
 import { saveDatabase } from './database';
 
@@ -12,7 +12,7 @@ export interface FocusSessionInput {
 }
 
 export class FocusSessionService {
-    constructor(private db: Database) {}
+    constructor(private db: SqlJsDatabase) {}
 
     add(input: FocusSessionInput) {
         const id = uuid();
