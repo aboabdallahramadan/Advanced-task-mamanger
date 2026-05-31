@@ -66,4 +66,12 @@ describe('summarize', () => {
         expect(s.delta.focusMinutes).toBe(105); // 135 - 30
         expect(s.delta.completionRate).toBeNull(); // previous had no plan
     });
+    it('returns topProject=null and topProjectMinutes=0 when sessions is empty', () => {
+        const empty: ReportData = { completedTasks: [], sessions: [], dailyPlans: [] };
+        const s = summarize(empty, empty);
+        expect(s.topProject).toBeNull();
+        expect(s.topProjectMinutes).toBe(0);
+        expect(s.focusMinutes).toBe(0);
+        expect(s.completed).toBe(0);
+    });
 });
