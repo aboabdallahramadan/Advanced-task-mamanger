@@ -6,38 +6,38 @@ let db: SqlJsDatabase;
 let dbPath: string;
 
 export async function initDatabase(filePath: string): Promise<void> {
-    dbPath = filePath;
-    const SQL = await initSqlJs();
+  dbPath = filePath;
+  const SQL = await initSqlJs();
 
-    if (fs.existsSync(dbPath)) {
-        const fileBuffer = fs.readFileSync(dbPath);
-        db = new SQL.Database(fileBuffer);
-    } else {
-        db = new SQL.Database();
-    }
+  if (fs.existsSync(dbPath)) {
+    const fileBuffer = fs.readFileSync(dbPath);
+    db = new SQL.Database(fileBuffer);
+  } else {
+    db = new SQL.Database();
+  }
 
-    db.run('PRAGMA journal_mode = WAL;');
-    db.run('PRAGMA foreign_keys = ON;');
-    runMigrations();
-    saveDatabase();
+  db.run('PRAGMA journal_mode = WAL;');
+  db.run('PRAGMA foreign_keys = ON;');
+  runMigrations();
+  saveDatabase();
 }
 
 export function getDatabase(): SqlJsDatabase {
-    if (!db) throw new Error('Database not initialized. Call initDatabase first.');
-    return db;
+  if (!db) throw new Error('Database not initialized. Call initDatabase first.');
+  return db;
 }
 
 export function saveDatabase(): void {
-    if (!db || !dbPath) return;
-    const data = db.export();
-    const buffer = Buffer.from(data);
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(dbPath, buffer);
+  if (!db || !dbPath) return;
+  const data = db.export();
+  const buffer = Buffer.from(data);
+  const dir = path.dirname(dbPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(dbPath, buffer);
 }
 
 function runMigrations(): void {
-    db.run(`
+  db.run(`
     CREATE TABLE IF NOT EXISTS migrations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
@@ -45,41 +45,41 @@ function runMigrations(): void {
     );
   `);
 
-    const applied = new Set<string>();
-    const result = db.exec('SELECT name FROM migrations');
-    if (result.length > 0) {
-        for (const row of result[0].values) {
-            applied.add(row[0] as string);
-        }
+  const applied = new Set<string>();
+  const result = db.exec('SELECT name FROM migrations');
+  if (result.length > 0) {
+    for (const row of result[0].values) {
+      applied.add(row[0] as string);
     }
+  }
 
-    for (const migration of migrations) {
-        if (!applied.has(migration.name)) {
-            db.run('BEGIN TRANSACTION;');
-            try {
-                // sql.js doesn't support multiple statements in one run, split them
-                const statements = migration.sql
-                    .split(';')
-                    .map((s) => s.trim())
-                    .filter((s) => s.length > 0);
-                for (const stmt of statements) {
-                    db.run(stmt + ';');
-                }
-                db.run('INSERT INTO migrations (name) VALUES (?);', [migration.name]);
-                db.run('COMMIT;');
-                console.log(`Applied migration: ${migration.name}`);
-            } catch (e) {
-                db.run('ROLLBACK;');
-                throw e;
-            }
+  for (const migration of migrations) {
+    if (!applied.has(migration.name)) {
+      db.run('BEGIN TRANSACTION;');
+      try {
+        // sql.js doesn't support multiple statements in one run, split them
+        const statements = migration.sql
+          .split(';')
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0);
+        for (const stmt of statements) {
+          db.run(stmt + ';');
         }
+        db.run('INSERT INTO migrations (name) VALUES (?);', [migration.name]);
+        db.run('COMMIT;');
+        console.log(`Applied migration: ${migration.name}`);
+      } catch (e) {
+        db.run('ROLLBACK;');
+        throw e;
+      }
     }
+  }
 }
 
 const migrations = [
-    {
-        name: '001_create_tasks',
-        sql: `
+  {
+    name: '001_create_tasks',
+    sql: `
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -102,16 +102,16 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_tasks_planned_date ON tasks(planned_date);
       CREATE INDEX IF NOT EXISTS idx_tasks_scheduled ON tasks(scheduled_start, scheduled_end)
     `,
-    },
-    {
-        name: '002_add_actual_time',
-        sql: `
+  },
+  {
+    name: '002_add_actual_time',
+    sql: `
       ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0;
         `,
-    },
-    {
-        name: '003_create_projects',
-        sql: `
+  },
+  {
+    name: '003_create_projects',
+    sql: `
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -123,16 +123,16 @@ const migrations = [
       );
       CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)
         `,
-    },
-    {
-        name: '004_add_priority',
-        sql: `
+  },
+  {
+    name: '004_add_priority',
+    sql: `
       ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT NULL CHECK (priority IS NULL OR priority IN (1, 2, 3, 4))
         `,
-    },
-    {
-        name: '005_create_subtasks',
-        sql: `
+  },
+  {
+    name: '005_create_subtasks',
+    sql: `
       CREATE TABLE IF NOT EXISTS subtasks (
         id TEXT PRIMARY KEY,
         task_id TEXT NOT NULL,
@@ -144,14 +144,14 @@ const migrations = [
       );
       CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id)
         `,
-    },
-    {
-        name: '006_add_reminder_minutes',
-        sql: `ALTER TABLE tasks ADD COLUMN reminder_minutes INTEGER DEFAULT 0`,
-    },
-    {
-        name: '007_add_recurrence',
-        sql: `
+  },
+  {
+    name: '006_add_reminder_minutes',
+    sql: `ALTER TABLE tasks ADD COLUMN reminder_minutes INTEGER DEFAULT 0`,
+  },
+  {
+    name: '007_add_recurrence',
+    sql: `
       CREATE TABLE IF NOT EXISTS recurrence_rules (
         id TEXT PRIMARY KEY,
         frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly')),
@@ -178,10 +178,10 @@ const migrations = [
       ALTER TABLE tasks ADD COLUMN recurrence_original_date TEXT;
       CREATE INDEX IF NOT EXISTS idx_tasks_recurrence_rule ON tasks(recurrence_rule_id)
         `,
-    },
-    {
-        name: '008_create_notes',
-        sql: `
+  },
+  {
+    name: '008_create_notes',
+    sql: `
       CREATE TABLE IF NOT EXISTS note_groups (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
@@ -205,10 +205,10 @@ const migrations = [
       );
       CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id)
         `,
-    },
-    {
-        name: '009_notes_project_id',
-        sql: `
+  },
+  {
+    name: '009_notes_project_id',
+    sql: `
       CREATE TABLE IF NOT EXISTS notes_new (
         id TEXT PRIMARY KEY,
         group_id TEXT DEFAULT NULL,
@@ -228,9 +228,9 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id);
       CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id)
         `,
-    },
-    {
-        name: '010_add_project_actual_time',
-        sql: `ALTER TABLE projects ADD COLUMN actual_time_minutes INTEGER DEFAULT 0`,
-    },
+  },
+  {
+    name: '010_add_project_actual_time',
+    sql: `ALTER TABLE projects ADD COLUMN actual_time_minutes INTEGER DEFAULT 0`,
+  },
 ];

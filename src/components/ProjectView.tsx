@@ -2,657 +2,681 @@ import React, { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { Task } from '../types';
 import {
-    Check,
-    Plus,
-    Settings,
-    Clock,
-    Calendar,
-    Play,
-    Pause,
-    Timer,
-    ArrowLeft,
-    CheckCircle2,
-    GripVertical,
-    FileText,
-    StickyNote,
-    Search,
-    X,
+  Check,
+  Plus,
+  Settings,
+  Clock,
+  Calendar,
+  Play,
+  Pause,
+  Timer,
+  ArrowLeft,
+  CheckCircle2,
+  GripVertical,
+  FileText,
+  StickyNote,
+  Search,
+  X,
 } from 'lucide-react';
 
 function stripHtml(html: string): string {
-    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 import { clsx } from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { getTextDirection, getDirectionStyle } from '../useTextDirection';
 import { getPriorityBorderStyle } from '../priorityUtils';
 import {
-    DndContext,
-    DragOverlay,
-    closestCenter,
-    KeyboardSensor,
-    PointerSensor,
-    useSensor,
-    useSensors,
-    type DragStartEvent,
-    type DragEndEvent,
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
 } from '@dnd-kit/core';
 import {
-    SortableContext,
-    verticalListSortingStrategy,
-    rectSortingStrategy,
-    sortableKeyboardCoordinates,
-    useSortable,
+  SortableContext,
+  verticalListSortingStrategy,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { NoteCard } from './NoteCard';
 
 export function ProjectView() {
-    const {
-        tasks,
-        projects,
-        selectedProjectId,
-        updateTask,
-        markDone,
-        openTaskDialog,
-        openProjectDialog,
-        startFocusSession,
-        startProjectFocus,
-        pauseFocusSession,
-        isProjectFocused,
-        focusMode,
-        setCurrentView,
-        createTask,
-        reorderTasks,
-        noteGroups,
-        selectNoteGroup,
-        openNoteGroupDialog,
-        projectActiveTab,
-        setProjectActiveTab,
-    } = useStore();
+  const {
+    tasks,
+    projects,
+    selectedProjectId,
+    updateTask,
+    markDone,
+    openTaskDialog,
+    openProjectDialog,
+    startFocusSession,
+    startProjectFocus,
+    pauseFocusSession,
+    isProjectFocused,
+    focusMode,
+    setCurrentView,
+    createTask,
+    reorderTasks,
+    noteGroups,
+    selectNoteGroup,
+    openNoteGroupDialog,
+    projectActiveTab,
+    setProjectActiveTab,
+  } = useStore();
 
-    const activeTab = projectActiveTab;
-    const setActiveTab = setProjectActiveTab;
-    const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const activeTab = projectActiveTab;
+  const setActiveTab = setProjectActiveTab;
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
 
-    const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-        useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-    );
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
-    const project = projects.find(p => p.id === selectedProjectId);
+  const project = projects.find((p) => p.id === selectedProjectId);
 
-    const projectTasks = useMemo(() => {
-        if (!project) return [];
-        let result = tasks
-            .filter(t => t.project === project.name && t.status !== 'archived')
-            .sort((a, b) => {
-                // Sort: active first, then done; within each group by order
-                if (a.status === 'done' && b.status !== 'done') return 1;
-                if (a.status !== 'done' && b.status === 'done') return -1;
-                return a.order - b.order;
-            });
+  const projectTasks = useMemo(() => {
+    if (!project) return [];
+    let result = tasks
+      .filter((t) => t.project === project.name && t.status !== 'archived')
+      .sort((a, b) => {
+        // Sort: active first, then done; within each group by order
+        if (a.status === 'done' && b.status !== 'done') return 1;
+        if (a.status !== 'done' && b.status === 'done') return -1;
+        return a.order - b.order;
+      });
 
-        // Collapse recurring instances: show only the next upcoming per recurrence rule
-        const today = format(new Date(), 'yyyy-MM-dd');
-        const bestByRule = new Map<string, Task>();
-        const nonRecurring: Task[] = [];
-        for (const t of result) {
-            if (!t.recurrenceRuleId) {
-                nonRecurring.push(t);
-                continue;
-            }
-            const existing = bestByRule.get(t.recurrenceRuleId);
-            if (!existing) {
-                bestByRule.set(t.recurrenceRuleId, t);
-                continue;
-            }
-            const tIsUpcoming = t.plannedDate ? t.plannedDate >= today : false;
-            const eIsUpcoming = existing.plannedDate ? existing.plannedDate >= today : false;
-            if (tIsUpcoming && !eIsUpcoming) {
-                bestByRule.set(t.recurrenceRuleId, t);
-            } else if (tIsUpcoming && eIsUpcoming && t.plannedDate! < existing.plannedDate!) {
-                bestByRule.set(t.recurrenceRuleId, t);
-            } else if (!tIsUpcoming && !eIsUpcoming && t.plannedDate! > existing.plannedDate!) {
-                bestByRule.set(t.recurrenceRuleId, t);
-            }
-        }
-        result = [...nonRecurring, ...bestByRule.values()];
-
-        return result;
-    }, [tasks, project]);
-
-    const activeTasks = projectTasks.filter(t => t.status !== 'done');
-    const doneTasks = projectTasks.filter(t => t.status === 'done');
-    const [showDone, setShowDone] = React.useState(false);
-
-    const totalPlanned = activeTasks.reduce((s, t) => s + (t.durationMinutes || 0), 0);
-    const totalActual = projectTasks.reduce((s, t) => s + (t.actualTimeMinutes || 0), 0);
-
-    // Quick add
-    const [quickAddText, setQuickAddText] = React.useState('');
-    const quickAddRef = React.useRef<HTMLInputElement>(null);
-
-    if (!project) {
-        return (
-            <div className="flex-1 flex items-center justify-center text-surface-500">
-                <p>Project not found</p>
-            </div>
-        );
+    // Collapse recurring instances: show only the next upcoming per recurrence rule
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const bestByRule = new Map<string, Task>();
+    const nonRecurring: Task[] = [];
+    for (const t of result) {
+      if (!t.recurrenceRuleId) {
+        nonRecurring.push(t);
+        continue;
+      }
+      const existing = bestByRule.get(t.recurrenceRuleId);
+      if (!existing) {
+        bestByRule.set(t.recurrenceRuleId, t);
+        continue;
+      }
+      const tIsUpcoming = t.plannedDate ? t.plannedDate >= today : false;
+      const eIsUpcoming = existing.plannedDate ? existing.plannedDate >= today : false;
+      if (tIsUpcoming && !eIsUpcoming) {
+        bestByRule.set(t.recurrenceRuleId, t);
+      } else if (tIsUpcoming && eIsUpcoming && t.plannedDate! < existing.plannedDate!) {
+        bestByRule.set(t.recurrenceRuleId, t);
+      } else if (!tIsUpcoming && !eIsUpcoming && t.plannedDate! > existing.plannedDate!) {
+        bestByRule.set(t.recurrenceRuleId, t);
+      }
     }
+    result = [...nonRecurring, ...bestByRule.values()];
 
-    const handleDragStart = (event: DragStartEvent) => {
-        const task = activeTasks.find((t) => t.id === event.active.id);
-        if (task) setActiveTask(task);
-    };
+    return result;
+  }, [tasks, project]);
 
-    const handleDragEnd = (event: DragEndEvent) => {
-        setActiveTask(null);
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
+  const activeTasks = projectTasks.filter((t) => t.status !== 'done');
+  const doneTasks = projectTasks.filter((t) => t.status === 'done');
+  const [showDone, setShowDone] = React.useState(false);
 
-        const oldIndex = activeTasks.findIndex((t) => t.id === active.id);
-        const newIndex = activeTasks.findIndex((t) => t.id === over.id);
-        if (oldIndex === -1 || newIndex === -1) return;
+  const totalPlanned = activeTasks.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+  const totalActual = projectTasks.reduce((s, t) => s + (t.actualTimeMinutes || 0), 0);
 
-        const reordered = [...activeTasks];
-        const [moved] = reordered.splice(oldIndex, 1);
-        reordered.splice(newIndex, 0, moved);
+  // Quick add
+  const [quickAddText, setQuickAddText] = React.useState('');
+  const quickAddRef = React.useRef<HTMLInputElement>(null);
 
-        const updates = reordered.map((t, i) => ({ id: t.id, order: i }));
-        reorderTasks(updates);
-    };
-
-    const handleQuickAdd = () => {
-        if (quickAddText.trim() && project) {
-            createTask({
-                title: quickAddText.trim(),
-                project: project.name,
-                status: 'planned',
-            });
-            setQuickAddText('');
-        }
-    };
-
+  if (!project) {
     return (
-        <div className="flex-1 flex flex-col h-full bg-surface-950">
-            {/* Header */}
-            <div className="px-6 pt-10 pb-4 border-b border-surface-800/40">
-                {/* Back + Title */}
-                <div className="flex items-center gap-3 mb-3">
-                    <button
-                        onClick={() => setCurrentView('board')}
-                        className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
-                    >
-                        <ArrowLeft className="w-4 h-4" />
-                    </button>
-                    <div className="flex items-center gap-3 flex-1">
-                        <span className="text-2xl">{project.emoji}</span>
-                        <div>
-                            <h1 dir={getTextDirection(project.name)} style={getDirectionStyle(project.name)} className="text-xl font-bold text-surface-100">{project.name}</h1>
-                            <p className="text-xs text-surface-500">
-                                {activeTasks.length} active · {doneTasks.length} completed
-                            </p>
-                        </div>
-                        <div
-                            className="w-3 h-3 rounded-full ml-1"
-                            style={{ backgroundColor: project.color }}
-                        />
-                    </div>
-                    <button
-                        onClick={() => {
-                            if (isProjectFocused(project.id) && focusMode.isPlaying) {
-                                pauseFocusSession();
-                            } else {
-                                startProjectFocus(project.id);
-                            }
-                        }}
-                        className={clsx(
-                            "p-2 rounded-lg transition-all",
-                            isProjectFocused(project.id) && focusMode.isPlaying
-                                ? "bg-accent-500 text-white animate-pulse shadow-glow"
-                                : isProjectFocused(project.id)
-                                ? "bg-accent-600/30 text-accent-300"
-                                : "text-surface-400 hover:text-accent-400 hover:bg-surface-800/60"
-                        )}
-                        title={
-                            isProjectFocused(project.id) && focusMode.isPlaying
-                                ? "Pause project focus"
-                                : isProjectFocused(project.id)
-                                ? "Resume project focus"
-                                : "Focus on this project"
-                        }
-                    >
-                        {isProjectFocused(project.id) && focusMode.isPlaying
-                            ? <Pause className="w-4 h-4" />
-                            : <Play className="w-4 h-4" />}
-                    </button>
-                    <button
-                        onClick={() => openProjectDialog('edit', project.id)}
-                        className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
-                        title="Edit project"
-                    >
-                        <Settings className="w-4 h-4" />
-                    </button>
-                </div>
-
-                {/* Stats bar */}
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2 text-xs text-surface-400">
-                        <Clock className="w-3.5 h-3.5" />
-                        <span>
-                            {Math.floor(totalPlanned / 60)}h {totalPlanned % 60}m planned
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-surface-400">
-                        <Play className="w-3.5 h-3.5" />
-                        <span>
-                            {Math.floor(totalActual / 60)}h {totalActual % 60}m tracked
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-surface-400">
-                        <Timer className="w-3.5 h-3.5" />
-                        <span>
-                            {Math.floor((project.actualTimeMinutes || 0) / 60)}h {(project.actualTimeMinutes || 0) % 60}m focused
-                        </span>
-                    </div>
-                    {activeTasks.length > 0 && (
-                        <div className="flex-1 max-w-[200px]">
-                            <div className="h-1.5 w-full bg-surface-800 rounded-full overflow-hidden">
-                                <div
-                                    className="h-full rounded-full transition-all"
-                                    style={{
-                                        width: `${Math.min(100, (doneTasks.length / (activeTasks.length + doneTasks.length)) * 100)}%`,
-                                        backgroundColor: project.color,
-                                    }}
-                                />
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Tabs */}
-                <div className="flex items-center gap-4 mt-3">
-                    <button
-                        onClick={() => setActiveTab('tasks')}
-                        className={clsx(
-                            'text-sm font-medium pb-1 border-b-2 transition-colors',
-                            activeTab === 'tasks'
-                                ? 'border-accent-500 text-accent-400'
-                                : 'border-transparent text-surface-500 hover:text-surface-300',
-                        )}
-                    >
-                        Tasks
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('notes')}
-                        className={clsx(
-                            'text-sm font-medium pb-1 border-b-2 transition-colors',
-                            activeTab === 'notes'
-                                ? 'border-accent-500 text-accent-400'
-                                : 'border-transparent text-surface-500 hover:text-surface-300',
-                        )}
-                    >
-                        Notes
-                    </button>
-                </div>
-            </div>
-
-            {activeTab === 'notes' ? (
-                <ProjectNotesTab projectId={project.id} />
-            ) : (
-            <>
-            {/* Quick Add */}
-            <div className="px-6 py-3 border-b border-surface-800/20">
-                <div className="flex items-center gap-2">
-                    <Plus className="w-4 h-4 text-surface-500" />
-                    <input
-                        ref={quickAddRef}
-                        type="text"
-                        dir={getTextDirection(quickAddText)}
-                        style={getDirectionStyle(quickAddText)}
-                        value={quickAddText}
-                        onChange={(e) => setQuickAddText(e.target.value)}
-                        onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleQuickAdd();
-                        }}
-                        placeholder={`Add task to ${project.name}...`}
-                        className="flex-1 bg-transparent text-sm text-surface-100 placeholder-surface-600 outline-none"
-                    />
-                </div>
-            </div>
-
-            {/* Task List */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-                {projectTasks.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-64 text-center">
-                        <span className="text-4xl mb-3">{project.emoji}</span>
-                        <h3 className="text-sm font-medium text-surface-400">No tasks in this project</h3>
-                        <p className="text-xs text-surface-500 mt-1">Add a task above to get started</p>
-                    </div>
-                ) : (
-                    <>
-                        {/* Active tasks */}
-                        <DndContext
-                            sensors={sensors}
-                            collisionDetection={closestCenter}
-                            onDragStart={handleDragStart}
-                            onDragEnd={handleDragEnd}
-                        >
-                            <SortableContext items={activeTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-                                <div className="space-y-1">
-                                    {activeTasks.map(task => (
-                                        <ProjectTaskRow
-                                            key={task.id}
-                                            task={task}
-                                            projectColor={project.color}
-                                            onToggleDone={() => markDone(task.id)}
-                                            onClick={() => openTaskDialog('edit', task.id)}
-                                            onStartTimer={() => startFocusSession(task.id)}
-                                            isFocused={focusMode.targetType === 'task' && focusMode.targetId === task.id}
-                                        />
-                                    ))}
-                                </div>
-                            </SortableContext>
-
-                            <DragOverlay dropAnimation={null}>
-                                {activeTask && (
-                                    <ProjectTaskRow
-                                        task={activeTask}
-                                        projectColor={project.color}
-                                        onToggleDone={() => {}}
-                                        onClick={() => {}}
-                                        onStartTimer={() => {}}
-                                        isFocused={false}
-                                        isDragOverlay
-                                    />
-                                )}
-                            </DragOverlay>
-                        </DndContext>
-
-                        {/* Done tasks */}
-                        {doneTasks.length > 0 && (
-                            <div className="mt-6">
-                                <button
-                                    onClick={() => setShowDone(!showDone)}
-                                    className="flex items-center gap-2 text-xs text-surface-500 hover:text-surface-300 mb-2 transition-colors"
-                                >
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>{doneTasks.length} completed</span>
-                                    <span className="text-surface-600">{showDone ? '▾' : '▸'}</span>
-                                </button>
-                                {showDone && (
-                                    <div className="space-y-1 animate-fade-in">
-                                        {doneTasks.map(task => (
-                                            <ProjectTaskRow
-                                                key={task.id}
-                                                task={task}
-                                                projectColor={project.color}
-                                                onToggleDone={() => updateTask(task.id, { status: 'planned' })}
-                                                onClick={() => openTaskDialog('edit', task.id)}
-                                                onStartTimer={() => { }}
-                                                isFocused={false}
-                                            />
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </>
-                )}
-            </div>
-            </>
-            )}
-        </div>
+      <div className="flex-1 flex items-center justify-center text-surface-500">
+        <p>Project not found</p>
+      </div>
     );
+  }
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const task = activeTasks.find((t) => t.id === event.active.id);
+    if (task) setActiveTask(task);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveTask(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = activeTasks.findIndex((t) => t.id === active.id);
+    const newIndex = activeTasks.findIndex((t) => t.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = [...activeTasks];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+
+    const updates = reordered.map((t, i) => ({ id: t.id, order: i }));
+    reorderTasks(updates);
+  };
+
+  const handleQuickAdd = () => {
+    if (quickAddText.trim() && project) {
+      createTask({
+        title: quickAddText.trim(),
+        project: project.name,
+        status: 'planned',
+      });
+      setQuickAddText('');
+    }
+  };
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-surface-950">
+      {/* Header */}
+      <div className="px-6 pt-10 pb-4 border-b border-surface-800/40">
+        {/* Back + Title */}
+        <div className="flex items-center gap-3 mb-3">
+          <button
+            onClick={() => setCurrentView('board')}
+            className="p-1.5 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-3 flex-1">
+            <span className="text-2xl">{project.emoji}</span>
+            <div>
+              <h1
+                dir={getTextDirection(project.name)}
+                style={getDirectionStyle(project.name)}
+                className="text-xl font-bold text-surface-100"
+              >
+                {project.name}
+              </h1>
+              <p className="text-xs text-surface-500">
+                {activeTasks.length} active · {doneTasks.length} completed
+              </p>
+            </div>
+            <div className="w-3 h-3 rounded-full ml-1" style={{ backgroundColor: project.color }} />
+          </div>
+          <button
+            onClick={() => {
+              if (isProjectFocused(project.id) && focusMode.isPlaying) {
+                pauseFocusSession();
+              } else {
+                startProjectFocus(project.id);
+              }
+            }}
+            className={clsx(
+              'p-2 rounded-lg transition-all',
+              isProjectFocused(project.id) && focusMode.isPlaying
+                ? 'bg-accent-500 text-white animate-pulse shadow-glow'
+                : isProjectFocused(project.id)
+                  ? 'bg-accent-600/30 text-accent-300'
+                  : 'text-surface-400 hover:text-accent-400 hover:bg-surface-800/60',
+            )}
+            title={
+              isProjectFocused(project.id) && focusMode.isPlaying
+                ? 'Pause project focus'
+                : isProjectFocused(project.id)
+                  ? 'Resume project focus'
+                  : 'Focus on this project'
+            }
+          >
+            {isProjectFocused(project.id) && focusMode.isPlaying ? (
+              <Pause className="w-4 h-4" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+          </button>
+          <button
+            onClick={() => openProjectDialog('edit', project.id)}
+            className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
+            title="Edit project"
+          >
+            <Settings className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Stats bar */}
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-2 text-xs text-surface-400">
+            <Clock className="w-3.5 h-3.5" />
+            <span>
+              {Math.floor(totalPlanned / 60)}h {totalPlanned % 60}m planned
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-surface-400">
+            <Play className="w-3.5 h-3.5" />
+            <span>
+              {Math.floor(totalActual / 60)}h {totalActual % 60}m tracked
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-surface-400">
+            <Timer className="w-3.5 h-3.5" />
+            <span>
+              {Math.floor((project.actualTimeMinutes || 0) / 60)}h{' '}
+              {(project.actualTimeMinutes || 0) % 60}m focused
+            </span>
+          </div>
+          {activeTasks.length > 0 && (
+            <div className="flex-1 max-w-[200px]">
+              <div className="h-1.5 w-full bg-surface-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, (doneTasks.length / (activeTasks.length + doneTasks.length)) * 100)}%`,
+                    backgroundColor: project.color,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Tabs */}
+        <div className="flex items-center gap-4 mt-3">
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={clsx(
+              'text-sm font-medium pb-1 border-b-2 transition-colors',
+              activeTab === 'tasks'
+                ? 'border-accent-500 text-accent-400'
+                : 'border-transparent text-surface-500 hover:text-surface-300',
+            )}
+          >
+            Tasks
+          </button>
+          <button
+            onClick={() => setActiveTab('notes')}
+            className={clsx(
+              'text-sm font-medium pb-1 border-b-2 transition-colors',
+              activeTab === 'notes'
+                ? 'border-accent-500 text-accent-400'
+                : 'border-transparent text-surface-500 hover:text-surface-300',
+            )}
+          >
+            Notes
+          </button>
+        </div>
+      </div>
+
+      {activeTab === 'notes' ? (
+        <ProjectNotesTab projectId={project.id} />
+      ) : (
+        <>
+          {/* Quick Add */}
+          <div className="px-6 py-3 border-b border-surface-800/20">
+            <div className="flex items-center gap-2">
+              <Plus className="w-4 h-4 text-surface-500" />
+              <input
+                ref={quickAddRef}
+                type="text"
+                dir={getTextDirection(quickAddText)}
+                style={getDirectionStyle(quickAddText)}
+                value={quickAddText}
+                onChange={(e) => setQuickAddText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleQuickAdd();
+                }}
+                placeholder={`Add task to ${project.name}...`}
+                className="flex-1 bg-transparent text-sm text-surface-100 placeholder-surface-600 outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Task List */}
+          <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+            {projectTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <span className="text-4xl mb-3">{project.emoji}</span>
+                <h3 className="text-sm font-medium text-surface-400">No tasks in this project</h3>
+                <p className="text-xs text-surface-500 mt-1">Add a task above to get started</p>
+              </div>
+            ) : (
+              <>
+                {/* Active tasks */}
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragStart={handleDragStart}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={activeTasks.map((t) => t.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="space-y-1">
+                      {activeTasks.map((task) => (
+                        <ProjectTaskRow
+                          key={task.id}
+                          task={task}
+                          projectColor={project.color}
+                          onToggleDone={() => markDone(task.id)}
+                          onClick={() => openTaskDialog('edit', task.id)}
+                          onStartTimer={() => startFocusSession(task.id)}
+                          isFocused={
+                            focusMode.targetType === 'task' && focusMode.targetId === task.id
+                          }
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+
+                  <DragOverlay dropAnimation={null}>
+                    {activeTask && (
+                      <ProjectTaskRow
+                        task={activeTask}
+                        projectColor={project.color}
+                        onToggleDone={() => {}}
+                        onClick={() => {}}
+                        onStartTimer={() => {}}
+                        isFocused={false}
+                        isDragOverlay
+                      />
+                    )}
+                  </DragOverlay>
+                </DndContext>
+
+                {/* Done tasks */}
+                {doneTasks.length > 0 && (
+                  <div className="mt-6">
+                    <button
+                      onClick={() => setShowDone(!showDone)}
+                      className="flex items-center gap-2 text-xs text-surface-500 hover:text-surface-300 mb-2 transition-colors"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{doneTasks.length} completed</span>
+                      <span className="text-surface-600">{showDone ? '▾' : '▸'}</span>
+                    </button>
+                    {showDone && (
+                      <div className="space-y-1 animate-fade-in">
+                        {doneTasks.map((task) => (
+                          <ProjectTaskRow
+                            key={task.id}
+                            task={task}
+                            projectColor={project.color}
+                            onToggleDone={() => updateTask(task.id, { status: 'planned' })}
+                            onClick={() => openTaskDialog('edit', task.id)}
+                            onStartTimer={() => {}}
+                            isFocused={false}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 // ─── Project Notes Tab ──────────────────────────────────────────────
 function ProjectNotesTab({ projectId }: { projectId: string }) {
-    const { projectNotes, loadNotesByProject, createProjectNote, deleteNote, selectNote, reorderNotes } = useStore();
+  const {
+    projectNotes,
+    loadNotesByProject,
+    createProjectNote,
+    deleteNote,
+    selectNote,
+    reorderNotes,
+  } = useStore();
 
-    const noteSensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  const noteSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+  );
+
+  const [search, setSearch] = useState('');
+
+  React.useEffect(() => {
+    loadNotesByProject(projectId);
+  }, [projectId, loadNotesByProject]);
+
+  const filteredNotes = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return projectNotes;
+    return projectNotes.filter(
+      (n) => n.title.toLowerCase().includes(q) || stripHtml(n.content).toLowerCase().includes(q),
     );
+  }, [projectNotes, search]);
 
-    const [search, setSearch] = useState('');
+  const handleCreateNote = async () => {
+    await createProjectNote(projectId);
+  };
 
-    React.useEffect(() => {
-        loadNotesByProject(projectId);
-    }, [projectId, loadNotesByProject]);
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    if (search.trim()) return;
 
-    const filteredNotes = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return projectNotes;
-        return projectNotes.filter(
-            (n) =>
-                n.title.toLowerCase().includes(q) ||
-                stripHtml(n.content).toLowerCase().includes(q),
-        );
-    }, [projectNotes, search]);
+    const oldIndex = projectNotes.findIndex((n) => n.id === active.id);
+    const newIndex = projectNotes.findIndex((n) => n.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
 
-    const handleCreateNote = async () => {
-        await createProjectNote(projectId);
-    };
+    const reordered = [...projectNotes];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
 
-    const handleDragEnd = (event: DragEndEvent) => {
-        const { active, over } = event;
-        if (!over || active.id === over.id) return;
-        if (search.trim()) return;
+    const updates = reordered.map((n, i) => ({ id: n.id, order: i }));
+    reorderNotes(updates);
+  };
 
-        const oldIndex = projectNotes.findIndex((n) => n.id === active.id);
-        const newIndex = projectNotes.findIndex((n) => n.id === over.id);
-        if (oldIndex === -1 || newIndex === -1) return;
-
-        const reordered = [...projectNotes];
-        const [moved] = reordered.splice(oldIndex, 1);
-        reordered.splice(newIndex, 0, moved);
-
-        const updates = reordered.map((n, i) => ({ id: n.id, order: i }));
-        reorderNotes(updates);
-    };
-
-    return (
-        <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-            <div className="flex items-center gap-3 mb-4">
-                <button
-                    onClick={handleCreateNote}
-                    className="flex items-center gap-2 text-sm text-surface-400 hover:text-accent-400 transition-colors flex-shrink-0"
-                >
-                    <Plus className="w-4 h-4" />
-                    <span>New note</span>
-                </button>
-                {projectNotes.length > 0 && (
-                    <div className="relative flex-1 max-w-md ml-auto">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-500" />
-                        <input
-                            type="text"
-                            value={search}
-                            onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search notes..."
-                            className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-900 border border-surface-800/60 rounded-lg text-surface-100 placeholder-surface-600 outline-none focus:border-accent-500/50 transition-colors"
-                        />
-                        {search && (
-                            <button
-                                onClick={() => setSearch('')}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
-                            >
-                                <X className="w-3 h-3" />
-                            </button>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {projectNotes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 text-center">
-                    <StickyNote className="w-8 h-8 text-surface-600 mb-2" />
-                    <h3 className="text-sm font-medium text-surface-400">No notes</h3>
-                    <p className="text-xs text-surface-500 mt-1">
-                        Create a note to get started
-                    </p>
-                </div>
-            ) : filteredNotes.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 text-center">
-                    <Search className="w-8 h-8 text-surface-600 mb-2" />
-                    <h3 className="text-sm font-medium text-surface-400">No notes match</h3>
-                    <p className="text-xs text-surface-500 mt-1">
-                        Try a different search term
-                    </p>
-                </div>
-            ) : (
-                <DndContext
-                    sensors={noteSensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleDragEnd}
-                >
-                    <SortableContext
-                        items={filteredNotes.map((n) => n.id)}
-                        strategy={rectSortingStrategy}
-                    >
-                        <div className="grid grid-cols-2 gap-3">
-                            {filteredNotes.map((note) => (
-                                <NoteCard
-                                    key={note.id}
-                                    note={note}
-                                    sortable={!search.trim()}
-                                    onClick={() => selectNote(note.id)}
-                                    onDelete={() => deleteNote(note.id)}
-                                />
-                            ))}
-                        </div>
-                    </SortableContext>
-                </DndContext>
+  return (
+    <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+      <div className="flex items-center gap-3 mb-4">
+        <button
+          onClick={handleCreateNote}
+          className="flex items-center gap-2 text-sm text-surface-400 hover:text-accent-400 transition-colors flex-shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          <span>New note</span>
+        </button>
+        {projectNotes.length > 0 && (
+          <div className="relative flex-1 max-w-md ml-auto">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-500" />
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search notes..."
+              className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-900 border border-surface-800/60 rounded-lg text-surface-100 placeholder-surface-600 outline-none focus:border-accent-500/50 transition-colors"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
+              >
+                <X className="w-3 h-3" />
+              </button>
             )}
+          </div>
+        )}
+      </div>
+
+      {projectNotes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 text-center">
+          <StickyNote className="w-8 h-8 text-surface-600 mb-2" />
+          <h3 className="text-sm font-medium text-surface-400">No notes</h3>
+          <p className="text-xs text-surface-500 mt-1">Create a note to get started</p>
         </div>
-    );
+      ) : filteredNotes.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 text-center">
+          <Search className="w-8 h-8 text-surface-600 mb-2" />
+          <h3 className="text-sm font-medium text-surface-400">No notes match</h3>
+          <p className="text-xs text-surface-500 mt-1">Try a different search term</p>
+        </div>
+      ) : (
+        <DndContext
+          sensors={noteSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext items={filteredNotes.map((n) => n.id)} strategy={rectSortingStrategy}>
+            <div className="grid grid-cols-2 gap-3">
+              {filteredNotes.map((note) => (
+                <NoteCard
+                  key={note.id}
+                  note={note}
+                  sortable={!search.trim()}
+                  onClick={() => selectNote(note.id)}
+                  onDelete={() => deleteNote(note.id)}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
+    </div>
+  );
 }
 
 // ─── Project Task Row ────────────────────────────────────────────────
 interface ProjectTaskRowProps {
-    task: Task;
-    projectColor: string;
-    onToggleDone: () => void;
-    onClick: () => void;
-    onStartTimer: () => void;
-    isFocused: boolean;
-    isDragOverlay?: boolean;
+  task: Task;
+  projectColor: string;
+  onToggleDone: () => void;
+  onClick: () => void;
+  onStartTimer: () => void;
+  isFocused: boolean;
+  isDragOverlay?: boolean;
 }
 
-function ProjectTaskRow({ task, projectColor, onToggleDone, onClick, onStartTimer, isFocused, isDragOverlay }: ProjectTaskRowProps) {
-    const isDone = task.status === 'done';
+function ProjectTaskRow({
+  task,
+  projectColor,
+  onToggleDone,
+  onClick,
+  onStartTimer,
+  isFocused,
+  isDragOverlay,
+}: ProjectTaskRowProps) {
+  const isDone = task.status === 'done';
 
-    const {
-        attributes,
-        listeners,
-        setNodeRef,
-        transform,
-        transition,
-        isDragging,
-    } = useSortable({
-        id: task.id,
-        data: { type: 'task', task },
-    });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: task.id,
+    data: { type: 'task', task },
+  });
 
-    const sortableStyle = {
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.3 : 1,
-    };
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.3 : 1,
+  };
 
-    return (
+  return (
+    <div
+      ref={setNodeRef}
+      style={{ ...sortableStyle, ...getPriorityBorderStyle(task.priority) }}
+      onClick={onClick}
+      className={clsx(
+        'group flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all',
+        'border border-transparent hover:border-surface-800/60 hover:bg-surface-900/50',
+        isFocused && 'border-accent-500/40 bg-accent-500/5',
+        isDone && 'opacity-50',
+        isDragOverlay && 'shadow-2xl bg-surface-900 border-surface-700/60',
+      )}
+    >
+      {/* Drag handle */}
+      {!isDone && (
         <div
-            ref={setNodeRef}
-            style={{ ...sortableStyle, ...getPriorityBorderStyle(task.priority) }}
-            onClick={onClick}
-            className={clsx(
-                "group flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all",
-                "border border-transparent hover:border-surface-800/60 hover:bg-surface-900/50",
-                isFocused && "border-accent-500/40 bg-accent-500/5",
-                isDone && "opacity-50",
-                isDragOverlay && "shadow-2xl bg-surface-900 border-surface-700/60"
-            )}
+          {...attributes}
+          {...listeners}
+          className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-0.5 flex-shrink-0"
+          aria-label="Drag to reorder"
+          onClick={(e) => e.stopPropagation()}
         >
-            {/* Drag handle */}
-            {!isDone && (
-                <div
-                    {...attributes}
-                    {...listeners}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-0.5 flex-shrink-0"
-                    aria-label="Drag to reorder"
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <GripVertical className="w-3.5 h-3.5 text-surface-500" />
-                </div>
-            )}
-
-            {/* Checkbox */}
-            <button
-                onClick={(e) => { e.stopPropagation(); onToggleDone(); }}
-                className={clsx(
-                    "w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all",
-                    isDone
-                        ? "border-success-500 bg-success-500"
-                        : "border-surface-600 hover:border-accent-500"
-                )}
-                style={!isDone ? { borderColor: projectColor + '60' } : undefined}
-            >
-                {isDone && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-            </button>
-
-            {/* Title & meta */}
-            <div className="flex-1 min-w-0">
-                <h4 dir={getTextDirection(task.title)} style={getDirectionStyle(task.title)} className={clsx(
-                    "text-sm font-medium",
-                    isDone ? "line-through text-surface-500" : "text-surface-100"
-                )}>
-                    {task.title}
-                </h4>
-                <div className="flex items-center gap-3 mt-0.5">
-                    {task.plannedDate && (
-                        <span className="flex items-center gap-1 text-2xs text-surface-500">
-                            <Calendar className="w-3 h-3" />
-                            {format(parseISO(task.plannedDate), 'MMM d')}
-                        </span>
-                    )}
-                </div>
-            </div>
-
-            {/* Duration chip */}
-            <span className="chip text-2xs flex-shrink-0">
-                {task.durationMinutes >= 60
-                    ? `${(task.durationMinutes / 60).toFixed(task.durationMinutes % 60 ? 1 : 0)}h`
-                    : `${task.durationMinutes}m`
-                }
-            </span>
-
-            {/* Timer button */}
-            {!isDone && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); onStartTimer(); }}
-                    className={clsx(
-                        "flex items-center justify-center w-7 h-7 rounded-full transition-all flex-shrink-0",
-                        isFocused
-                            ? "bg-accent-500 text-white animate-pulse"
-                            : "opacity-0 group-hover:opacity-100 text-surface-500 hover:text-accent-400 hover:bg-accent-500/10"
-                    )}
-                    title="Start timer"
-                >
-                    <Play className="w-3.5 h-3.5" fill={isFocused ? "currentColor" : "none"} />
-                </button>
-            )}
-
-            {/* Status badge */}
-            <span className={clsx(
-                "text-2xs px-2 py-0.5 rounded-md flex-shrink-0",
-                task.status === 'done' && "bg-success-900/30 text-success-400",
-                task.status === 'planned' && "bg-accent-900/30 text-accent-400",
-                task.status === 'scheduled' && "bg-blue-900/30 text-blue-400",
-                task.status === 'inbox' && "bg-surface-800 text-surface-400",
-                task.status === 'backlog' && "bg-surface-800 text-surface-400",
-            )}>
-                {task.status}
-            </span>
+          <GripVertical className="w-3.5 h-3.5 text-surface-500" />
         </div>
-    );
+      )}
+
+      {/* Checkbox */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleDone();
+        }}
+        className={clsx(
+          'w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all',
+          isDone
+            ? 'border-success-500 bg-success-500'
+            : 'border-surface-600 hover:border-accent-500',
+        )}
+        style={!isDone ? { borderColor: projectColor + '60' } : undefined}
+      >
+        {isDone && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+      </button>
+
+      {/* Title & meta */}
+      <div className="flex-1 min-w-0">
+        <h4
+          dir={getTextDirection(task.title)}
+          style={getDirectionStyle(task.title)}
+          className={clsx(
+            'text-sm font-medium',
+            isDone ? 'line-through text-surface-500' : 'text-surface-100',
+          )}
+        >
+          {task.title}
+        </h4>
+        <div className="flex items-center gap-3 mt-0.5">
+          {task.plannedDate && (
+            <span className="flex items-center gap-1 text-2xs text-surface-500">
+              <Calendar className="w-3 h-3" />
+              {format(parseISO(task.plannedDate), 'MMM d')}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Duration chip */}
+      <span className="chip text-2xs flex-shrink-0">
+        {task.durationMinutes >= 60
+          ? `${(task.durationMinutes / 60).toFixed(task.durationMinutes % 60 ? 1 : 0)}h`
+          : `${task.durationMinutes}m`}
+      </span>
+
+      {/* Timer button */}
+      {!isDone && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onStartTimer();
+          }}
+          className={clsx(
+            'flex items-center justify-center w-7 h-7 rounded-full transition-all flex-shrink-0',
+            isFocused
+              ? 'bg-accent-500 text-white animate-pulse'
+              : 'opacity-0 group-hover:opacity-100 text-surface-500 hover:text-accent-400 hover:bg-accent-500/10',
+          )}
+          title="Start timer"
+        >
+          <Play className="w-3.5 h-3.5" fill={isFocused ? 'currentColor' : 'none'} />
+        </button>
+      )}
+
+      {/* Status badge */}
+      <span
+        className={clsx(
+          'text-2xs px-2 py-0.5 rounded-md flex-shrink-0',
+          task.status === 'done' && 'bg-success-900/30 text-success-400',
+          task.status === 'planned' && 'bg-accent-900/30 text-accent-400',
+          task.status === 'scheduled' && 'bg-blue-900/30 text-blue-400',
+          task.status === 'inbox' && 'bg-surface-800 text-surface-400',
+          task.status === 'backlog' && 'bg-surface-800 text-surface-400',
+        )}
+      >
+        {task.status}
+      </span>
+    </div>
+  );
 }
