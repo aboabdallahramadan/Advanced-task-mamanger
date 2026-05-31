@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { useStore } from '../../store';
-import { Play, Pause, Square, CheckCircle2, GripVertical, Minimize2, Maximize2 } from 'lucide-react';
+import { Play, Pause, Square, CheckCircle2, GripVertical, Minimize2, Maximize2, FolderOpen, ChevronDown } from 'lucide-react';
 import { clsx } from 'clsx';
 import { getTextDirection, getDirectionStyle } from '../../useTextDirection';
 
@@ -18,6 +18,7 @@ export const FocusModeOverlay: React.FC = () => {
 
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [isMinimized, setIsMinimized] = useState(false);
+    const [switcherOpen, setSwitcherOpen] = useState(false);
 
     // ─── Dragging State ────────────────────────────────────────
     const [position, setPosition] = useState({ x: -1, y: -1 });
@@ -305,13 +306,51 @@ export const FocusModeOverlay: React.FC = () => {
                         <div className={clsx("w-2 h-2 rounded-full", focusMode.isPlaying ? "bg-accent-500 animate-pulse" : "bg-surface-500")} />
                         <span className="text-xs font-semibold tracking-wider uppercase text-accent-500">Focus Mode</span>
                     </div>
-                    <button
-                        onClick={() => setIsMinimized(true)}
-                        className="p-1 rounded-md text-surface-500 hover:text-surface-200 hover:bg-surface-800 transition-colors"
-                        title="Minimize"
-                    >
-                        <Minimize2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center gap-1">
+                        <div className="relative">
+                            <button
+                                onClick={() => setSwitcherOpen(o => !o)}
+                                className="flex items-center gap-1 p-1 rounded-md text-surface-500 hover:text-surface-200 hover:bg-surface-800 transition-colors"
+                                title="Focus on a project"
+                            >
+                                <FolderOpen className="w-3.5 h-3.5" />
+                                <ChevronDown className="w-3 h-3" />
+                            </button>
+                            {switcherOpen && (
+                                <>
+                                <div className="fixed inset-0 z-[10000]" onClick={() => setSwitcherOpen(false)} />
+                                <div className="absolute right-0 top-8 z-[10001] w-52 max-h-64 overflow-y-auto custom-scrollbar bg-surface-900 border border-surface-700/60 rounded-xl shadow-2xl shadow-black/50 py-1">
+                                    {projects.length === 0 ? (
+                                        <div className="px-3 py-2 text-xs text-surface-500">No projects yet</div>
+                                    ) : (
+                                        projects.map(p => (
+                                            <button
+                                                key={p.id}
+                                                onClick={() => { startProjectFocus(p.id); setSwitcherOpen(false); }}
+                                                className={clsx(
+                                                    "w-full flex items-center gap-2 px-3 py-1.5 text-left text-sm transition-colors",
+                                                    focusMode.targetType === 'project' && focusMode.targetId === p.id
+                                                        ? "text-accent-400 bg-accent-600/10"
+                                                        : "text-surface-200 hover:bg-surface-800"
+                                                )}
+                                            >
+                                                <span className="text-base leading-none">{p.emoji}</span>
+                                                <span className="truncate">{p.name}</span>
+                                            </button>
+                                        ))
+                                    )}
+                                </div>
+                                </>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setIsMinimized(true)}
+                            className="p-1 rounded-md text-surface-500 hover:text-surface-200 hover:bg-surface-800 transition-colors"
+                            title="Minimize"
+                        >
+                            <Minimize2 className="w-3.5 h-3.5" />
+                        </button>
+                    </div>
                 </div>
 
                 <div className="p-4">
