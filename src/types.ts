@@ -280,7 +280,11 @@ export interface ElectronAPI {
     }) => Promise<FocusSession>;
   };
   dailyPlans: {
-    upsert: (plan: { date: string; plannedTaskIds: string[]; plannedMinutes: number }) => Promise<DailyPlan>;
+    upsert: (plan: {
+      date: string;
+      plannedTaskIds: string[];
+      plannedMinutes: number;
+    }) => Promise<DailyPlan>;
     get: (date: string) => Promise<DailyPlan | null>;
   };
   reports: {
