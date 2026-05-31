@@ -233,4 +233,28 @@ const migrations = [
     name: '010_add_project_actual_time',
     sql: `ALTER TABLE projects ADD COLUMN actual_time_minutes INTEGER DEFAULT 0`,
   },
+  {
+    name: '011_planning_reports',
+    sql: `
+      ALTER TABLE tasks ADD COLUMN completed_at TEXT DEFAULT NULL;
+      CREATE TABLE IF NOT EXISTS focus_sessions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        project TEXT DEFAULT '',
+        started_at TEXT NOT NULL,
+        ended_at TEXT NOT NULL,
+        minutes INTEGER NOT NULL DEFAULT 0,
+        date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_focus_sessions_date ON focus_sessions(date);
+      CREATE TABLE IF NOT EXISTS daily_plans (
+        date TEXT PRIMARY KEY,
+        committed_at TEXT NOT NULL,
+        planned_task_ids TEXT NOT NULL DEFAULT '[]',
+        planned_minutes INTEGER NOT NULL DEFAULT 0
+      )
+    `,
+  },
 ];
