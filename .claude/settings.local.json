@@ -7,7 +7,12 @@
       "Bash(grep:*)",
       "Bash(wc:*)",
       "Bash(find /c/Users/aboab/Desktop/Projects/\"sunsama clone\"/src/components -name \"*.tsx\" -exec wc -l {} +)",
-      "Bash(find /c/Users/aboab/Desktop/Projects/\"sunsama clone\"/electron -name \"*.ts\" -exec wc -l {} +)"
+      "Bash(find /c/Users/aboab/Desktop/Projects/\"sunsama clone\"/electron -name \"*.ts\" -exec wc -l {} +)",
+      "Bash(bash \"C:\\\\Users\\\\aboab\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.0.5\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh\" --project-dir \"C:\\\\Users\\\\aboab\\\\Desktop\\\\Projects\\\\sunsama clone\")",
+      "Bash(npm install:*)",
+      "Bash(npm ls:*)",
+      "Bash(node -e \"const m = require\\(''@tiptap/react''\\); console.log\\(Object.keys\\(m\\).filter\\(k => k.toLowerCase\\(\\).includes\\(''bubble''\\)\\)\\)\")",
+      "Bash(node -e \"const m = require\\(''@tiptap/extension-bubble-menu''\\); console.log\\(Object.keys\\(m\\)\\)\")"
     ]
   }
 }

@@ -30,6 +30,7 @@ function rowToTask(columns, values) {
         recurrenceOriginalDate: row.recurrence_original_date || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        completedAt: row.completed_at ?? null,
     };
 }
 function rowToSubtask(columns, values) {
@@ -83,14 +84,17 @@ class TaskService {
         return queryTasks(this.db, 'SELECT * FROM tasks WHERE planned_date = ? AND status != ? AND is_recurrence_template = 0 ORDER BY sort_order ASC', [date, 'archived']);
     }
     getByStatus(status) {
-        return queryTasks(this.db, 'SELECT * FROM tasks WHERE status = ? ORDER BY sort_order ASC', [status]);
+        return queryTasks(this.db, 'SELECT * FROM tasks WHERE status = ? ORDER BY sort_order ASC', [
+            status,
+        ]);
     }
     create(input) {
         const id = (0, uuid_1.v4)();
         const now = new Date().toISOString();
         const maxResult = this.db.exec('SELECT MAX(sort_order) as max_order FROM tasks');
         const maxOrder = maxResult.length > 0 && maxResult[0].values[0][0] != null
-            ? maxResult[0].values[0][0] : 0;
+            ? maxResult[0].values[0][0]
+            : 0;
         this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             id,
@@ -141,6 +145,8 @@ class TaskService {
         if (updates.status !== undefined) {
             sets.push('status = ?');
             values.push(updates.status);
+            sets.push('completed_at = ?');
+            values.push(updates.status === 'done' ? now : null);
         }
         if (updates.plannedDate !== undefined) {
             sets.push('planned_date = ?');
@@ -190,7 +196,10 @@ class TaskService {
     delete(id) {
         // If this is a recurring instance, record an exception so it won't be re-generated
         const task = this.getById(id);
-        if (task && task.recurrenceRuleId && !task.isRecurrenceTemplate && task.recurrenceOriginalDate) {
+        if (task &&
+            task.recurrenceRuleId &&
+            !task.isRecurrenceTemplate &&
+            task.recurrenceOriginalDate) {
             const excId = (0, uuid_1.v4)();
             this.db.run(`INSERT OR IGNORE INTO recurrence_exceptions (id, recurrence_rule_id, exception_date) VALUES (?, ?, ?)`, [excId, task.recurrenceRuleId, task.recurrenceOriginalDate]);
         }
@@ -225,7 +234,8 @@ class TaskService {
         const now = new Date().toISOString();
         const maxResult = this.db.exec('SELECT MAX(sort_order) as max_order FROM subtasks WHERE task_id = ?', [taskId]);
         const maxOrder = maxResult.length > 0 && maxResult[0].values[0][0] != null
-            ? maxResult[0].values[0][0] : 0;
+            ? maxResult[0].values[0][0]
+            : 0;
         this.db.run(`INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)`, [id, taskId, title, maxOrder + 1, now]);
         (0, database_1.saveDatabase)();
         return { id, taskId, title, completed: false, order: maxOrder + 1, createdAt: now };
@@ -382,7 +392,8 @@ class TaskService {
             const id = (0, uuid_1.v4)();
             const maxResult = this.db.exec('SELECT MAX(sort_order) as max_order FROM tasks');
             const maxOrder = maxResult.length > 0 && maxResult[0].values[0][0] != null
-                ? maxResult[0].values[0][0] : 0;
+                ? maxResult[0].values[0][0]
+                : 0;
             this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`, [
                 id,
@@ -415,7 +426,11 @@ class TaskService {
                 newTasks.push(task);
         }
         // Update generated_until
-        this.db.run('UPDATE recurrence_rules SET generated_until = ?, updated_at = ? WHERE id = ?', [endDate, now, ruleId]);
+        this.db.run('UPDATE recurrence_rules SET generated_until = ?, updated_at = ? WHERE id = ?', [
+            endDate,
+            now,
+            ruleId,
+        ]);
         (0, database_1.saveDatabase)();
         return newTasks;
     }
@@ -524,13 +539,18 @@ class TaskService {
         // Delete future instances (not done)
         this.db.run(`DELETE FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND planned_date >= ? AND status != 'done'`, [ruleId, fromDate]);
         // Cap the rule end date
-        const dayBefore = new Date(new Date(fromDate + 'T00:00:00').getTime() - 86400000).toISOString().split('T')[0];
+        const dayBefore = new Date(new Date(fromDate + 'T00:00:00').getTime() - 86400000)
+            .toISOString()
+            .split('T')[0];
         this.db.run('UPDATE recurrence_rules SET end_type = ?, end_date = ?, updated_at = ? WHERE id = ?', ['date', dayBefore, now, ruleId]);
         (0, database_1.saveDatabase)();
     }
     detachInstance(taskId) {
         const now = new Date().toISOString();
-        this.db.run('UPDATE tasks SET recurrence_detached = 1, updated_at = ? WHERE id = ?', [now, taskId]);
+        this.db.run('UPDATE tasks SET recurrence_detached = 1, updated_at = ? WHERE id = ?', [
+            now,
+            taskId,
+        ]);
         (0, database_1.saveDatabase)();
     }
     updateRecurrenceRule(ruleId, ruleUpdates) {

@@ -1,737 +1,171 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const electron_1 = require("electron");
-const path_1 = __importDefault(require("path"));
-const fs_1 = __importDefault(require("fs"));
-function getSettingsPath() {
-    return path_1.default.join(electron_1.app.getPath('userData'), 'settings.json');
-}
-function loadSettings() {
-    try {
-        const p = getSettingsPath();
-        if (fs_1.default.existsSync(p)) {
-            return JSON.parse(fs_1.default.readFileSync(p, 'utf-8'));
-        }
-    }
-    catch (e) {
-        console.error('Failed to load settings:', e);
-    }
-    return {};
-}
-function persistSettings(settings) {
-    try {
-        fs_1.default.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
-    }
-    catch (e) {
-        console.error('Failed to save settings:', e);
-    }
-}
-const database_1 = require("./database");
-const taskService_1 = require("./taskService");
-const projectService_1 = require("./projectService");
-const noteService_1 = require("./noteService");
-const seed_1 = require("./seed");
-let mainWindow = null;
-let focusWidget = null;
-let tray = null;
-let taskService;
-let projectService;
-let noteService;
-const notifiedTaskIds = new Set();
-function createFocusWidget() {
-    if (focusWidget && !focusWidget.isDestroyed()) {
-        focusWidget.show();
-        return;
-    }
-    const { width } = electron_1.screen.getPrimaryDisplay().workAreaSize;
-    focusWidget = new electron_1.BrowserWindow({
-        width: 420,
-        height: 52,
-        x: Math.round(width / 2 - 210),
-        y: 8,
-        frame: false,
-        transparent: true,
-        resizable: false,
-        skipTaskbar: true,
-        alwaysOnTop: true,
-        focusable: true,
-        hasShadow: false,
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-        },
-    });
-    if (process.env.VITE_DEV_SERVER_URL) {
-        // In dev, load from Vite's public directory
-        focusWidget.loadFile(path_1.default.join(__dirname, '../public/focus-widget.html'));
-    }
-    else {
-        focusWidget.loadFile(path_1.default.join(__dirname, '../dist/focus-widget.html'));
-    }
-    focusWidget.setAlwaysOnTop(true, 'screen-saver');
-    focusWidget.on('closed', () => {
-        focusWidget = null;
-    });
-}
-const gotTheLock = electron_1.app.requestSingleInstanceLock();
-if (!gotTheLock) {
-    electron_1.app.quit();
-}
-else {
-    electron_1.app.on('second-instance', () => {
-        if (mainWindow) {
-            if (mainWindow.isMinimized())
-                mainWindow.restore();
-            mainWindow.focus();
-        }
-    });
-    electron_1.app.setAppUserModelId('com.tmap.app');
-    electron_1.app.whenReady().then(async () => {
-        const dbPath = path_1.default.join(electron_1.app.getPath('userData'), 'tmap.db');
-        await (0, database_1.initDatabase)(dbPath);
-        taskService = new taskService_1.TaskService((0, database_1.getDatabase)());
-        projectService = new projectService_1.ProjectService((0, database_1.getDatabase)());
-        noteService = new noteService_1.NoteService((0, database_1.getDatabase)());
-        // Seed demo data if empty
-        const tasks = taskService.getAll();
-        if (tasks.length === 0) {
-            (0, seed_1.seedDemoData)(taskService);
-        }
-        createWindow();
-        createTray();
-        registerIpcHandlers();
-        // ─── Notification Scheduler ──────────────────────────────
-        setInterval(() => {
-            try {
-                const tasks = taskService.getUpcomingWithReminders();
-                const now = Date.now();
-                for (const task of tasks) {
-                    if (notifiedTaskIds.has(task.id))
-                        continue;
-                    if (!task.scheduledStart)
-                        continue;
-                    const startTime = new Date(task.scheduledStart).getTime();
-                    const reminderMs = (task.reminderMinutes ?? 0) * 60000;
-                    const notifyAt = startTime - reminderMs;
-                    // Notify if time has come but task start is not more than 5 min in the past
-                    if (notifyAt <= now && startTime > now - 5 * 60000) {
-                        const body = task.reminderMinutes === 0
-                            ? 'Starting now'
-                            : `Starting in ${task.reminderMinutes} minutes`;
-                        const notification = new electron_1.Notification({
-                            title: task.title,
-                            body,
-                            icon: path_1.default.join(__dirname, '../build/icon.png'),
-                        });
-                        notification.on('click', () => {
-                            mainWindow?.show();
-                            mainWindow?.focus();
-                        });
-                        notification.show();
-                        notifiedTaskIds.add(task.id);
-                    }
-                }
-                // Cleanup: remove entries for tasks started more than 1 hour ago
-                for (const id of notifiedTaskIds) {
-                    const task = tasks.find(t => t.id === id);
-                    if (task?.scheduledStart) {
-                        const startTime = new Date(task.scheduledStart).getTime();
-                        if (startTime < now - 3600000) {
-                            notifiedTaskIds.delete(id);
-                        }
-                    }
-                }
-            }
-            catch (e) {
-                console.error('Notification scheduler error:', e);
-            }
-        }, 30000);
-        // Global shortcut: Ctrl+Shift+F to toggle the focus timer widget
-        electron_1.globalShortcut.register('Ctrl+Shift+Q', () => {
-            if (focusWidget && !focusWidget.isDestroyed()) {
-                focusWidget.close();
-                focusWidget = null;
-            }
-            else {
-                createFocusWidget();
-                // Send current focus state to the new widget
-                mainWindow?.webContents.send('focus:resyncWidget');
-            }
-        });
-    });
-    electron_1.app.on('will-quit', () => {
-        electron_1.globalShortcut.unregisterAll();
-    });
-    electron_1.app.on('window-all-closed', () => {
-        // On Windows, don't quit — minimize to tray
-    });
-    electron_1.app.on('activate', () => {
-        if (mainWindow === null)
-            createWindow();
-    });
-}
-function createWindow() {
-    mainWindow = new electron_1.BrowserWindow({
-        width: 1400,
-        height: 900,
-        minWidth: 1000,
-        minHeight: 700,
-        frame: false,
-        titleBarStyle: 'hidden',
-        titleBarOverlay: {
-            color: '#020617',
-            symbolColor: '#94a3b8',
-            height: 40,
-        },
-        backgroundColor: '#020617',
-        webPreferences: {
-            preload: path_1.default.join(__dirname, 'preload.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-            sandbox: false,
-        },
-        show: false,
-    });
-    mainWindow.once('ready-to-show', () => {
-        mainWindow?.show();
-    });
-    mainWindow.on('close', (e) => {
-        e.preventDefault();
-        mainWindow?.hide();
-    });
-    if (process.env.VITE_DEV_SERVER_URL) {
-        mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-    }
-    else {
-        mainWindow.loadFile(path_1.default.join(__dirname, '../dist/index.html'));
-    }
-}
-function createTray() {
-    const icon = electron_1.nativeImage.createFromDataURL('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAEeSURBVFhH7ZZBDoMwDATz/0+nV3pBQkns9dqCHpBWGu+OHYcQ8vX19Z8cHpBcHpBcHpBcHpBcPwcUJxck1c8BNckF0QswkFwQvQAD6UVxAoakF8UJGJJeFCdgSC+KEzAkvShOwJD0ojgBQ9KL4gQMSS+KEzAkvShOwJD0ojgBQ9KL4gQMSS+KEzAkvShOwJD0ojgBQ9KL4v8Aezhe4GIXuxjf24X8m+2dvmcsbufiU3+h28Vu5+JTP6PLxW7n4lO/oMvFbufidT7RzMXrfKKZi9f5RDMX+0QzF/tEMxf7RDMX+0QzF/tEMxf7RDMX+0QzF/tEMxf7RLPy/gBgIL0ouQBD0ouSBzCQXpQ8gIH04v8DQvgGdIlrOH7OONYAAAAASUVORK5CYII=');
-    tray = new electron_1.Tray(icon);
-    const contextMenu = electron_1.Menu.buildFromTemplate([
-        {
-            label: 'Open TMap',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.focus();
-            },
-        },
-        {
-            label: 'Plan Today',
-            click: () => {
-                mainWindow?.show();
-                mainWindow?.focus();
-                mainWindow?.webContents.send('navigate', 'plan-today');
-            },
-        },
-        { type: 'separator' },
-        {
-            label: 'Quit',
-            click: () => {
-                mainWindow?.destroy();
-                electron_1.app.quit();
-            },
-        },
-    ]);
-    tray.setToolTip('TMap');
-    tray.setContextMenu(contextMenu);
-    tray.on('double-click', () => {
-        mainWindow?.show();
-        mainWindow?.focus();
-    });
-}
-function registerIpcHandlers() {
-    electron_1.ipcMain.handle('tasks:getAll', () => {
-        return taskService.getAll();
-    });
-    electron_1.ipcMain.handle('tasks:getByDate', (_e, date) => {
-        return taskService.getByDate(date);
-    });
-    electron_1.ipcMain.handle('tasks:getByStatus', (_e, status) => {
-        return taskService.getByStatus(status);
-    });
-    electron_1.ipcMain.handle('tasks:create', (_e, task) => {
-        return taskService.create(task);
-    });
-    electron_1.ipcMain.handle('tasks:update', (_e, id, updates) => {
-        if (updates.scheduledStart !== undefined || updates.reminderMinutes !== undefined) {
-            notifiedTaskIds.delete(id);
-        }
-        return taskService.update(id, updates);
-    });
-    electron_1.ipcMain.handle('tasks:delete', (_e, id) => {
-        return taskService.delete(id);
-    });
-    electron_1.ipcMain.handle('tasks:reorder', (_e, tasks) => {
-        return taskService.reorder(tasks);
-    });
-    electron_1.ipcMain.handle('tasks:search', (_e, query) => {
-        return taskService.search(query);
-    });
-    // ─── Subtask IPC Handlers ───────────────────────────────
-    electron_1.ipcMain.handle('subtasks:create', (_e, taskId, title) => {
-        return taskService.createSubtask(taskId, title);
-    });
-    electron_1.ipcMain.handle('subtasks:update', (_e, id, updates) => {
-        return taskService.updateSubtask(id, updates);
-    });
-    electron_1.ipcMain.handle('subtasks:delete', (_e, id) => {
-        return taskService.deleteSubtask(id);
-    });
-    electron_1.ipcMain.handle('app:getVersion', () => {
-        return electron_1.app.getVersion();
-    });
-    electron_1.ipcMain.handle('app:showNotification', (_e, title, body) => {
-        new electron_1.Notification({ title, body, icon: path_1.default.join(__dirname, '../build/icon.png') }).show();
-    });
-    // ─── Auto-Launch ─────────────────────────────────────────
-    electron_1.ipcMain.handle('app:getAutoLaunch', () => {
-        return electron_1.app.getLoginItemSettings().openAtLogin;
-    });
-    electron_1.ipcMain.handle('app:setAutoLaunch', (_e, enabled) => {
-        electron_1.app.setLoginItemSettings({ openAtLogin: enabled });
-        return true;
-    });
-    // ─── Project IPC Handlers ────────────────────────────────
-    electron_1.ipcMain.handle('projects:getAll', () => {
-        return projectService.getAll();
-    });
-    electron_1.ipcMain.handle('projects:create', (_e, input) => {
-        return projectService.create(input);
-    });
-    electron_1.ipcMain.handle('projects:update', (_e, id, updates) => {
-        return projectService.update(id, updates);
-    });
-    electron_1.ipcMain.handle('projects:delete', (_e, id) => {
-        return projectService.delete(id);
-    });
-    electron_1.ipcMain.handle('projects:reorder', (_e, items) => {
-        return projectService.reorder(items);
-    });
-    // ─── Note Group IPC Handlers ─────────────────────────────
-    electron_1.ipcMain.handle('noteGroups:getAll', () => {
-        return noteService.getAllGroups();
-    });
-    electron_1.ipcMain.handle('noteGroups:getByProject', (_e, projectId) => {
-        return noteService.getGroupsByProject(projectId);
-    });
-    electron_1.ipcMain.handle('noteGroups:create', (_e, input) => {
-        return noteService.createGroup(input);
-    });
-    electron_1.ipcMain.handle('noteGroups:update', (_e, id, updates) => {
-        return noteService.updateGroup(id, updates);
-    });
-    electron_1.ipcMain.handle('noteGroups:delete', (_e, id) => {
-        return noteService.deleteGroup(id);
-    });
-    electron_1.ipcMain.handle('noteGroups:reorder', (_e, items) => {
-        return noteService.reorderGroups(items);
-    });
-    // ─── Note IPC Handlers ───────────────────────────────────
-    electron_1.ipcMain.handle('notes:getAll', () => {
-        return noteService.getAllNotes();
-    });
-    electron_1.ipcMain.handle('notes:getByGroup', (_e, groupId) => {
-        return noteService.getNotesByGroup(groupId);
-    });
-    electron_1.ipcMain.handle('notes:getByProject', (_e, projectId) => {
-        return noteService.getNotesByProject(projectId);
-    });
-    electron_1.ipcMain.handle('notes:getById', (_e, id) => {
-        return noteService.getNoteById(id);
-    });
-    electron_1.ipcMain.handle('notes:create', (_e, input) => {
-        return noteService.createNote(input);
-    });
-    electron_1.ipcMain.handle('notes:update', (_e, id, updates) => {
-        return noteService.updateNote(id, updates);
-    });
-    electron_1.ipcMain.handle('notes:delete', (_e, id) => {
-        return noteService.deleteNote(id);
-    });
-    electron_1.ipcMain.handle('notes:reorder', (_e, items) => {
-        return noteService.reorderNotes(items);
-    });
-    // ─── Settings IPC Handlers ───────────────────────────────
-    electron_1.ipcMain.handle('settings:get', () => {
-        return loadSettings();
-    });
-    electron_1.ipcMain.handle('settings:save', (_e, settings) => {
-        persistSettings(settings);
-        return true;
-    });
-    // ─── Recurrence IPC Handlers ─────────────────────────────
-    electron_1.ipcMain.handle('recurrence:create', (_e, task, rule) => {
-        return taskService.createRecurringTask(task, rule);
-    });
-    electron_1.ipcMain.handle('recurrence:updateSeries', (_e, ruleId, updates) => {
-        return taskService.updateSeries(ruleId, updates);
-    });
-    electron_1.ipcMain.handle('recurrence:deleteSeries', (_e, ruleId) => {
-        return taskService.deleteSeries(ruleId);
-    });
-    electron_1.ipcMain.handle('recurrence:deleteSeriesFuture', (_e, ruleId, fromDate) => {
-        return taskService.deleteSeriesFuture(ruleId, fromDate);
-    });
-    electron_1.ipcMain.handle('recurrence:detachInstance', (_e, taskId) => {
-        return taskService.detachInstance(taskId);
-    });
-    electron_1.ipcMain.handle('recurrence:ensureInstances', (_e, startDate, endDate) => {
-        return taskService.ensureInstancesForDateRange(startDate, endDate);
-    });
-    electron_1.ipcMain.handle('recurrence:updateRule', (_e, ruleId, ruleUpdates) => {
-        return taskService.updateRecurrenceRule(ruleId, ruleUpdates);
-    });
-    electron_1.ipcMain.handle('recurrence:getRule', (_e, ruleId) => {
-        return taskService.getRecurrenceRule(ruleId);
-    });
-    // ─── Focus Timer Tray Widget ────────────────────────────
-    electron_1.ipcMain.on('focus:updateTray', (_e, data) => {
-        if (!tray)
-            return;
-        if (data.taskTitle && data.elapsed) {
-            // Focus session active — update tray tooltip
-            const state = data.isPlaying ? '▶' : '⏸';
-            tray.setToolTip(`${state} ${data.taskTitle}\n⏱ ${data.elapsed}`);
-            // Rebuild context menu with focus controls
-            const contextMenu = electron_1.Menu.buildFromTemplate([
-                {
-                    label: `${state} ${data.taskTitle}`,
-                    enabled: false,
-                },
-                {
-                    label: `⏱ ${data.elapsed}`,
-                    enabled: false,
-                },
-                { type: 'separator' },
-                {
-                    label: data.isPlaying ? '⏸ Pause' : '▶ Resume',
-                    click: () => {
-                        mainWindow?.webContents.send('focus:togglePlayPause');
-                    },
-                },
-                {
-                    label: '⏹ Stop Timer',
-                    click: () => {
-                        mainWindow?.webContents.send('focus:stop');
-                    },
-                },
-                { type: 'separator' },
-                {
-                    label: 'Open TMap',
-                    click: () => {
-                        mainWindow?.show();
-                        mainWindow?.focus();
-                    },
-                },
-                {
-                    label: 'Quit',
-                    click: () => {
-                        mainWindow?.destroy();
-                        electron_1.app.quit();
-                    },
-                },
-            ]);
-            tray.setContextMenu(contextMenu);
-        }
-        else {
-            // No focus session — reset to default
-            tray.setToolTip('TMap');
-            const contextMenu = electron_1.Menu.buildFromTemplate([
-                {
-                    label: 'Open TMap',
-                    click: () => {
-                        mainWindow?.show();
-                        mainWindow?.focus();
-                    },
-                },
-                { type: 'separator' },
-                {
-                    label: 'Quit',
-                    click: () => {
-                        mainWindow?.destroy();
-                        electron_1.app.quit();
-                    },
-                },
-            ]);
-            tray.setContextMenu(contextMenu);
-        }
-    });
-    // ─── Focus Widget Window (Always-on-Top) ────────────────
-    electron_1.ipcMain.on('focus:showWidget', () => {
-        createFocusWidget();
-    });
-    electron_1.ipcMain.on('focus:hideWidget', () => {
-        if (focusWidget && !focusWidget.isDestroyed()) {
-            focusWidget.close();
-            focusWidget = null;
-        }
-    });
-    electron_1.ipcMain.on('focus:widgetState', (_e, data) => {
-        if (focusWidget && !focusWidget.isDestroyed()) {
-            focusWidget.webContents.send('focus:state', data);
-        }
-    });
-    // Widget button actions → forward to main renderer
-    electron_1.ipcMain.on('focus:widgetAction', (_e, action) => {
-        if (!mainWindow)
-            return;
-        switch (action) {
-            case 'togglePlayPause':
-                mainWindow.webContents.send('focus:togglePlayPause');
-                break;
-            case 'stop':
-                mainWindow.webContents.send('focus:stop');
-                break;
-            case 'done':
-                mainWindow.webContents.send('focus:done');
-                break;
-        }
-    });
-    // ─── Data Import / Export ────────────────────────────────
-    electron_1.ipcMain.handle('data:export', async (_e, settings) => {
-        try {
-            const db = (0, database_1.getDatabase)();
-            // Query all tasks
-            const tasksResult = db.exec('SELECT * FROM tasks');
-            const tasks = [];
-            if (tasksResult.length > 0) {
-                const cols = tasksResult[0].columns;
-                for (const row of tasksResult[0].values) {
-                    const obj = {};
-                    cols.forEach((col, i) => { obj[col] = row[i]; });
-                    // Parse labels JSON string
-                    if (typeof obj.labels === 'string') {
-                        try {
-                            obj.labels = JSON.parse(obj.labels);
-                        }
-                        catch {
-                            obj.labels = [];
-                        }
-                    }
-                    tasks.push(obj);
-                }
-            }
-            // Query all projects
-            const projectsResult = db.exec('SELECT * FROM projects');
-            const projects = [];
-            if (projectsResult.length > 0) {
-                const cols = projectsResult[0].columns;
-                for (const row of projectsResult[0].values) {
-                    const obj = {};
-                    cols.forEach((col, i) => { obj[col] = row[i]; });
-                    projects.push(obj);
-                }
-            }
-            // Query recurrence rules
-            const rulesResult = db.exec('SELECT * FROM recurrence_rules');
-            const recurrenceRules = [];
-            if (rulesResult.length > 0) {
-                const cols = rulesResult[0].columns;
-                for (const row of rulesResult[0].values) {
-                    const obj = {};
-                    cols.forEach((col, i) => { obj[col] = row[i]; });
-                    recurrenceRules.push(obj);
-                }
-            }
-            // Query recurrence exceptions
-            const excResult = db.exec('SELECT * FROM recurrence_exceptions');
-            const recurrenceExceptions = [];
-            if (excResult.length > 0) {
-                const cols = excResult[0].columns;
-                for (const row of excResult[0].values) {
-                    const obj = {};
-                    cols.forEach((col, i) => { obj[col] = row[i]; });
-                    recurrenceExceptions.push(obj);
-                }
-            }
-            // Query note groups
-            const noteGroupsResult = db.exec('SELECT * FROM note_groups');
-            const noteGroupsData = [];
-            if (noteGroupsResult.length > 0) {
-                const cols = noteGroupsResult[0].columns;
-                for (const row of noteGroupsResult[0].values) {
-                    const obj = {};
-                    cols.forEach((col, i) => { obj[col] = row[i]; });
-                    noteGroupsData.push(obj);
-                }
-            }
-            // Query notes
-            const notesResult = db.exec('SELECT * FROM notes');
-            const notesData = [];
-            if (notesResult.length > 0) {
-                const cols = notesResult[0].columns;
-                for (const row of notesResult[0].values) {
-                    const obj = {};
-                    cols.forEach((col, i) => { obj[col] = row[i]; });
-                    notesData.push(obj);
-                }
-            }
-            const exportData = {
-                meta: {
-                    appName: 'TMap',
-                    version: electron_1.app.getVersion(),
-                    exportedAt: new Date().toISOString(),
-                },
-                settings: settings || {},
-                tasks,
-                projects,
-                recurrenceRules,
-                recurrenceExceptions,
-                noteGroups: noteGroupsData,
-                notes: notesData,
-            };
-            const { canceled, filePath } = await electron_1.dialog.showSaveDialog(mainWindow, {
-                title: 'Export TMap Data',
-                defaultPath: `tmap-backup-${new Date().toISOString().slice(0, 10)}.json`,
-                filters: [{ name: 'JSON Files', extensions: ['json'] }],
-            });
-            if (canceled || !filePath) {
-                return { success: false, canceled: true };
-            }
-            fs_1.default.writeFileSync(filePath, JSON.stringify(exportData, null, 2), 'utf-8');
-            return { success: true, filePath };
-        }
-        catch (err) {
-            console.error('Export failed:', err);
-            return { success: false, error: err.message };
-        }
-    });
-    electron_1.ipcMain.handle('data:import', async () => {
-        try {
-            const { canceled, filePaths } = await electron_1.dialog.showOpenDialog(mainWindow, {
-                title: 'Import TMap Data',
-                filters: [{ name: 'JSON Files', extensions: ['json'] }],
-                properties: ['openFile'],
-            });
-            if (canceled || filePaths.length === 0) {
-                return { success: false, canceled: true };
-            }
-            const raw = fs_1.default.readFileSync(filePaths[0], 'utf-8');
-            let parsed;
-            try {
-                parsed = JSON.parse(raw);
-            }
-            catch {
-                return { success: false, error: 'Invalid JSON file.' };
-            }
-            // Validate structure
-            if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
-                return { success: false, error: 'Invalid backup file: missing tasks array.' };
-            }
-            if (!parsed.projects || !Array.isArray(parsed.projects)) {
-                return { success: false, error: 'Invalid backup file: missing projects array.' };
-            }
-            const db = (0, database_1.getDatabase)();
-            db.run('BEGIN TRANSACTION;');
-            try {
-                // Clear existing data
-                db.run('DELETE FROM notes;');
-                db.run('DELETE FROM note_groups;');
-                db.run('DELETE FROM recurrence_exceptions;');
-                db.run('DELETE FROM tasks;');
-                db.run('DELETE FROM recurrence_rules;');
-                db.run('DELETE FROM projects;');
-                // Insert recurrence rules
-                if (parsed.recurrenceRules && Array.isArray(parsed.recurrenceRules)) {
-                    for (const r of parsed.recurrenceRules) {
-                        db.run(`INSERT INTO recurrence_rules (id, frequency, interval_value, days_of_week, end_type, end_count, end_date, generated_until, created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-                            r.id, r.frequency, r.interval_value ?? 1,
-                            r.days_of_week || '[]', r.end_type || 'never',
-                            r.end_count ?? null, r.end_date ?? null,
-                            r.generated_until ?? null,
-                            r.created_at || new Date().toISOString(),
-                            r.updated_at || new Date().toISOString(),
-                        ]);
-                    }
-                }
-                // Insert tasks
-                for (const t of parsed.tasks) {
-                    db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-                        t.id, t.title, t.notes || '', t.project || '',
-                        Array.isArray(t.labels) ? JSON.stringify(t.labels) : (t.labels || '[]'),
-                        t.source || 'local', t.status || 'inbox',
-                        t.due_date || null, t.planned_date || null,
-                        t.scheduled_start || null, t.scheduled_end || null,
-                        t.duration_minutes ?? 30, t.actual_time_minutes ?? 0,
-                        t.priority ?? null, t.reminder_minutes ?? 0,
-                        t.sort_order ?? 0,
-                        t.recurrence_rule_id ?? null,
-                        t.is_recurrence_template ?? 0,
-                        t.recurrence_detached ?? 0,
-                        t.recurrence_original_date ?? null,
-                        t.created_at || new Date().toISOString(),
-                        t.updated_at || new Date().toISOString(),
-                    ]);
-                }
-                // Insert recurrence exceptions
-                if (parsed.recurrenceExceptions && Array.isArray(parsed.recurrenceExceptions)) {
-                    for (const e of parsed.recurrenceExceptions) {
-                        db.run(`INSERT INTO recurrence_exceptions (id, recurrence_rule_id, exception_date, created_at)
-                             VALUES (?, ?, ?, ?)`, [e.id, e.recurrence_rule_id, e.exception_date, e.created_at || new Date().toISOString()]);
-                    }
-                }
-                // Insert projects
-                for (const p of parsed.projects) {
-                    db.run(`INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)`, [
-                        p.id, p.name, p.color || '#6366f1', p.emoji || '📁',
-                        p.sort_order ?? 0,
-                        p.created_at || new Date().toISOString(),
-                        p.updated_at || new Date().toISOString(),
-                    ]);
-                }
-                // Insert note groups
-                if (parsed.noteGroups && Array.isArray(parsed.noteGroups)) {
-                    for (const g of parsed.noteGroups) {
-                        db.run(`INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?)`, [
-                            g.id, g.name, g.emoji || '📝', g.project_id || null,
-                            g.sort_order ?? 0,
-                            g.created_at || new Date().toISOString(),
-                            g.updated_at || new Date().toISOString(),
-                        ]);
-                    }
-                }
-                // Insert notes
-                if (parsed.notes && Array.isArray(parsed.notes)) {
-                    for (const n of parsed.notes) {
-                        db.run(`INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
-                            n.id, n.group_id || null, n.project_id || null,
-                            n.title || 'Untitled', n.content || '',
-                            n.sort_order ?? 0,
-                            n.created_at || new Date().toISOString(),
-                            n.updated_at || new Date().toISOString(),
-                        ]);
-                    }
-                }
-                db.run('COMMIT;');
-                (0, database_1.saveDatabase)();
-                return {
-                    success: true,
-                    data: {
-                        settings: parsed.settings || {},
-                        taskCount: parsed.tasks.length,
-                        projectCount: parsed.projects.length,
-                    },
-                };
-            }
-            catch (err) {
-                db.run('ROLLBACK;');
-                console.error('Import transaction failed:', err);
-                return { success: false, error: 'Import failed: ' + err.message };
-            }
-        }
-        catch (err) {
-            console.error('Import failed:', err);
-            return { success: false, error: err.message };
-        }
-    });
-}
+"use strict";var Se=Object.defineProperty;var be=(r,e,t)=>e in r?Se(r,e,{enumerable:!0,configurable:!0,writable:!0,value:t}):r[e]=t;var te=(r,e,t)=>be(r,typeof e!="symbol"?e+"":e,t);const i=require("electron"),j=require("path"),F=require("fs"),ye=require("sql.js"),L=require("uuid");let A,H;async function Oe(r){H=r;const e=await ye();if(F.existsSync(H)){const t=F.readFileSync(H);A=new e.Database(t)}else A=new e.Database;A.run("PRAGMA journal_mode = WAL;"),A.run("PRAGMA foreign_keys = ON;"),Ne(),f()}function P(){if(!A)throw new Error("Database not initialized. Call initDatabase first.");return A}function f(){if(!A||!H)return;const r=A.export(),e=Buffer.from(r),t=j.dirname(H);F.existsSync(t)||F.mkdirSync(t,{recursive:!0}),F.writeFileSync(H,e)}function Ne(){A.run(`
+    CREATE TABLE IF NOT EXISTS migrations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `);const r=new Set,e=A.exec("SELECT name FROM migrations");if(e.length>0)for(const t of e[0].values)r.add(t[0]);for(const t of De)if(!r.has(t.name)){A.run("BEGIN TRANSACTION;");try{const n=t.sql.split(";").map(a=>a.trim()).filter(a=>a.length>0);for(const a of n)A.run(a+";");A.run("INSERT INTO migrations (name) VALUES (?);",[t.name]),A.run("COMMIT;"),console.log(`Applied migration: ${t.name}`)}catch(n){throw A.run("ROLLBACK;"),n}}}const De=[{name:"001_create_tasks",sql:`
+      CREATE TABLE IF NOT EXISTS tasks (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        project TEXT DEFAULT '',
+        labels TEXT DEFAULT '[]',
+        source TEXT DEFAULT 'local',
+        status TEXT NOT NULL DEFAULT 'inbox'
+          CHECK (status IN ('inbox', 'backlog', 'planned', 'scheduled', 'done', 'archived')),
+        due_date TEXT,
+        planned_date TEXT,
+        scheduled_start TEXT,
+        scheduled_end TEXT,
+        duration_minutes INTEGER DEFAULT 30,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_planned_date ON tasks(planned_date);
+      CREATE INDEX IF NOT EXISTS idx_tasks_scheduled ON tasks(scheduled_start, scheduled_end)
+    `},{name:"002_add_actual_time",sql:`
+      ALTER TABLE tasks ADD COLUMN actual_time_minutes INTEGER DEFAULT 0;
+        `},{name:"003_create_projects",sql:`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        color TEXT DEFAULT '#6366f1',
+        emoji TEXT DEFAULT '📁',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name)
+        `},{name:"004_add_priority",sql:`
+      ALTER TABLE tasks ADD COLUMN priority INTEGER DEFAULT NULL CHECK (priority IS NULL OR priority IN (1, 2, 3, 4))
+        `},{name:"005_create_subtasks",sql:`
+      CREATE TABLE IF NOT EXISTS subtasks (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        completed INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id)
+        `},{name:"006_add_reminder_minutes",sql:"ALTER TABLE tasks ADD COLUMN reminder_minutes INTEGER DEFAULT 0"},{name:"007_add_recurrence",sql:`
+      CREATE TABLE IF NOT EXISTS recurrence_rules (
+        id TEXT PRIMARY KEY,
+        frequency TEXT NOT NULL CHECK (frequency IN ('daily', 'weekly')),
+        interval_value INTEGER NOT NULL DEFAULT 1,
+        days_of_week TEXT DEFAULT '[]',
+        end_type TEXT NOT NULL DEFAULT 'never' CHECK (end_type IN ('never', 'count', 'date')),
+        end_count INTEGER,
+        end_date TEXT,
+        generated_until TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS recurrence_exceptions (
+        id TEXT PRIMARY KEY,
+        recurrence_rule_id TEXT NOT NULL,
+        exception_date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (recurrence_rule_id) REFERENCES recurrence_rules(id) ON DELETE CASCADE
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_recurrence_exceptions_unique ON recurrence_exceptions(recurrence_rule_id, exception_date);
+      ALTER TABLE tasks ADD COLUMN recurrence_rule_id TEXT REFERENCES recurrence_rules(id) ON DELETE SET NULL;
+      ALTER TABLE tasks ADD COLUMN is_recurrence_template INTEGER DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN recurrence_detached INTEGER DEFAULT 0;
+      ALTER TABLE tasks ADD COLUMN recurrence_original_date TEXT;
+      CREATE INDEX IF NOT EXISTS idx_tasks_recurrence_rule ON tasks(recurrence_rule_id)
+        `},{name:"008_create_notes",sql:`
+      CREATE TABLE IF NOT EXISTS note_groups (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        emoji TEXT DEFAULT '📝',
+        project_id TEXT DEFAULT NULL,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_note_groups_project ON note_groups(project_id);
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        title TEXT NOT NULL DEFAULT 'Untitled',
+        content TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (group_id) REFERENCES note_groups(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id)
+        `},{name:"009_notes_project_id",sql:`
+      CREATE TABLE IF NOT EXISTS notes_new (
+        id TEXT PRIMARY KEY,
+        group_id TEXT DEFAULT NULL,
+        project_id TEXT DEFAULT NULL,
+        title TEXT NOT NULL DEFAULT 'Untitled',
+        content TEXT DEFAULT '',
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (group_id) REFERENCES note_groups(id) ON DELETE CASCADE,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      );
+      INSERT INTO notes_new (id, group_id, title, content, sort_order, created_at, updated_at)
+        SELECT id, group_id, title, content, sort_order, created_at, updated_at FROM notes;
+      DROP TABLE notes;
+      ALTER TABLE notes_new RENAME TO notes;
+      CREATE INDEX IF NOT EXISTS idx_notes_group ON notes(group_id);
+      CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id)
+        `},{name:"010_add_project_actual_time",sql:"ALTER TABLE projects ADD COLUMN actual_time_minutes INTEGER DEFAULT 0"},{name:"011_planning_reports",sql:`
+      ALTER TABLE tasks ADD COLUMN completed_at TEXT DEFAULT NULL;
+      CREATE TABLE IF NOT EXISTS focus_sessions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT,
+        project TEXT DEFAULT '',
+        started_at TEXT NOT NULL,
+        ended_at TEXT NOT NULL,
+        minutes INTEGER NOT NULL DEFAULT 0,
+        date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_focus_sessions_date ON focus_sessions(date);
+      CREATE TABLE IF NOT EXISTS daily_plans (
+        date TEXT PRIMARY KEY,
+        committed_at TEXT NOT NULL,
+        planned_task_ids TEXT NOT NULL DEFAULT '[]',
+        planned_minutes INTEGER NOT NULL DEFAULT 0
+      )
+    `}];function J(r,e){const[t,n,a]=r.split("-").map(Number);return new Date(Date.UTC(t,n-1,a+e)).toISOString().split("T")[0]}function Ae(r){const[e,t,n]=r.split("-").map(Number);return new Date(Date.UTC(e,t-1,n)).getUTCDay()}function v(r){const[e,t,n]=r.split("-").map(Number);return Date.UTC(e,t-1,n)}function we(r,e,t,n,a,s){const o=[],u=v(t),d=v(n),l=r.endDate?v(r.endDate):1/0;let E=0;const m=r.endType==="count"&&r.endCount?r.endCount:1/0;if(r.frequency==="daily"){let h=e;for(;v(h)<=d&&v(h)<=l&&!(E>=m);)E++,v(h)>=u&&!a.has(h)&&!s.has(h)&&o.push(h),h=J(h,r.interval)}else if(r.frequency==="weekly"){const h=new Set(r.daysOfWeek);if(h.size===0)return o;const O=Ae(e);let _=J(e,-O),b=0;for(;;){for(let M=0;M<7;M++){if(!h.has(M))continue;const w=J(_,M);if(!(v(w)<v(e))){if(v(w)>d||v(w)>l||E>=m)return o;E++,v(w)>=u&&!a.has(w)&&!s.has(w)&&o.push(w)}}if(_=J(_,7*r.interval),b++,b>520)break}}return o}function Re(r,e){const t={};return r.forEach((n,a)=>t[n]=e[a]),{id:t.id,title:t.title,notes:t.notes||"",project:t.project||"",labels:JSON.parse(t.labels||"[]"),source:t.source||"local",status:t.status,plannedDate:t.planned_date,scheduledStart:t.scheduled_start,scheduledEnd:t.scheduled_end,durationMinutes:t.duration_minutes||30,actualTimeMinutes:t.actual_time_minutes||0,priority:t.priority??null,reminderMinutes:t.reminder_minutes??0,subtasks:[],order:t.sort_order||0,recurrenceRuleId:t.recurrence_rule_id||null,isRecurrenceTemplate:!!t.is_recurrence_template,recurrenceDetached:!!t.recurrence_detached,recurrenceOriginalDate:t.recurrence_original_date||null,createdAt:t.created_at,updatedAt:t.updated_at,completedAt:t.completed_at??null}}function Le(r,e){const t={};return r.forEach((n,a)=>t[n]=e[a]),{id:t.id,taskId:t.task_id,title:t.title,completed:!!t.completed,order:t.sort_order||0,createdAt:t.created_at}}function X(r,e,t=[]){const n=r.exec(e,t);if(n.length===0)return[];const a=n[0].columns,s=n[0].values.map(o=>Re(a,o));if(s.length>0){const o=s.map(l=>l.id),u=o.map(()=>"?").join(","),d=r.exec(`SELECT * FROM subtasks WHERE task_id IN (${u}) ORDER BY sort_order ASC, created_at ASC`,o);if(d.length>0){const l=d[0].columns,E=d[0].values.map(h=>Le(l,h)),m=new Map;for(const h of E)m.has(h.taskId)||m.set(h.taskId,[]),m.get(h.taskId).push(h);for(const h of s)h.subtasks=m.get(h.id)||[]}}return s}class Me{constructor(e){te(this,"db");this.db=e}getAll(){return X(this.db,"SELECT * FROM tasks WHERE status != ? AND is_recurrence_template = 0 ORDER BY sort_order ASC, created_at DESC",["archived"])}getByDate(e){return X(this.db,"SELECT * FROM tasks WHERE planned_date = ? AND status != ? AND is_recurrence_template = 0 ORDER BY sort_order ASC",[e,"archived"])}getByStatus(e){return X(this.db,"SELECT * FROM tasks WHERE status = ? ORDER BY sort_order ASC",[e])}create(e){const t=L.v4(),n=new Date().toISOString(),a=this.db.exec("SELECT MAX(sort_order) as max_order FROM tasks"),s=a.length>0&&a[0].values[0][0]!=null?a[0].values[0][0]:0;return this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,[t,e.title||"Untitled",e.notes||"",e.project||"",JSON.stringify(e.labels||[]),e.source||"local",e.status||"inbox",e.plannedDate||null,e.scheduledStart||null,e.scheduledEnd||null,e.durationMinutes||30,e.actualTimeMinutes||0,e.priority??null,e.reminderMinutes??0,s+1,n,n]),f(),this.getById(t)}getById(e){const t=X(this.db,"SELECT * FROM tasks WHERE id = ?",[e]);return t.length>0?t[0]:null}update(e,t){const n=new Date().toISOString(),a=[],s=[];return t.title!==void 0&&(a.push("title = ?"),s.push(t.title)),t.notes!==void 0&&(a.push("notes = ?"),s.push(t.notes)),t.project!==void 0&&(a.push("project = ?"),s.push(t.project)),t.labels!==void 0&&(a.push("labels = ?"),s.push(JSON.stringify(t.labels))),t.status!==void 0&&(a.push("status = ?"),s.push(t.status),a.push("completed_at = ?"),s.push(t.status==="done"?n:null)),t.plannedDate!==void 0&&(a.push("planned_date = ?"),s.push(t.plannedDate)),t.scheduledStart!==void 0&&(a.push("scheduled_start = ?"),s.push(t.scheduledStart)),t.scheduledEnd!==void 0&&(a.push("scheduled_end = ?"),s.push(t.scheduledEnd)),t.durationMinutes!==void 0&&(a.push("duration_minutes = ?"),s.push(t.durationMinutes)),t.actualTimeMinutes!==void 0&&(a.push("actual_time_minutes = ?"),s.push(t.actualTimeMinutes)),t.priority!==void 0&&(a.push("priority = ?"),s.push(t.priority)),t.reminderMinutes!==void 0&&(a.push("reminder_minutes = ?"),s.push(t.reminderMinutes)),t.order!==void 0&&(a.push("sort_order = ?"),s.push(t.order)),t.recurrenceDetached!==void 0&&(a.push("recurrence_detached = ?"),s.push(t.recurrenceDetached?1:0)),a.length===0?this.getById(e):(a.push("updated_at = ?"),s.push(n),s.push(e),this.db.run(`UPDATE tasks SET ${a.join(", ")} WHERE id = ?`,s),f(),this.getById(e))}delete(e){const t=this.getById(e);if(t&&t.recurrenceRuleId&&!t.isRecurrenceTemplate&&t.recurrenceOriginalDate){const n=L.v4();this.db.run("INSERT OR IGNORE INTO recurrence_exceptions (id, recurrence_rule_id, exception_date) VALUES (?, ?, ?)",[n,t.recurrenceRuleId,t.recurrenceOriginalDate])}return this.db.run("DELETE FROM tasks WHERE id = ?",[e]),f(),!0}reorder(e){const t=new Date().toISOString();for(const n of e)this.db.run("UPDATE tasks SET sort_order = ?, updated_at = ? WHERE id = ?",[n.order,t,n.id]);f()}getUpcomingWithReminders(){return X(this.db,`SELECT * FROM tasks
+             WHERE scheduled_start IS NOT NULL
+             AND reminder_minutes IS NOT NULL
+             AND status NOT IN ('done', 'archived')
+             ORDER BY scheduled_start ASC`)}search(e){return X(this.db,"SELECT * FROM tasks WHERE (title LIKE ? OR notes LIKE ?) AND status != ? AND is_recurrence_template = 0 ORDER BY sort_order ASC LIMIT 50",[`%${e}%`,`%${e}%`,"archived"])}createSubtask(e,t){const n=L.v4(),a=new Date().toISOString(),s=this.db.exec("SELECT MAX(sort_order) as max_order FROM subtasks WHERE task_id = ?",[e]),o=s.length>0&&s[0].values[0][0]!=null?s[0].values[0][0]:0;return this.db.run("INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)",[n,e,t,o+1,a]),f(),{id:n,taskId:e,title:t,completed:!1,order:o+1,createdAt:a}}updateSubtask(e,t){const n=[],a=[];t.title!==void 0&&(n.push("title = ?"),a.push(t.title)),t.completed!==void 0&&(n.push("completed = ?"),a.push(t.completed?1:0)),t.order!==void 0&&(n.push("sort_order = ?"),a.push(t.order)),n.length!==0&&(a.push(e),this.db.run(`UPDATE subtasks SET ${n.join(", ")} WHERE id = ?`,a),f())}deleteSubtask(e){this.db.run("DELETE FROM subtasks WHERE id = ?",[e]),f()}getRecurrenceRule(e){const t=this.db.exec("SELECT * FROM recurrence_rules WHERE id = ?",[e]);if(t.length===0||t[0].values.length===0)return null;const n=t[0].columns,a={};return n.forEach((s,o)=>a[s]=t[0].values[0][o]),{id:a.id,frequency:a.frequency,interval:a.interval_value||1,daysOfWeek:JSON.parse(a.days_of_week||"[]"),endType:a.end_type||"never",endCount:a.end_count??null,endDate:a.end_date??null,generatedUntil:a.generated_until??null,createdAt:a.created_at,updatedAt:a.updated_at}}createRecurringTask(e,t){const n=new Date().toISOString(),a=L.v4();this.db.run(`INSERT INTO recurrence_rules (id, frequency, interval_value, days_of_week, end_type, end_count, end_date, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,[a,t.frequency,t.interval||1,JSON.stringify(t.daysOfWeek||[]),t.endType||"never",t.endCount??null,t.endDate??null,n,n]);const s=L.v4(),o=e.plannedDate||new Date().toISOString().split("T")[0];if(this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_original_date, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,[s,e.title||"Untitled",e.notes||"",e.project||"",JSON.stringify(e.labels||[]),e.source||"local",e.status||"planned",o,e.scheduledStart||null,e.scheduledEnd||null,e.durationMinutes||30,0,e.priority??null,e.reminderMinutes??0,0,a,o,n,n]),e.subtasks&&e.subtasks.length>0)for(const l of e.subtasks){const E=L.v4();this.db.run("INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)",[E,s,l.title,l.order??0,n])}const u=new Date().toISOString().split("T")[0],d=new Date(Date.now()+14*864e5).toISOString().split("T")[0];return this.generateInstancesForRange(a,u,d),f(),this.getById(s)}generateInstancesForRange(e,t,n){const a=this.getRecurrenceRule(e);if(!a)return[];const s=X(this.db,"SELECT * FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 1",[e]);if(s.length===0)return[];const o=s[0],u=this.db.exec("SELECT recurrence_original_date FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_original_date IS NOT NULL",[e]),d=new Set;if(u.length>0)for(const g of u[0].values)g[0]&&d.add(g[0]);const l=this.db.exec("SELECT exception_date FROM recurrence_exceptions WHERE recurrence_rule_id = ?",[e]),E=new Set;if(l.length>0)for(const g of l[0].values)g[0]&&E.add(g[0]);const m={frequency:a.frequency,interval:a.interval,daysOfWeek:a.daysOfWeek,endType:a.endType,endCount:a.endCount,endDate:a.endDate},h=o.recurrenceOriginalDate||o.plannedDate||t,O=we(m,h,t,n,d,E),_=new Date().toISOString(),b=[],M=this.db.exec("SELECT title, sort_order FROM subtasks WHERE task_id = ? ORDER BY sort_order",[o.id]),w=[];if(M.length>0)for(const g of M[0].values)w.push({title:g[0],order:g[1]});for(const g of O){const N=L.v4(),T=this.db.exec("SELECT MAX(sort_order) as max_order FROM tasks"),k=T.length>0&&T[0].values[0][0]!=null?T[0].values[0][0]:0;this.db.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,[N,o.title,o.notes,o.project,JSON.stringify(o.labels),o.source,"planned",g,o.scheduledStart||null,o.scheduledEnd||null,o.durationMinutes,0,o.priority,o.reminderMinutes,k+1,e,g,_,_]);for(const ee of w){const ge=L.v4();this.db.run("INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)",[ge,N,ee.title,ee.order,_])}const R=this.getById(N);R&&b.push(R)}return this.db.run("UPDATE recurrence_rules SET generated_until = ?, updated_at = ? WHERE id = ?",[n,_,e]),f(),b}ensureInstancesForDateRange(e,t){const n=this.db.exec("SELECT id FROM recurrence_rules WHERE generated_until IS NULL OR generated_until < ?",[t]);if(n.length===0)return[];const a=[];for(const s of n[0].values){const o=s[0],u=this.generateInstancesForRange(o,e,t);a.push(...u)}return a}updateSeries(e,t){const n=new Date().toISOString(),a=new Date().toISOString().split("T")[0],s=[],o=[];if(t.title!==void 0&&(s.push("title = ?"),o.push(t.title)),t.notes!==void 0&&(s.push("notes = ?"),o.push(t.notes)),t.project!==void 0&&(s.push("project = ?"),o.push(t.project)),t.durationMinutes!==void 0&&(s.push("duration_minutes = ?"),o.push(t.durationMinutes)),t.priority!==void 0&&(s.push("priority = ?"),o.push(t.priority)),t.reminderMinutes!==void 0&&(s.push("reminder_minutes = ?"),o.push(t.reminderMinutes)),t.scheduledStart!==void 0&&(s.push("scheduled_start = ?"),o.push(t.scheduledStart)),t.scheduledEnd!==void 0&&(s.push("scheduled_end = ?"),o.push(t.scheduledEnd)),!(s.length===0&&!t.subtasks)){if(s.length>0){s.push("updated_at = ?"),o.push(n);const u=[...o,e];this.db.run(`UPDATE tasks SET ${s.join(", ")} WHERE recurrence_rule_id = ? AND is_recurrence_template = 1`,u);const d=[...o,e,a];this.db.run(`UPDATE tasks SET ${s.join(", ")} WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_detached = 0 AND planned_date >= ? AND status != 'done'`,d)}if(t.subtasks){const u=this.db.exec("SELECT id FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 1",[e]);if(u.length>0&&u[0].values.length>0){const d=u[0].values[0][0];this.db.run("DELETE FROM subtasks WHERE task_id = ?",[d]);for(const E of t.subtasks){const m=L.v4();this.db.run("INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)",[m,d,E.title,E.order??0,n])}const l=this.db.exec("SELECT id FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_detached = 0 AND planned_date >= ? AND status != 'done'",[e,a]);if(l.length>0)for(const E of l[0].values){const m=E[0];this.db.run("DELETE FROM subtasks WHERE task_id = ?",[m]);for(const h of t.subtasks){const O=L.v4();this.db.run("INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at) VALUES (?, ?, ?, 0, ?, ?)",[O,m,h.title,h.order??0,n])}}}}f()}}deleteSeries(e){this.db.run("DELETE FROM tasks WHERE recurrence_rule_id = ?",[e]),this.db.run("DELETE FROM recurrence_exceptions WHERE recurrence_rule_id = ?",[e]),this.db.run("DELETE FROM recurrence_rules WHERE id = ?",[e]),f()}deleteSeriesFuture(e,t){const n=new Date().toISOString();this.db.run("DELETE FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND planned_date >= ? AND status != 'done'",[e,t]);const a=new Date(new Date(t+"T00:00:00").getTime()-864e5).toISOString().split("T")[0];this.db.run("UPDATE recurrence_rules SET end_type = ?, end_date = ?, updated_at = ? WHERE id = ?",["date",a,n,e]),f()}detachInstance(e){const t=new Date().toISOString();this.db.run("UPDATE tasks SET recurrence_detached = 1, updated_at = ? WHERE id = ?",[t,e]),f()}updateRecurrenceRule(e,t){const n=new Date().toISOString(),a=new Date().toISOString().split("T")[0],s=[],o=[];if(t.frequency!==void 0&&(s.push("frequency = ?"),o.push(t.frequency)),t.interval!==void 0&&(s.push("interval_value = ?"),o.push(t.interval)),t.daysOfWeek!==void 0&&(s.push("days_of_week = ?"),o.push(JSON.stringify(t.daysOfWeek))),t.endType!==void 0&&(s.push("end_type = ?"),o.push(t.endType)),t.endCount!==void 0&&(s.push("end_count = ?"),o.push(t.endCount)),t.endDate!==void 0&&(s.push("end_date = ?"),o.push(t.endDate)),s.length===0)return;s.push("generated_until = NULL"),s.push("updated_at = ?"),o.push(n),o.push(e),this.db.run(`UPDATE recurrence_rules SET ${s.join(", ")} WHERE id = ?`,o),this.db.run("DELETE FROM tasks WHERE recurrence_rule_id = ? AND is_recurrence_template = 0 AND recurrence_detached = 0 AND planned_date >= ? AND status != 'done'",[e,a]);const u=new Date(Date.now()+14*864e5).toISOString().split("T")[0];this.generateInstancesForRange(e,a,u),f()}}class ke{constructor(e){this.db=e}mapRow(e){return{id:e.id,name:e.name,color:e.color,emoji:e.emoji,order:e.sort_order,actualTimeMinutes:e.actual_time_minutes??0,createdAt:e.created_at,updatedAt:e.updated_at}}getAll(){const e=this.db.prepare("SELECT * FROM projects ORDER BY sort_order ASC, created_at ASC"),t=[];for(;e.step();)t.push(this.mapRow(e.getAsObject()));return e.free(),t}getById(e){const t=this.db.prepare("SELECT * FROM projects WHERE id = ?");if(t.bind([e]),t.step()){const n=this.mapRow(t.getAsObject());return t.free(),n}return t.free(),null}create(e){const t=L.v4(),n=new Date().toISOString();return this.db.run(`INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,[t,e.name,e.color||"#6366f1",e.emoji||"📁",0,n,n]),f(),this.getById(t)}update(e,t){const n=[],a=[];return t.name!==void 0&&(n.push("name = ?"),a.push(t.name)),t.color!==void 0&&(n.push("color = ?"),a.push(t.color)),t.emoji!==void 0&&(n.push("emoji = ?"),a.push(t.emoji)),t.order!==void 0&&(n.push("sort_order = ?"),a.push(t.order)),t.actualTimeMinutes!==void 0&&(n.push("actual_time_minutes = ?"),a.push(t.actualTimeMinutes)),n.length===0?this.getById(e):(n.push("updated_at = datetime('now')"),a.push(e),this.db.run(`UPDATE projects SET ${n.join(", ")} WHERE id = ?`,a),f(),this.getById(e))}delete(e){const t=this.getById(e);return t&&this.db.run("UPDATE tasks SET project = '' WHERE project = ?",[t.name]),this.db.run("DELETE FROM projects WHERE id = ?",[e]),f(),!0}reorder(e){for(const t of e)this.db.run("UPDATE projects SET sort_order = ? WHERE id = ?",[t.order,t.id]);f()}}class Ie{constructor(e){this.db=e}mapGroupRow(e){return{id:e.id,name:e.name,emoji:e.emoji,projectId:e.project_id||null,order:e.sort_order,createdAt:e.created_at,updatedAt:e.updated_at}}getAllGroups(){const e=this.db.prepare("SELECT * FROM note_groups ORDER BY sort_order ASC, created_at ASC"),t=[];for(;e.step();)t.push(this.mapGroupRow(e.getAsObject()));return e.free(),t}getGroupById(e){const t=this.db.prepare("SELECT * FROM note_groups WHERE id = ?");if(t.bind([e]),t.step()){const n=this.mapGroupRow(t.getAsObject());return t.free(),n}return t.free(),null}getGroupsByProject(e){const t=this.db.prepare("SELECT * FROM note_groups WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC");t.bind([e]);const n=[];for(;t.step();)n.push(this.mapGroupRow(t.getAsObject()));return t.free(),n}createGroup(e){const t=L.v4(),n=new Date().toISOString();return this.db.run(`INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,[t,e.name,e.emoji||"📝",e.projectId||null,0,n,n]),f(),this.getGroupById(t)}updateGroup(e,t){const n=[],a=[];return t.name!==void 0&&(n.push("name = ?"),a.push(t.name)),t.emoji!==void 0&&(n.push("emoji = ?"),a.push(t.emoji)),t.projectId!==void 0&&(n.push("project_id = ?"),a.push(t.projectId)),t.order!==void 0&&(n.push("sort_order = ?"),a.push(t.order)),n.length===0?this.getGroupById(e):(n.push("updated_at = datetime('now')"),a.push(e),this.db.run(`UPDATE note_groups SET ${n.join(", ")} WHERE id = ?`,a),f(),this.getGroupById(e))}deleteGroup(e){return this.db.run("DELETE FROM note_groups WHERE id = ?",[e]),f(),!0}reorderGroups(e){for(const t of e)this.db.run("UPDATE note_groups SET sort_order = ? WHERE id = ?",[t.order,t.id]);f()}mapNoteRow(e){return{id:e.id,groupId:e.group_id||null,projectId:e.project_id||null,title:e.title,content:e.content,order:e.sort_order,createdAt:e.created_at,updatedAt:e.updated_at}}getAllNotes(){const e=this.db.prepare("SELECT * FROM notes ORDER BY updated_at DESC"),t=[];for(;e.step();)t.push(this.mapNoteRow(e.getAsObject()));return e.free(),t}getNotesByGroup(e){const t=this.db.prepare("SELECT * FROM notes WHERE group_id = ? ORDER BY sort_order ASC, created_at ASC");t.bind([e]);const n=[];for(;t.step();)n.push(this.mapNoteRow(t.getAsObject()));return t.free(),n}getNotesByProject(e){const t=this.db.prepare("SELECT * FROM notes WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC");t.bind([e]);const n=[];for(;t.step();)n.push(this.mapNoteRow(t.getAsObject()));return t.free(),n}getNoteById(e){const t=this.db.prepare("SELECT * FROM notes WHERE id = ?");if(t.bind([e]),t.step()){const n=this.mapNoteRow(t.getAsObject());return t.free(),n}return t.free(),null}createNote(e){const t=L.v4(),n=new Date().toISOString();return this.db.run(`INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,[t,e.groupId||null,e.projectId||null,e.title||"Untitled",e.content||"",0,n,n]),f(),this.getNoteById(t)}updateNote(e,t){const n=[],a=[];return t.title!==void 0&&(n.push("title = ?"),a.push(t.title)),t.content!==void 0&&(n.push("content = ?"),a.push(t.content)),t.groupId!==void 0&&(n.push("group_id = ?"),a.push(t.groupId)),t.projectId!==void 0&&(n.push("project_id = ?"),a.push(t.projectId)),t.order!==void 0&&(n.push("sort_order = ?"),a.push(t.order)),n.length===0?this.getNoteById(e):(n.push("updated_at = datetime('now')"),a.push(e),this.db.run(`UPDATE notes SET ${n.join(", ")} WHERE id = ?`,a),f(),this.getNoteById(e))}deleteNote(e){return this.db.run("DELETE FROM notes WHERE id = ?",[e]),f(),!0}reorderNotes(e){for(const t of e)this.db.run("UPDATE notes SET sort_order = ? WHERE id = ?",[t.order,t.id]);f()}getNoteCountByGroup(e){const t=this.db.prepare("SELECT COUNT(*) as count FROM notes WHERE group_id = ?");t.bind([e]);let n=0;return t.step()&&(n=t.getAsObject().count),t.free(),n}}const le=6048e5,ve=864e5,ne=Symbol.for("constructDateFrom");function U(r,e){return typeof r=="function"?r(e):r&&typeof r=="object"&&ne in r?r[ne](e):r instanceof Date?new r.constructor(e):new Date(e)}function I(r,e){return U(e||r,r)}function Fe(r,e,t){const n=I(r,t==null?void 0:t.in);return isNaN(e)?U(r,NaN):(n.setDate(n.getDate()+e),n)}let Ce={};function $(){return Ce}function Q(r,e){var u,d,l,E;const t=$(),n=(e==null?void 0:e.weekStartsOn)??((d=(u=e==null?void 0:e.locale)==null?void 0:u.options)==null?void 0:d.weekStartsOn)??t.weekStartsOn??((E=(l=t.locale)==null?void 0:l.options)==null?void 0:E.weekStartsOn)??0,a=I(r,e==null?void 0:e.in),s=a.getDay(),o=(s<n?7:0)+s-n;return a.setDate(a.getDate()-o),a.setHours(0,0,0,0),a}function K(r,e){return Q(r,{...e,weekStartsOn:1})}function he(r,e){const t=I(r,e==null?void 0:e.in),n=t.getFullYear(),a=U(t,0);a.setFullYear(n+1,0,4),a.setHours(0,0,0,0);const s=K(a),o=U(t,0);o.setFullYear(n,0,4),o.setHours(0,0,0,0);const u=K(o);return t.getTime()>=s.getTime()?n+1:t.getTime()>=u.getTime()?n:n-1}function re(r){const e=I(r),t=new Date(Date.UTC(e.getFullYear(),e.getMonth(),e.getDate(),e.getHours(),e.getMinutes(),e.getSeconds(),e.getMilliseconds()));return t.setUTCFullYear(e.getFullYear()),+r-+t}function je(r,...e){const t=U.bind(null,e.find(n=>typeof n=="object"));return e.map(t)}function ae(r,e){const t=I(r,e==null?void 0:e.in);return t.setHours(0,0,0,0),t}function Ue(r,e,t){const[n,a]=je(t==null?void 0:t.in,r,e),s=ae(n),o=ae(a),u=+s-re(s),d=+o-re(o);return Math.round((u-d)/ve)}function xe(r,e){const t=he(r,e),n=U(r,0);return n.setFullYear(t,0,4),n.setHours(0,0,0,0),K(n)}function Pe(r){return r instanceof Date||typeof r=="object"&&Object.prototype.toString.call(r)==="[object Date]"}function Xe(r){return!(!Pe(r)&&typeof r!="number"||isNaN(+I(r)))}function Be(r,e){const t=I(r,e==null?void 0:e.in);return t.setFullYear(t.getFullYear(),0,1),t.setHours(0,0,0,0),t}const We={lessThanXSeconds:{one:"less than a second",other:"less than {{count}} seconds"},xSeconds:{one:"1 second",other:"{{count}} seconds"},halfAMinute:"half a minute",lessThanXMinutes:{one:"less than a minute",other:"less than {{count}} minutes"},xMinutes:{one:"1 minute",other:"{{count}} minutes"},aboutXHours:{one:"about 1 hour",other:"about {{count}} hours"},xHours:{one:"1 hour",other:"{{count}} hours"},xDays:{one:"1 day",other:"{{count}} days"},aboutXWeeks:{one:"about 1 week",other:"about {{count}} weeks"},xWeeks:{one:"1 week",other:"{{count}} weeks"},aboutXMonths:{one:"about 1 month",other:"about {{count}} months"},xMonths:{one:"1 month",other:"{{count}} months"},aboutXYears:{one:"about 1 year",other:"about {{count}} years"},xYears:{one:"1 year",other:"{{count}} years"},overXYears:{one:"over 1 year",other:"over {{count}} years"},almostXYears:{one:"almost 1 year",other:"almost {{count}} years"}},Ye=(r,e,t)=>{let n;const a=We[r];return typeof a=="string"?n=a:e===1?n=a.one:n=a.other.replace("{{count}}",e.toString()),t!=null&&t.addSuffix?t.comparison&&t.comparison>0?"in "+n:n+" ago":n};function z(r){return(e={})=>{const t=e.width?String(e.width):r.defaultWidth;return r.formats[t]||r.formats[r.defaultWidth]}}const He={full:"EEEE, MMMM do, y",long:"MMMM do, y",medium:"MMM d, y",short:"MM/dd/yyyy"},Ge={full:"h:mm:ss a zzzz",long:"h:mm:ss a z",medium:"h:mm:ss a",short:"h:mm a"},qe={full:"{{date}} 'at' {{time}}",long:"{{date}} 'at' {{time}}",medium:"{{date}}, {{time}}",short:"{{date}}, {{time}}"},Ve={date:z({formats:He,defaultWidth:"full"}),time:z({formats:Ge,defaultWidth:"full"}),dateTime:z({formats:qe,defaultWidth:"full"})},Qe={lastWeek:"'last' eeee 'at' p",yesterday:"'yesterday at' p",today:"'today at' p",tomorrow:"'tomorrow at' p",nextWeek:"eeee 'at' p",other:"P"},Je=(r,e,t,n)=>Qe[r];function G(r){return(e,t)=>{const n=t!=null&&t.context?String(t.context):"standalone";let a;if(n==="formatting"&&r.formattingValues){const o=r.defaultFormattingWidth||r.defaultWidth,u=t!=null&&t.width?String(t.width):o;a=r.formattingValues[u]||r.formattingValues[o]}else{const o=r.defaultWidth,u=t!=null&&t.width?String(t.width):r.defaultWidth;a=r.values[u]||r.values[o]}const s=r.argumentCallback?r.argumentCallback(e):e;return a[s]}}const Ke={narrow:["B","A"],abbreviated:["BC","AD"],wide:["Before Christ","Anno Domini"]},$e={narrow:["1","2","3","4"],abbreviated:["Q1","Q2","Q3","Q4"],wide:["1st quarter","2nd quarter","3rd quarter","4th quarter"]},ze={narrow:["J","F","M","A","M","J","J","A","S","O","N","D"],abbreviated:["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],wide:["January","February","March","April","May","June","July","August","September","October","November","December"]},Ze={narrow:["S","M","T","W","T","F","S"],short:["Su","Mo","Tu","We","Th","Fr","Sa"],abbreviated:["Sun","Mon","Tue","Wed","Thu","Fri","Sat"],wide:["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]},et={narrow:{am:"a",pm:"p",midnight:"mi",noon:"n",morning:"morning",afternoon:"afternoon",evening:"evening",night:"night"},abbreviated:{am:"AM",pm:"PM",midnight:"midnight",noon:"noon",morning:"morning",afternoon:"afternoon",evening:"evening",night:"night"},wide:{am:"a.m.",pm:"p.m.",midnight:"midnight",noon:"noon",morning:"morning",afternoon:"afternoon",evening:"evening",night:"night"}},tt={narrow:{am:"a",pm:"p",midnight:"mi",noon:"n",morning:"in the morning",afternoon:"in the afternoon",evening:"in the evening",night:"at night"},abbreviated:{am:"AM",pm:"PM",midnight:"midnight",noon:"noon",morning:"in the morning",afternoon:"in the afternoon",evening:"in the evening",night:"at night"},wide:{am:"a.m.",pm:"p.m.",midnight:"midnight",noon:"noon",morning:"in the morning",afternoon:"in the afternoon",evening:"in the evening",night:"at night"}},nt=(r,e)=>{const t=Number(r),n=t%100;if(n>20||n<10)switch(n%10){case 1:return t+"st";case 2:return t+"nd";case 3:return t+"rd"}return t+"th"},rt={ordinalNumber:nt,era:G({values:Ke,defaultWidth:"wide"}),quarter:G({values:$e,defaultWidth:"wide",argumentCallback:r=>r-1}),month:G({values:ze,defaultWidth:"wide"}),day:G({values:Ze,defaultWidth:"wide"}),dayPeriod:G({values:et,defaultWidth:"wide",formattingValues:tt,defaultFormattingWidth:"wide"})};function q(r){return(e,t={})=>{const n=t.width,a=n&&r.matchPatterns[n]||r.matchPatterns[r.defaultMatchWidth],s=e.match(a);if(!s)return null;const o=s[0],u=n&&r.parsePatterns[n]||r.parsePatterns[r.defaultParseWidth],d=Array.isArray(u)?st(u,m=>m.test(o)):at(u,m=>m.test(o));let l;l=r.valueCallback?r.valueCallback(d):d,l=t.valueCallback?t.valueCallback(l):l;const E=e.slice(o.length);return{value:l,rest:E}}}function at(r,e){for(const t in r)if(Object.prototype.hasOwnProperty.call(r,t)&&e(r[t]))return t}function st(r,e){for(let t=0;t<r.length;t++)if(e(r[t]))return t}function ot(r){return(e,t={})=>{const n=e.match(r.matchPattern);if(!n)return null;const a=n[0],s=e.match(r.parsePattern);if(!s)return null;let o=r.valueCallback?r.valueCallback(s[0]):s[0];o=t.valueCallback?t.valueCallback(o):o;const u=e.slice(a.length);return{value:o,rest:u}}}const it=/^(\d+)(th|st|nd|rd)?/i,ct=/\d+/i,ut={narrow:/^(b|a)/i,abbreviated:/^(b\.?\s?c\.?|b\.?\s?c\.?\s?e\.?|a\.?\s?d\.?|c\.?\s?e\.?)/i,wide:/^(before christ|before common era|anno domini|common era)/i},dt={any:[/^b/i,/^(a|c)/i]},lt={narrow:/^[1234]/i,abbreviated:/^q[1234]/i,wide:/^[1234](th|st|nd|rd)? quarter/i},ht={any:[/1/i,/2/i,/3/i,/4/i]},Et={narrow:/^[jfmasond]/i,abbreviated:/^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i,wide:/^(january|february|march|april|may|june|july|august|september|october|november|december)/i},ft={narrow:[/^j/i,/^f/i,/^m/i,/^a/i,/^m/i,/^j/i,/^j/i,/^a/i,/^s/i,/^o/i,/^n/i,/^d/i],any:[/^ja/i,/^f/i,/^mar/i,/^ap/i,/^may/i,/^jun/i,/^jul/i,/^au/i,/^s/i,/^o/i,/^n/i,/^d/i]},pt={narrow:/^[smtwf]/i,short:/^(su|mo|tu|we|th|fr|sa)/i,abbreviated:/^(sun|mon|tue|wed|thu|fri|sat)/i,wide:/^(sunday|monday|tuesday|wednesday|thursday|friday|saturday)/i},mt={narrow:[/^s/i,/^m/i,/^t/i,/^w/i,/^t/i,/^f/i,/^s/i],any:[/^su/i,/^m/i,/^tu/i,/^w/i,/^th/i,/^f/i,/^sa/i]},_t={narrow:/^(a|p|mi|n|(in the|at) (morning|afternoon|evening|night))/i,any:/^([ap]\.?\s?m\.?|midnight|noon|(in the|at) (morning|afternoon|evening|night))/i},Tt={any:{am:/^a/i,pm:/^p/i,midnight:/^mi/i,noon:/^no/i,morning:/morning/i,afternoon:/afternoon/i,evening:/evening/i,night:/night/i}},gt={ordinalNumber:ot({matchPattern:it,parsePattern:ct,valueCallback:r=>parseInt(r,10)}),era:q({matchPatterns:ut,defaultMatchWidth:"wide",parsePatterns:dt,defaultParseWidth:"any"}),quarter:q({matchPatterns:lt,defaultMatchWidth:"wide",parsePatterns:ht,defaultParseWidth:"any",valueCallback:r=>r+1}),month:q({matchPatterns:Et,defaultMatchWidth:"wide",parsePatterns:ft,defaultParseWidth:"any"}),day:q({matchPatterns:pt,defaultMatchWidth:"wide",parsePatterns:mt,defaultParseWidth:"any"}),dayPeriod:q({matchPatterns:_t,defaultMatchWidth:"any",parsePatterns:Tt,defaultParseWidth:"any"})},St={code:"en-US",formatDistance:Ye,formatLong:Ve,formatRelative:Je,localize:rt,match:gt,options:{weekStartsOn:0,firstWeekContainsDate:1}};function bt(r,e){const t=I(r,e==null?void 0:e.in);return Ue(t,Be(t))+1}function yt(r,e){const t=I(r,e==null?void 0:e.in),n=+K(t)-+xe(t);return Math.round(n/le)+1}function Ee(r,e){var E,m,h,O;const t=I(r,e==null?void 0:e.in),n=t.getFullYear(),a=$(),s=(e==null?void 0:e.firstWeekContainsDate)??((m=(E=e==null?void 0:e.locale)==null?void 0:E.options)==null?void 0:m.firstWeekContainsDate)??a.firstWeekContainsDate??((O=(h=a.locale)==null?void 0:h.options)==null?void 0:O.firstWeekContainsDate)??1,o=U((e==null?void 0:e.in)||r,0);o.setFullYear(n+1,0,s),o.setHours(0,0,0,0);const u=Q(o,e),d=U((e==null?void 0:e.in)||r,0);d.setFullYear(n,0,s),d.setHours(0,0,0,0);const l=Q(d,e);return+t>=+u?n+1:+t>=+l?n:n-1}function Ot(r,e){var u,d,l,E;const t=$(),n=(e==null?void 0:e.firstWeekContainsDate)??((d=(u=e==null?void 0:e.locale)==null?void 0:u.options)==null?void 0:d.firstWeekContainsDate)??t.firstWeekContainsDate??((E=(l=t.locale)==null?void 0:l.options)==null?void 0:E.firstWeekContainsDate)??1,a=Ee(r,e),s=U((e==null?void 0:e.in)||r,0);return s.setFullYear(a,0,n),s.setHours(0,0,0,0),Q(s,e)}function Nt(r,e){const t=I(r,e==null?void 0:e.in),n=+Q(t,e)-+Ot(t,e);return Math.round(n/le)+1}function p(r,e){const t=r<0?"-":"",n=Math.abs(r).toString().padStart(e,"0");return t+n}const x={y(r,e){const t=r.getFullYear(),n=t>0?t:1-t;return p(e==="yy"?n%100:n,e.length)},M(r,e){const t=r.getMonth();return e==="M"?String(t+1):p(t+1,2)},d(r,e){return p(r.getDate(),e.length)},a(r,e){const t=r.getHours()/12>=1?"pm":"am";switch(e){case"a":case"aa":return t.toUpperCase();case"aaa":return t;case"aaaaa":return t[0];case"aaaa":default:return t==="am"?"a.m.":"p.m."}},h(r,e){return p(r.getHours()%12||12,e.length)},H(r,e){return p(r.getHours(),e.length)},m(r,e){return p(r.getMinutes(),e.length)},s(r,e){return p(r.getSeconds(),e.length)},S(r,e){const t=e.length,n=r.getMilliseconds(),a=Math.trunc(n*Math.pow(10,t-3));return p(a,e.length)}},W={midnight:"midnight",noon:"noon",morning:"morning",afternoon:"afternoon",evening:"evening",night:"night"},se={G:function(r,e,t){const n=r.getFullYear()>0?1:0;switch(e){case"G":case"GG":case"GGG":return t.era(n,{width:"abbreviated"});case"GGGGG":return t.era(n,{width:"narrow"});case"GGGG":default:return t.era(n,{width:"wide"})}},y:function(r,e,t){if(e==="yo"){const n=r.getFullYear(),a=n>0?n:1-n;return t.ordinalNumber(a,{unit:"year"})}return x.y(r,e)},Y:function(r,e,t,n){const a=Ee(r,n),s=a>0?a:1-a;if(e==="YY"){const o=s%100;return p(o,2)}return e==="Yo"?t.ordinalNumber(s,{unit:"year"}):p(s,e.length)},R:function(r,e){const t=he(r);return p(t,e.length)},u:function(r,e){const t=r.getFullYear();return p(t,e.length)},Q:function(r,e,t){const n=Math.ceil((r.getMonth()+1)/3);switch(e){case"Q":return String(n);case"QQ":return p(n,2);case"Qo":return t.ordinalNumber(n,{unit:"quarter"});case"QQQ":return t.quarter(n,{width:"abbreviated",context:"formatting"});case"QQQQQ":return t.quarter(n,{width:"narrow",context:"formatting"});case"QQQQ":default:return t.quarter(n,{width:"wide",context:"formatting"})}},q:function(r,e,t){const n=Math.ceil((r.getMonth()+1)/3);switch(e){case"q":return String(n);case"qq":return p(n,2);case"qo":return t.ordinalNumber(n,{unit:"quarter"});case"qqq":return t.quarter(n,{width:"abbreviated",context:"standalone"});case"qqqqq":return t.quarter(n,{width:"narrow",context:"standalone"});case"qqqq":default:return t.quarter(n,{width:"wide",context:"standalone"})}},M:function(r,e,t){const n=r.getMonth();switch(e){case"M":case"MM":return x.M(r,e);case"Mo":return t.ordinalNumber(n+1,{unit:"month"});case"MMM":return t.month(n,{width:"abbreviated",context:"formatting"});case"MMMMM":return t.month(n,{width:"narrow",context:"formatting"});case"MMMM":default:return t.month(n,{width:"wide",context:"formatting"})}},L:function(r,e,t){const n=r.getMonth();switch(e){case"L":return String(n+1);case"LL":return p(n+1,2);case"Lo":return t.ordinalNumber(n+1,{unit:"month"});case"LLL":return t.month(n,{width:"abbreviated",context:"standalone"});case"LLLLL":return t.month(n,{width:"narrow",context:"standalone"});case"LLLL":default:return t.month(n,{width:"wide",context:"standalone"})}},w:function(r,e,t,n){const a=Nt(r,n);return e==="wo"?t.ordinalNumber(a,{unit:"week"}):p(a,e.length)},I:function(r,e,t){const n=yt(r);return e==="Io"?t.ordinalNumber(n,{unit:"week"}):p(n,e.length)},d:function(r,e,t){return e==="do"?t.ordinalNumber(r.getDate(),{unit:"date"}):x.d(r,e)},D:function(r,e,t){const n=bt(r);return e==="Do"?t.ordinalNumber(n,{unit:"dayOfYear"}):p(n,e.length)},E:function(r,e,t){const n=r.getDay();switch(e){case"E":case"EE":case"EEE":return t.day(n,{width:"abbreviated",context:"formatting"});case"EEEEE":return t.day(n,{width:"narrow",context:"formatting"});case"EEEEEE":return t.day(n,{width:"short",context:"formatting"});case"EEEE":default:return t.day(n,{width:"wide",context:"formatting"})}},e:function(r,e,t,n){const a=r.getDay(),s=(a-n.weekStartsOn+8)%7||7;switch(e){case"e":return String(s);case"ee":return p(s,2);case"eo":return t.ordinalNumber(s,{unit:"day"});case"eee":return t.day(a,{width:"abbreviated",context:"formatting"});case"eeeee":return t.day(a,{width:"narrow",context:"formatting"});case"eeeeee":return t.day(a,{width:"short",context:"formatting"});case"eeee":default:return t.day(a,{width:"wide",context:"formatting"})}},c:function(r,e,t,n){const a=r.getDay(),s=(a-n.weekStartsOn+8)%7||7;switch(e){case"c":return String(s);case"cc":return p(s,e.length);case"co":return t.ordinalNumber(s,{unit:"day"});case"ccc":return t.day(a,{width:"abbreviated",context:"standalone"});case"ccccc":return t.day(a,{width:"narrow",context:"standalone"});case"cccccc":return t.day(a,{width:"short",context:"standalone"});case"cccc":default:return t.day(a,{width:"wide",context:"standalone"})}},i:function(r,e,t){const n=r.getDay(),a=n===0?7:n;switch(e){case"i":return String(a);case"ii":return p(a,e.length);case"io":return t.ordinalNumber(a,{unit:"day"});case"iii":return t.day(n,{width:"abbreviated",context:"formatting"});case"iiiii":return t.day(n,{width:"narrow",context:"formatting"});case"iiiiii":return t.day(n,{width:"short",context:"formatting"});case"iiii":default:return t.day(n,{width:"wide",context:"formatting"})}},a:function(r,e,t){const a=r.getHours()/12>=1?"pm":"am";switch(e){case"a":case"aa":return t.dayPeriod(a,{width:"abbreviated",context:"formatting"});case"aaa":return t.dayPeriod(a,{width:"abbreviated",context:"formatting"}).toLowerCase();case"aaaaa":return t.dayPeriod(a,{width:"narrow",context:"formatting"});case"aaaa":default:return t.dayPeriod(a,{width:"wide",context:"formatting"})}},b:function(r,e,t){const n=r.getHours();let a;switch(n===12?a=W.noon:n===0?a=W.midnight:a=n/12>=1?"pm":"am",e){case"b":case"bb":return t.dayPeriod(a,{width:"abbreviated",context:"formatting"});case"bbb":return t.dayPeriod(a,{width:"abbreviated",context:"formatting"}).toLowerCase();case"bbbbb":return t.dayPeriod(a,{width:"narrow",context:"formatting"});case"bbbb":default:return t.dayPeriod(a,{width:"wide",context:"formatting"})}},B:function(r,e,t){const n=r.getHours();let a;switch(n>=17?a=W.evening:n>=12?a=W.afternoon:n>=4?a=W.morning:a=W.night,e){case"B":case"BB":case"BBB":return t.dayPeriod(a,{width:"abbreviated",context:"formatting"});case"BBBBB":return t.dayPeriod(a,{width:"narrow",context:"formatting"});case"BBBB":default:return t.dayPeriod(a,{width:"wide",context:"formatting"})}},h:function(r,e,t){if(e==="ho"){let n=r.getHours()%12;return n===0&&(n=12),t.ordinalNumber(n,{unit:"hour"})}return x.h(r,e)},H:function(r,e,t){return e==="Ho"?t.ordinalNumber(r.getHours(),{unit:"hour"}):x.H(r,e)},K:function(r,e,t){const n=r.getHours()%12;return e==="Ko"?t.ordinalNumber(n,{unit:"hour"}):p(n,e.length)},k:function(r,e,t){let n=r.getHours();return n===0&&(n=24),e==="ko"?t.ordinalNumber(n,{unit:"hour"}):p(n,e.length)},m:function(r,e,t){return e==="mo"?t.ordinalNumber(r.getMinutes(),{unit:"minute"}):x.m(r,e)},s:function(r,e,t){return e==="so"?t.ordinalNumber(r.getSeconds(),{unit:"second"}):x.s(r,e)},S:function(r,e){return x.S(r,e)},X:function(r,e,t){const n=r.getTimezoneOffset();if(n===0)return"Z";switch(e){case"X":return ie(n);case"XXXX":case"XX":return B(n);case"XXXXX":case"XXX":default:return B(n,":")}},x:function(r,e,t){const n=r.getTimezoneOffset();switch(e){case"x":return ie(n);case"xxxx":case"xx":return B(n);case"xxxxx":case"xxx":default:return B(n,":")}},O:function(r,e,t){const n=r.getTimezoneOffset();switch(e){case"O":case"OO":case"OOO":return"GMT"+oe(n,":");case"OOOO":default:return"GMT"+B(n,":")}},z:function(r,e,t){const n=r.getTimezoneOffset();switch(e){case"z":case"zz":case"zzz":return"GMT"+oe(n,":");case"zzzz":default:return"GMT"+B(n,":")}},t:function(r,e,t){const n=Math.trunc(+r/1e3);return p(n,e.length)},T:function(r,e,t){return p(+r,e.length)}};function oe(r,e=""){const t=r>0?"-":"+",n=Math.abs(r),a=Math.trunc(n/60),s=n%60;return s===0?t+String(a):t+String(a)+e+p(s,2)}function ie(r,e){return r%60===0?(r>0?"-":"+")+p(Math.abs(r)/60,2):B(r,e)}function B(r,e=""){const t=r>0?"-":"+",n=Math.abs(r),a=p(Math.trunc(n/60),2),s=p(n%60,2);return t+a+e+s}const ce=(r,e)=>{switch(r){case"P":return e.date({width:"short"});case"PP":return e.date({width:"medium"});case"PPP":return e.date({width:"long"});case"PPPP":default:return e.date({width:"full"})}},fe=(r,e)=>{switch(r){case"p":return e.time({width:"short"});case"pp":return e.time({width:"medium"});case"ppp":return e.time({width:"long"});case"pppp":default:return e.time({width:"full"})}},Dt=(r,e)=>{const t=r.match(/(P+)(p+)?/)||[],n=t[1],a=t[2];if(!a)return ce(r,e);let s;switch(n){case"P":s=e.dateTime({width:"short"});break;case"PP":s=e.dateTime({width:"medium"});break;case"PPP":s=e.dateTime({width:"long"});break;case"PPPP":default:s=e.dateTime({width:"full"});break}return s.replace("{{date}}",ce(n,e)).replace("{{time}}",fe(a,e))},At={p:fe,P:Dt},wt=/^D+$/,Rt=/^Y+$/,Lt=["D","DD","YY","YYYY"];function Mt(r){return wt.test(r)}function kt(r){return Rt.test(r)}function It(r,e,t){const n=vt(r,e,t);if(console.warn(n),Lt.includes(r))throw new RangeError(n)}function vt(r,e,t){const n=r[0]==="Y"?"years":"days of the month";return`Use \`${r.toLowerCase()}\` instead of \`${r}\` (in \`${e}\`) for formatting ${n} to the input \`${t}\`; see: https://github.com/date-fns/date-fns/blob/master/docs/unicodeTokens.md`}const Ft=/[yYQqMLwIdDecihHKkms]o|(\w)\1*|''|'(''|[^'])+('|$)|./g,Ct=/P+p+|P+|p+|''|'(''|[^'])+('|$)|./g,jt=/^'([^]*?)'?$/,Ut=/''/g,xt=/[a-zA-Z]/;function ue(r,e,t){var E,m,h,O;const n=$(),a=n.locale??St,s=n.firstWeekContainsDate??((m=(E=n.locale)==null?void 0:E.options)==null?void 0:m.firstWeekContainsDate)??1,o=n.weekStartsOn??((O=(h=n.locale)==null?void 0:h.options)==null?void 0:O.weekStartsOn)??0,u=I(r,t==null?void 0:t.in);if(!Xe(u))throw new RangeError("Invalid time value");let d=e.match(Ct).map(_=>{const b=_[0];if(b==="p"||b==="P"){const M=At[b];return M(_,a.formatLong)}return _}).join("").match(Ft).map(_=>{if(_==="''")return{isToken:!1,value:"'"};const b=_[0];if(b==="'")return{isToken:!1,value:Pt(_)};if(se[b])return{isToken:!0,value:_};if(b.match(xt))throw new RangeError("Format string contains an unescaped latin alphabet character `"+b+"`");return{isToken:!1,value:_}});a.localize.preprocessor&&(d=a.localize.preprocessor(u,d));const l={firstWeekContainsDate:s,weekStartsOn:o,locale:a};return d.map(_=>{if(!_.isToken)return _.value;const b=_.value;(kt(b)||Mt(b))&&It(b,e,String(r));const M=se[b[0]];return M(u,b,a.localize,l)}).join("")}function Pt(r){const e=r.match(jt);return e?e[1].replace(Ut,"'"):r}function Xt(r){const e=ue(new Date,"yyyy-MM-dd"),t=ue(Fe(new Date,1),"yyyy-MM-dd"),n=[{title:"Review Q1 product roadmap",notes:"Focus on mobile features and API improvements",project:"Product",labels:["review","planning"],status:"planned",plannedDate:e,durationMinutes:45},{title:"Write API documentation for auth endpoints",notes:"Cover OAuth2 flow, token refresh, and error codes",project:"Engineering",labels:["docs","api"],status:"planned",plannedDate:e,durationMinutes:60},{title:"Design review: new dashboard layout",notes:"Review Figma mockups with the design team",project:"Design",labels:["design","meeting"],status:"planned",plannedDate:e,durationMinutes:30},{title:"Fix pagination bug in user list",notes:"Off-by-one error when filtering by role",project:"Engineering",labels:["bug","frontend"],status:"planned",plannedDate:e,durationMinutes:45},{title:"Team standup",notes:"Daily sync with engineering team",project:"Engineering",labels:["meeting"],status:"scheduled",plannedDate:e,durationMinutes:15,scheduledStart:`${e}T09:00:00`,scheduledEnd:`${e}T09:15:00`},{title:"Prepare sprint retrospective slides",notes:"Summarize wins, blockers, and action items",project:"Engineering",labels:["meeting","planning"],status:"planned",plannedDate:e,durationMinutes:30},{title:"Code review: PR #234 - payment flow",notes:"Review Stripe integration changes",project:"Engineering",labels:["review","code-review"],status:"scheduled",plannedDate:e,durationMinutes:30,scheduledStart:`${e}T14:00:00`,scheduledEnd:`${e}T14:30:00`},{title:"Research state management solutions",notes:"Compare Zustand vs Jotai vs Redux Toolkit for the new project",project:"Research",labels:["research"],status:"inbox",durationMinutes:60},{title:"Update CI/CD pipeline for staging",notes:"Add staging deploy step and environment variables",project:"DevOps",labels:["infra"],status:"inbox",durationMinutes:90},{title:"Reply to client feedback email",notes:"Address concerns about delivery timeline",project:"Communication",labels:["email","client"],status:"inbox",durationMinutes:15},{title:"Implement dark mode toggle",notes:"Add system preference detection and manual toggle",project:"Design",labels:["feature","ui"],status:"backlog",durationMinutes:120},{title:"Set up monitoring dashboard",notes:"Grafana + Prometheus for API metrics",project:"DevOps",labels:["infra","monitoring"],status:"backlog",durationMinutes:180},{title:"Write unit tests for billing module",notes:"Target 80% coverage",project:"Engineering",labels:["testing"],status:"backlog",durationMinutes:90},{title:"Sprint planning meeting",notes:"Review backlog and prioritize for next sprint",project:"Engineering",labels:["meeting","planning"],status:"planned",plannedDate:t,durationMinutes:60},{title:"Onboard new team member",notes:"Walk through codebase, dev setup, and team processes",project:"Engineering",labels:["onboarding"],status:"planned",plannedDate:t,durationMinutes:120},{title:"Deploy v2.1.0 to production",notes:"Successful deployment with zero-downtime",project:"DevOps",labels:["deployment"],status:"done",plannedDate:e,durationMinutes:30},{title:"Update dependencies to latest versions",notes:"All packages updated, no breaking changes found",project:"Engineering",labels:["maintenance"],status:"done",plannedDate:e,durationMinutes:45}];for(const a of n)r.create(a);console.log(`Seeded ${n.length} demo tasks`)}class Bt{constructor(e){this.db=e}add(e){const t=L.v4(),n=new Date().toISOString();try{this.db.run(`INSERT INTO focus_sessions (id, task_id, project, started_at, ended_at, minutes, date, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,[t,e.taskId,e.project,e.startedAt,e.endedAt,e.minutes,e.date,n]),f()}catch(a){throw console.error("FocusSessionService.add failed:",a),a}return{id:t,...e,createdAt:n}}}class Wt{constructor(e){this.db=e}upsert(e){const t=new Date().toISOString();return this.db.run(`INSERT INTO daily_plans (date, committed_at, planned_task_ids, planned_minutes)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(date) DO UPDATE SET
+               committed_at = excluded.committed_at,
+               planned_task_ids = excluded.planned_task_ids,
+               planned_minutes = excluded.planned_minutes`,[e.date,t,JSON.stringify(e.plannedTaskIds),e.plannedMinutes]),f(),{date:e.date,committedAt:t,plannedTaskIds:e.plannedTaskIds,plannedMinutes:e.plannedMinutes}}get(e){const t=this.db.prepare("SELECT * FROM daily_plans WHERE date = ?");t.bind([e]);let n=null;return t.step()&&(n=t.getAsObject()),t.free(),n?{date:n.date,committedAt:n.committed_at,plannedTaskIds:JSON.parse(n.planned_task_ids||"[]"),plannedMinutes:n.planned_minutes||0}:null}}class Yt{constructor(e){this.db=e}query(e,t=[]){const n=this.db.prepare(e);n.bind(t);const a=[];try{for(;n.step();)a.push(n.getAsObject())}finally{n.free()}return a}getData(e,t){const n=this.query(`SELECT id, project, date(completed_at, 'localtime') AS d
+             FROM tasks
+             WHERE completed_at IS NOT NULL
+               AND date(completed_at, 'localtime') >= ? AND date(completed_at, 'localtime') <= ?`,[e,t]).map(o=>({id:o.id,project:o.project||"",date:o.d})),a=this.query("SELECT project, minutes, date FROM focus_sessions WHERE date >= ? AND date <= ?",[e,t]).map(o=>({project:o.project||"",minutes:o.minutes||0,date:o.date})),s=this.query(`SELECT date, committed_at, planned_task_ids, planned_minutes
+             FROM daily_plans WHERE date >= ? AND date <= ?`,[e,t]).map(o=>({date:o.date,committedAt:o.committed_at,plannedTaskIds:JSON.parse(o.planned_task_ids||"[]"),plannedMinutes:o.planned_minutes||0}));return{completedTasks:n,sessions:a,dailyPlans:s}}}function pe(){return j.join(i.app.getPath("userData"),"settings.json")}function Ht(){try{const r=pe();if(F.existsSync(r))return JSON.parse(F.readFileSync(r,"utf-8"))}catch(r){console.error("Failed to load settings:",r)}return{}}function Gt(r){try{F.writeFileSync(pe(),JSON.stringify(r,null,2),"utf-8")}catch(e){console.error("Failed to save settings:",e)}}let c=null,y=null,C=null,S,Y,D,me,Z,_e;const V=new Set;function Te(){if(y&&!y.isDestroyed()){y.show();return}const{width:r}=i.screen.getPrimaryDisplay().workAreaSize;y=new i.BrowserWindow({width:420,height:52,x:Math.round(r/2-210),y:8,frame:!1,transparent:!0,resizable:!1,skipTaskbar:!0,alwaysOnTop:!0,focusable:!0,hasShadow:!1,webPreferences:{nodeIntegration:!0,contextIsolation:!1}}),process.env.VITE_DEV_SERVER_URL?y.loadFile(j.join(__dirname,"../public/focus-widget.html")):y.loadFile(j.join(__dirname,"../dist/focus-widget.html")),y.setAlwaysOnTop(!0,"screen-saver"),y.on("closed",()=>{y=null})}const qt=i.app.requestSingleInstanceLock();qt?(i.app.on("second-instance",()=>{c&&(c.isMinimized()&&c.restore(),c.focus())}),i.app.setAppUserModelId("com.tmap.app"),i.app.whenReady().then(async()=>{const r=j.join(i.app.getPath("userData"),"tmap.db");await Oe(r),S=new Me(P()),Y=new ke(P()),D=new Ie(P()),me=new Bt(P()),Z=new Wt(P()),_e=new Yt(P()),S.getAll().length===0&&Xt(S),de(),Vt(),Qt(),setInterval(()=>{try{const t=S.getUpcomingWithReminders(),n=Date.now();for(const a of t){if(V.has(a.id)||!a.scheduledStart)continue;const s=new Date(a.scheduledStart).getTime(),o=(a.reminderMinutes??0)*6e4;if(s-o<=n&&s>n-5*6e4){const d=a.reminderMinutes===0?"Starting now":`Starting in ${a.reminderMinutes} minutes`,l=new i.Notification({title:a.title,body:d,icon:j.join(__dirname,"../build/icon.png")});l.on("click",()=>{c==null||c.show(),c==null||c.focus()}),l.show(),V.add(a.id)}}for(const a of V){const s=t.find(o=>o.id===a);s!=null&&s.scheduledStart&&new Date(s.scheduledStart).getTime()<n-36e5&&V.delete(a)}}catch(t){console.error("Notification scheduler error:",t)}},3e4),i.globalShortcut.register("Ctrl+Shift+Q",()=>{y&&!y.isDestroyed()?(y.close(),y=null):(Te(),c==null||c.webContents.send("focus:resyncWidget"))})}),i.app.on("will-quit",()=>{i.globalShortcut.unregisterAll()}),i.app.on("window-all-closed",()=>{}),i.app.on("activate",()=>{c===null&&de()})):i.app.quit();function de(){c=new i.BrowserWindow({width:1400,height:900,minWidth:1e3,minHeight:700,frame:!1,titleBarStyle:"hidden",titleBarOverlay:{color:"#020617",symbolColor:"#94a3b8",height:40},backgroundColor:"#020617",webPreferences:{preload:j.join(__dirname,"preload.js"),contextIsolation:!0,nodeIntegration:!1,sandbox:!1},show:!1}),c.once("ready-to-show",()=>{c==null||c.show()}),c.on("close",r=>{r.preventDefault(),c==null||c.hide()}),process.env.VITE_DEV_SERVER_URL?c.loadURL(process.env.VITE_DEV_SERVER_URL):c.loadFile(j.join(__dirname,"../dist/index.html"))}function Vt(){const r=i.nativeImage.createFromDataURL("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAAEeSURBVFhH7ZZBDoMwDATz/0+nV3pBQkns9dqCHpBWGu+OHYcQ8vX19Z8cHpBcHpBcHpBcHpBcPwcUJxck1c8BNckF0QswkFwQvQAD6UVxAoakF8UJGJJeFCdgSC+KEzAkvShOwJD0ojgBQ9KL4gQMSS+KEzAkvShOwJD0ojgBQ9KL4gQMSS+KEzAkvShOwJD0ojgBQ9KL4v8Aezhe4GIXuxjf24X8m+2dvmcsbufiU3+h28Vu5+JTP6PLxW7n4lO/oMvFbufidT7RzMXrfKKZi9f5RDMX+0QzF/tEMxf7RDMX+0QzF/tEMxf7RDMX+0QzF/tEMxf7RLPy/gBgIL0ouQBD0ouSBzCQXpQ8gIH04v8DQvgGdIlrOH7OONYAAAAASUVORK5CYII=");C=new i.Tray(r);const e=i.Menu.buildFromTemplate([{label:"Open TMap",click:()=>{c==null||c.show(),c==null||c.focus()}},{label:"Plan Today",click:()=>{c==null||c.show(),c==null||c.focus(),c==null||c.webContents.send("navigate","plan-today")}},{type:"separator"},{label:"Quit",click:()=>{c==null||c.destroy(),i.app.quit()}}]);C.setToolTip("TMap"),C.setContextMenu(e),C.on("double-click",()=>{c==null||c.show(),c==null||c.focus()})}function Qt(){i.ipcMain.handle("tasks:getAll",()=>S.getAll()),i.ipcMain.handle("tasks:getByDate",(r,e)=>S.getByDate(e)),i.ipcMain.handle("tasks:getByStatus",(r,e)=>S.getByStatus(e)),i.ipcMain.handle("tasks:create",(r,e)=>S.create(e)),i.ipcMain.handle("tasks:update",(r,e,t)=>((t.scheduledStart!==void 0||t.reminderMinutes!==void 0)&&V.delete(e),S.update(e,t))),i.ipcMain.handle("tasks:delete",(r,e)=>S.delete(e)),i.ipcMain.handle("tasks:reorder",(r,e)=>S.reorder(e)),i.ipcMain.handle("tasks:search",(r,e)=>S.search(e)),i.ipcMain.handle("subtasks:create",(r,e,t)=>S.createSubtask(e,t)),i.ipcMain.handle("subtasks:update",(r,e,t)=>S.updateSubtask(e,t)),i.ipcMain.handle("subtasks:delete",(r,e)=>S.deleteSubtask(e)),i.ipcMain.handle("app:getVersion",()=>i.app.getVersion()),i.ipcMain.handle("app:showNotification",(r,e,t)=>{new i.Notification({title:e,body:t,icon:j.join(__dirname,"../build/icon.png")}).show()}),i.ipcMain.handle("app:getAutoLaunch",()=>i.app.getLoginItemSettings().openAtLogin),i.ipcMain.handle("app:setAutoLaunch",(r,e)=>(i.app.setLoginItemSettings({openAtLogin:e}),!0)),i.ipcMain.handle("projects:getAll",()=>Y.getAll()),i.ipcMain.handle("projects:create",(r,e)=>Y.create(e)),i.ipcMain.handle("projects:update",(r,e,t)=>Y.update(e,t)),i.ipcMain.handle("projects:delete",(r,e)=>Y.delete(e)),i.ipcMain.handle("projects:reorder",(r,e)=>Y.reorder(e)),i.ipcMain.handle("noteGroups:getAll",()=>D.getAllGroups()),i.ipcMain.handle("noteGroups:getByProject",(r,e)=>D.getGroupsByProject(e)),i.ipcMain.handle("noteGroups:create",(r,e)=>D.createGroup(e)),i.ipcMain.handle("noteGroups:update",(r,e,t)=>D.updateGroup(e,t)),i.ipcMain.handle("noteGroups:delete",(r,e)=>D.deleteGroup(e)),i.ipcMain.handle("noteGroups:reorder",(r,e)=>D.reorderGroups(e)),i.ipcMain.handle("notes:getAll",()=>D.getAllNotes()),i.ipcMain.handle("notes:getByGroup",(r,e)=>D.getNotesByGroup(e)),i.ipcMain.handle("notes:getByProject",(r,e)=>D.getNotesByProject(e)),i.ipcMain.handle("notes:getById",(r,e)=>D.getNoteById(e)),i.ipcMain.handle("notes:create",(r,e)=>D.createNote(e)),i.ipcMain.handle("notes:update",(r,e,t)=>D.updateNote(e,t)),i.ipcMain.handle("notes:delete",(r,e)=>D.deleteNote(e)),i.ipcMain.handle("notes:reorder",(r,e)=>D.reorderNotes(e)),i.ipcMain.handle("settings:get",()=>Ht()),i.ipcMain.handle("settings:save",(r,e)=>(Gt(e),!0)),i.ipcMain.handle("recurrence:create",(r,e,t)=>S.createRecurringTask(e,t)),i.ipcMain.handle("recurrence:updateSeries",(r,e,t)=>S.updateSeries(e,t)),i.ipcMain.handle("recurrence:deleteSeries",(r,e)=>S.deleteSeries(e)),i.ipcMain.handle("recurrence:deleteSeriesFuture",(r,e,t)=>S.deleteSeriesFuture(e,t)),i.ipcMain.handle("recurrence:detachInstance",(r,e)=>S.detachInstance(e)),i.ipcMain.handle("recurrence:ensureInstances",(r,e,t)=>S.ensureInstancesForDateRange(e,t)),i.ipcMain.handle("recurrence:updateRule",(r,e,t)=>S.updateRecurrenceRule(e,t)),i.ipcMain.handle("recurrence:getRule",(r,e)=>S.getRecurrenceRule(e)),i.ipcMain.on("focus:updateTray",(r,e)=>{if(C)if(e.taskTitle&&e.elapsed){const t=e.isPlaying?"▶":"⏸";C.setToolTip(`${t} ${e.taskTitle}
+⏱ ${e.elapsed}`);const n=i.Menu.buildFromTemplate([{label:`${t} ${e.taskTitle}`,enabled:!1},{label:`⏱ ${e.elapsed}`,enabled:!1},{type:"separator"},{label:e.isPlaying?"⏸ Pause":"▶ Resume",click:()=>{c==null||c.webContents.send("focus:togglePlayPause")}},{label:"⏹ Stop Timer",click:()=>{c==null||c.webContents.send("focus:stop")}},{type:"separator"},{label:"Open TMap",click:()=>{c==null||c.show(),c==null||c.focus()}},{label:"Quit",click:()=>{c==null||c.destroy(),i.app.quit()}}]);C.setContextMenu(n)}else{C.setToolTip("TMap");const t=i.Menu.buildFromTemplate([{label:"Open TMap",click:()=>{c==null||c.show(),c==null||c.focus()}},{type:"separator"},{label:"Quit",click:()=>{c==null||c.destroy(),i.app.quit()}}]);C.setContextMenu(t)}}),i.ipcMain.on("focus:showWidget",()=>{Te()}),i.ipcMain.on("focus:hideWidget",()=>{y&&!y.isDestroyed()&&(y.close(),y=null)}),i.ipcMain.on("focus:widgetState",(r,e)=>{y&&!y.isDestroyed()&&y.webContents.send("focus:state",e)}),i.ipcMain.on("focus:widgetAction",(r,e)=>{if(c)switch(e){case"togglePlayPause":c.webContents.send("focus:togglePlayPause");break;case"stop":c.webContents.send("focus:stop");break;case"done":c.webContents.send("focus:done");break}}),i.ipcMain.handle("data:export",async(r,e)=>{try{const t=P(),n=t.exec("SELECT * FROM tasks"),a=[];if(n.length>0){const g=n[0].columns;for(const N of n[0].values){const T={};if(g.forEach((k,R)=>{T[k]=N[R]}),typeof T.labels=="string")try{T.labels=JSON.parse(T.labels)}catch{T.labels=[]}a.push(T)}}const s=t.exec("SELECT * FROM projects"),o=[];if(s.length>0){const g=s[0].columns;for(const N of s[0].values){const T={};g.forEach((k,R)=>{T[k]=N[R]}),o.push(T)}}const u=t.exec("SELECT * FROM recurrence_rules"),d=[];if(u.length>0){const g=u[0].columns;for(const N of u[0].values){const T={};g.forEach((k,R)=>{T[k]=N[R]}),d.push(T)}}const l=t.exec("SELECT * FROM recurrence_exceptions"),E=[];if(l.length>0){const g=l[0].columns;for(const N of l[0].values){const T={};g.forEach((k,R)=>{T[k]=N[R]}),E.push(T)}}const m=t.exec("SELECT * FROM note_groups"),h=[];if(m.length>0){const g=m[0].columns;for(const N of m[0].values){const T={};g.forEach((k,R)=>{T[k]=N[R]}),h.push(T)}}const O=t.exec("SELECT * FROM notes"),_=[];if(O.length>0){const g=O[0].columns;for(const N of O[0].values){const T={};g.forEach((k,R)=>{T[k]=N[R]}),_.push(T)}}const b={meta:{appName:"TMap",version:i.app.getVersion(),exportedAt:new Date().toISOString()},settings:e||{},tasks:a,projects:o,recurrenceRules:d,recurrenceExceptions:E,noteGroups:h,notes:_},{canceled:M,filePath:w}=await i.dialog.showSaveDialog(c,{title:"Export TMap Data",defaultPath:`tmap-backup-${new Date().toISOString().slice(0,10)}.json`,filters:[{name:"JSON Files",extensions:["json"]}]});return M||!w?{success:!1,canceled:!0}:(F.writeFileSync(w,JSON.stringify(b,null,2),"utf-8"),{success:!0,filePath:w})}catch(t){return console.error("Export failed:",t),{success:!1,error:t.message}}}),i.ipcMain.handle("focusSessions:add",(r,e)=>me.add(e)),i.ipcMain.handle("dailyPlans:upsert",(r,e)=>Z.upsert(e)),i.ipcMain.handle("dailyPlans:get",(r,e)=>Z.get(e)),i.ipcMain.handle("reports:getData",(r,e,t)=>_e.getData(e,t)),i.ipcMain.handle("data:import",async()=>{try{const{canceled:r,filePaths:e}=await i.dialog.showOpenDialog(c,{title:"Import TMap Data",filters:[{name:"JSON Files",extensions:["json"]}],properties:["openFile"]});if(r||e.length===0)return{success:!1,canceled:!0};const t=F.readFileSync(e[0],"utf-8");let n;try{n=JSON.parse(t)}catch{return{success:!1,error:"Invalid JSON file."}}if(!n.tasks||!Array.isArray(n.tasks))return{success:!1,error:"Invalid backup file: missing tasks array."};if(!n.projects||!Array.isArray(n.projects))return{success:!1,error:"Invalid backup file: missing projects array."};const a=P();a.run("BEGIN TRANSACTION;");try{if(a.run("DELETE FROM notes;"),a.run("DELETE FROM note_groups;"),a.run("DELETE FROM recurrence_exceptions;"),a.run("DELETE FROM tasks;"),a.run("DELETE FROM recurrence_rules;"),a.run("DELETE FROM projects;"),n.recurrenceRules&&Array.isArray(n.recurrenceRules))for(const s of n.recurrenceRules)a.run(`INSERT INTO recurrence_rules (id, frequency, interval_value, days_of_week, end_type, end_count, end_date, generated_until, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,[s.id,s.frequency,s.interval_value??1,s.days_of_week||"[]",s.end_type||"never",s.end_count??null,s.end_date??null,s.generated_until??null,s.created_at||new Date().toISOString(),s.updated_at||new Date().toISOString()]);for(const s of n.tasks)a.run(`INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,[s.id,s.title,s.notes||"",s.project||"",Array.isArray(s.labels)?JSON.stringify(s.labels):s.labels||"[]",s.source||"local",s.status||"inbox",s.due_date||null,s.planned_date||null,s.scheduled_start||null,s.scheduled_end||null,s.duration_minutes??30,s.actual_time_minutes??0,s.priority??null,s.reminder_minutes??0,s.sort_order??0,s.recurrence_rule_id??null,s.is_recurrence_template??0,s.recurrence_detached??0,s.recurrence_original_date??null,s.created_at||new Date().toISOString(),s.updated_at||new Date().toISOString()]);if(n.recurrenceExceptions&&Array.isArray(n.recurrenceExceptions))for(const s of n.recurrenceExceptions)a.run(`INSERT INTO recurrence_exceptions (id, recurrence_rule_id, exception_date, created_at)
+                             VALUES (?, ?, ?, ?)`,[s.id,s.recurrence_rule_id,s.exception_date,s.created_at||new Date().toISOString()]);for(const s of n.projects)a.run(`INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?)`,[s.id,s.name,s.color||"#6366f1",s.emoji||"📁",s.sort_order??0,s.created_at||new Date().toISOString(),s.updated_at||new Date().toISOString()]);if(n.noteGroups&&Array.isArray(n.noteGroups))for(const s of n.noteGroups)a.run(`INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?)`,[s.id,s.name,s.emoji||"📝",s.project_id||null,s.sort_order??0,s.created_at||new Date().toISOString(),s.updated_at||new Date().toISOString()]);if(n.notes&&Array.isArray(n.notes))for(const s of n.notes)a.run(`INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,[s.id,s.group_id||null,s.project_id||null,s.title||"Untitled",s.content||"",s.sort_order??0,s.created_at||new Date().toISOString(),s.updated_at||new Date().toISOString()]);return a.run("COMMIT;"),f(),{success:!0,data:{settings:n.settings||{},taskCount:n.tasks.length,projectCount:n.projects.length}}}catch(s){return a.run("ROLLBACK;"),console.error("Import transaction failed:",s),{success:!1,error:"Import failed: "+s.message}}}catch(r){return console.error("Import failed:",r),{success:!1,error:r.message}}})}

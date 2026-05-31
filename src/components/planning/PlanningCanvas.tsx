@@ -209,7 +209,12 @@ function Column({
   children: React.ReactNode;
 }) {
   return (
-    <div className={clsx('bg-surface-900 flex flex-col min-h-0 transition-opacity', dim && 'opacity-60')}>
+    <div
+      className={clsx(
+        'bg-surface-900 flex flex-col min-h-0 transition-opacity',
+        dim && 'opacity-60',
+      )}
+    >
       <div className="px-4 pt-4 pb-2 shrink-0">
         <h3 className="text-sm font-semibold text-surface-200">{title}</h3>
         {subtitle && <p className="text-2xs text-surface-500 mt-0.5">{subtitle}</p>}
@@ -240,7 +245,10 @@ function CapacityMeter({
       </div>
       <div className="h-1.5 rounded-full bg-surface-800 overflow-hidden">
         <div
-          className={clsx('h-full rounded-full transition-all', over ? 'bg-warning-500' : 'bg-accent-500')}
+          className={clsx(
+            'h-full rounded-full transition-all',
+            over ? 'bg-warning-500' : 'bg-accent-500',
+          )}
           style={{ width: `${pct}%` }}
         />
       </div>

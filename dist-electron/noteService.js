@@ -92,10 +92,7 @@ class NoteService {
     }
     reorderGroups(items) {
         for (const item of items) {
-            this.db.run('UPDATE note_groups SET sort_order = ? WHERE id = ?', [
-                item.order,
-                item.id,
-            ]);
+            this.db.run('UPDATE note_groups SET sort_order = ? WHERE id = ?', [item.order, item.id]);
         }
         (0, database_1.saveDatabase)();
     }
@@ -156,7 +153,16 @@ class NoteService {
         const id = (0, uuid_1.v4)();
         const now = new Date().toISOString();
         this.db.run(`INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.groupId || null, input.projectId || null, input.title || 'Untitled', input.content || '', 0, now, now]);
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [
+            id,
+            input.groupId || null,
+            input.projectId || null,
+            input.title || 'Untitled',
+            input.content || '',
+            0,
+            now,
+            now,
+        ]);
         (0, database_1.saveDatabase)();
         return this.getNoteById(id);
     }

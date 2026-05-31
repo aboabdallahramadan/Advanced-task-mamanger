@@ -15,6 +15,7 @@ class ProjectService {
             color: row.color,
             emoji: row.emoji,
             order: row.sort_order,
+            actualTimeMinutes: row.actual_time_minutes ?? 0,
             createdAt: row.created_at,
             updatedAt: row.updated_at,
         };
@@ -43,15 +44,7 @@ class ProjectService {
         const id = (0, uuid_1.v4)();
         const now = new Date().toISOString();
         this.db.run(`INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`, [
-            id,
-            input.name,
-            input.color || '#6366f1',
-            input.emoji || '📁',
-            0,
-            now,
-            now,
-        ]);
+             VALUES (?, ?, ?, ?, ?, ?, ?)`, [id, input.name, input.color || '#6366f1', input.emoji || '📁', 0, now, now]);
         (0, database_1.saveDatabase)();
         return this.getById(id);
     }
@@ -73,6 +66,10 @@ class ProjectService {
         if (updates.order !== undefined) {
             sets.push('sort_order = ?');
             values.push(updates.order);
+        }
+        if (updates.actualTimeMinutes !== undefined) {
+            sets.push('actual_time_minutes = ?');
+            values.push(updates.actualTimeMinutes);
         }
         if (sets.length === 0)
             return this.getById(id);
