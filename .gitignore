@@ -1,8 +1,10 @@
 node_modules/
 dist/
+dist-electron/
 out/
 *.db
 *.db-journal
+*.tsbuildinfo
 .env
 .env.local
 .superpowers/
