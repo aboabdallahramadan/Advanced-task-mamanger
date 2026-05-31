@@ -27,6 +27,10 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// Monotonic request token for loadReports. Rapidly switching ranges can let an older
+// IPC response resolve after a newer one; we only apply the result whose token is latest.
+let reportRequestToken = 0;
+
 /**
  * Internal helper — not part of the public store API.
  * Logs a completed focus session to the database. Minutes are derived from
@@ -370,8 +374,8 @@ export const useStore = create<AppState>((set, get) => ({
 
           const updates: Partial<Task> = {
             plannedDate: today,
-            scheduledStart: undefined,
-            scheduledEnd: undefined,
+            scheduledStart: null,
+            scheduledEnd: null,
           };
           // If task was scheduled, unschedule it (the old time slot is in the past)
           if (task.status === 'scheduled') {
@@ -1312,6 +1316,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   loadReports: async () => {
     const { reportRange } = get();
+    const token = ++reportRequestToken;
     set({ reportLoading: true, reportData: null });
     try {
       const now = new Date();
@@ -1321,6 +1326,8 @@ export const useStore = create<AppState>((set, get) => ({
         window.api.reports.getData(range.start, range.end),
         window.api.reports.getData(prev.start, prev.end),
       ]);
+      // Drop the result if a newer loadReports call superseded this one.
+      if (token !== reportRequestToken) return;
       set({
         reportData: {
           summary: summarize(current, previous),
@@ -1330,6 +1337,7 @@ export const useStore = create<AppState>((set, get) => ({
         reportLoading: false,
       });
     } catch (e) {
+      if (token !== reportRequestToken) return;
       console.error('Failed to load reports:', e);
       set({ reportData: null, reportLoading: false });
     }
