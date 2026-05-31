@@ -306,6 +306,14 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                   }}
                 />
                 <MenuItem
+                  icon={<CalendarPlus className="w-3.5 h-3.5" />}
+                  label="Plan for today"
+                  onClick={() => {
+                    moveToToday(task.id);
+                    setShowMenu(false);
+                  }}
+                />
+                <MenuItem
                   icon={<ArrowRight className="w-3.5 h-3.5" />}
                   label="Move to Backlog"
                   onClick={() => {
