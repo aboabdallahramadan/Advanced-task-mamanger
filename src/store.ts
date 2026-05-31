@@ -9,6 +9,7 @@ import {
   RecurrenceFrequency,
   RecurrenceEndType,
   RecurrenceRule,
+  PlanningPhase,
 } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 import { sessionMinutes } from './lib/focusSession';
@@ -113,7 +114,8 @@ interface AppState {
   };
   planningFlow: {
     isOpen: boolean;
-    step: 0 | 1 | 2; // 0: Review Yesterday, 1: Triage Inbox, 2: Timebox
+    phase: PlanningPhase;
+    targetDate: string; // YYYY-MM-DD
   };
   focusMode: {
     targetType: 'task' | 'project' | null;
@@ -192,8 +194,13 @@ interface AppState {
   openTaskDialog: (mode: 'create' | 'edit', taskId?: string) => void;
   closeTaskDialog: () => void;
   startPlanningFlow: () => void;
-  setPlanningStep: (step: 0 | 1 | 2) => void;
+  setPlanningPhase: (phase: PlanningPhase) => void;
   closePlanningFlow: () => void;
+  commitDay: () => Promise<void>;
+  planForDate: (id: string, date: string) => Promise<void>;
+  leftoverTasks: (beforeDate: string) => Task[];
+  plannedForDate: (date: string) => Task[];
+  unscheduledPlannedTasks: (date: string) => Task[];
 
   // Focus Mode Actions
   startFocusSession: (taskId: string) => void;
@@ -306,7 +313,8 @@ export const useStore = create<AppState>((set, get) => ({
   },
   planningFlow: {
     isOpen: false,
-    step: 0,
+    phase: 'review',
+    targetDate: format(new Date(), 'yyyy-MM-dd'),
   },
   focusMode: {
     targetType: null,
@@ -932,11 +940,34 @@ export const useStore = create<AppState>((set, get) => ({
   openTaskDialog: (mode: 'create' | 'edit', taskId?: string) =>
     set({ taskDialog: { isOpen: true, mode, taskId: taskId || null } }),
   closeTaskDialog: () => set({ taskDialog: { isOpen: false, mode: 'create', taskId: null } }),
-  startPlanningFlow: () => set({ planningFlow: { isOpen: true, step: 0 } }),
-  setPlanningStep: (step: 0 | 1 | 2) =>
-    set((state) => ({ planningFlow: { ...state.planningFlow, step } })),
+  startPlanningFlow: () =>
+    set({
+      planningFlow: { isOpen: true, phase: 'review', targetDate: format(new Date(), 'yyyy-MM-dd') },
+    }),
+  setPlanningPhase: (phase: PlanningPhase) =>
+    set((state) => ({ planningFlow: { ...state.planningFlow, phase } })),
   closePlanningFlow: () =>
     set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } })),
+  planForDate: async (id: string, date: string) => {
+    const { updateTask } = get();
+    await updateTask(id, { status: 'planned', plannedDate: date });
+  },
+  commitDay: async () => {
+    const { planningFlow, plannedForDate } = get();
+    const date = planningFlow.targetDate;
+    const tasksForDay = plannedForDate(date);
+    const plannedMinutes = tasksForDay.reduce((s, t) => s + (t.durationMinutes || 0), 0);
+    try {
+      await window.api.dailyPlans.upsert({
+        date,
+        plannedTaskIds: tasksForDay.map((t) => t.id),
+        plannedMinutes,
+      });
+    } catch (e) {
+      console.error('Failed to commit day:', e);
+    }
+    set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } }));
+  },
 
   // Settings Persistence
   loadSettings: async () => {
@@ -1147,6 +1178,33 @@ export const useStore = create<AppState>((set, get) => ({
   backlogTasks: () => {
     const { tasks } = get();
     return tasks.filter((t) => t.status === 'backlog');
+  },
+
+  leftoverTasks: (beforeDate: string) => {
+    const { tasks } = get();
+    return tasks.filter(
+      (t) =>
+        t.status !== 'done' &&
+        t.status !== 'archived' &&
+        !!t.plannedDate &&
+        t.plannedDate < beforeDate,
+    );
+  },
+  plannedForDate: (date: string) => {
+    const { tasks } = get();
+    return tasks.filter(
+      (t) => t.plannedDate === date && t.status !== 'archived' && t.status !== 'done',
+    );
+  },
+  unscheduledPlannedTasks: (date: string) => {
+    const { tasks } = get();
+    return tasks.filter(
+      (t) =>
+        t.plannedDate === date &&
+        t.status !== 'archived' &&
+        t.status !== 'done' &&
+        !t.scheduledStart,
+    );
   },
 
   filteredTasks: () => {
