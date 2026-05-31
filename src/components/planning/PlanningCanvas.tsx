@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useStore } from '../../store';
 import { TaskItem } from '../TaskItem';
 import { DayTimeline } from '../DayTimeline';
@@ -38,11 +38,20 @@ export const PlanningCanvas: React.FC = () => {
     plannedForDate,
     workStartHour,
     workEndHour,
+    setSelectedDate,
   } = useStore();
+
+  // Sync the timeline to targetDate when the canvas opens so the Timebox column
+  // always shows the day being planned, regardless of where the user last navigated.
+  useEffect(() => {
+    if (planningFlow.isOpen) {
+      setSelectedDate(planningFlow.targetDate);
+    }
+  }, [planningFlow.isOpen, planningFlow.targetDate, setSelectedDate]);
 
   if (!planningFlow.isOpen) return null;
 
-  const { phase, targetDate } = planningFlow;
+  const { phase, targetDate, commitError } = planningFlow;
   const phaseIndex = PHASES.findIndex((p) => p.id === phase);
 
   const leftovers = leftoverTasks(targetDate);
@@ -150,22 +159,27 @@ export const PlanningCanvas: React.FC = () => {
           </button>
 
           {phase === 'commit' ? (
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-surface-400">
-                {todays.length} task{todays.length === 1 ? '' : 's'} · {fmtMin(cap.planned)} of{' '}
-                {fmtMin(cap.capacity)}
-              </span>
-              {cap.over && (
-                <span className="flex items-center gap-1 text-xs text-warning-400">
-                  <AlertTriangle className="w-3.5 h-3.5" /> Over capacity
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-surface-400">
+                  {todays.length} task{todays.length === 1 ? '' : 's'} · {fmtMin(cap.planned)} of{' '}
+                  {fmtMin(cap.capacity)}
                 </span>
+                {cap.over && (
+                  <span className="flex items-center gap-1 text-xs text-warning-400">
+                    <AlertTriangle className="w-3.5 h-3.5" /> Over capacity
+                  </span>
+                )}
+                <button
+                  onClick={commitDay}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-accent-600 hover:bg-accent-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-accent-500/20"
+                >
+                  Commit day ✓
+                </button>
+              </div>
+              {commitError && (
+                <p className="text-xs text-danger-400 max-w-sm text-right">{commitError}</p>
               )}
-              <button
-                onClick={commitDay}
-                className="flex items-center gap-2 px-5 py-2.5 bg-accent-600 hover:bg-accent-500 text-white rounded-lg font-medium transition-colors shadow-lg shadow-accent-500/20"
-              >
-                Commit day ✓
-              </button>
             </div>
           ) : (
             <button
