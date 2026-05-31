@@ -8,6 +8,8 @@ import {
     Clock,
     Calendar,
     Play,
+    Pause,
+    Timer,
     ArrowLeft,
     CheckCircle2,
     GripVertical,
@@ -55,6 +57,9 @@ export function ProjectView() {
         openTaskDialog,
         openProjectDialog,
         startFocusSession,
+        startProjectFocus,
+        pauseFocusSession,
+        isProjectFocused,
         focusMode,
         setCurrentView,
         createTask,
@@ -195,6 +200,34 @@ export function ProjectView() {
                         />
                     </div>
                     <button
+                        onClick={() => {
+                            if (isProjectFocused(project.id) && focusMode.isPlaying) {
+                                pauseFocusSession();
+                            } else {
+                                startProjectFocus(project.id);
+                            }
+                        }}
+                        className={clsx(
+                            "p-2 rounded-lg transition-all",
+                            isProjectFocused(project.id) && focusMode.isPlaying
+                                ? "bg-accent-500 text-white animate-pulse shadow-glow"
+                                : isProjectFocused(project.id)
+                                ? "bg-accent-600/30 text-accent-300"
+                                : "text-surface-400 hover:text-accent-400 hover:bg-surface-800/60"
+                        )}
+                        title={
+                            isProjectFocused(project.id) && focusMode.isPlaying
+                                ? "Pause project focus"
+                                : isProjectFocused(project.id)
+                                ? "Resume project focus"
+                                : "Focus on this project"
+                        }
+                    >
+                        {isProjectFocused(project.id) && focusMode.isPlaying
+                            ? <Pause className="w-4 h-4" />
+                            : <Play className="w-4 h-4" />}
+                    </button>
+                    <button
                         onClick={() => openProjectDialog('edit', project.id)}
                         className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
                         title="Edit project"
@@ -215,6 +248,12 @@ export function ProjectView() {
                         <Play className="w-3.5 h-3.5" />
                         <span>
                             {Math.floor(totalActual / 60)}h {totalActual % 60}m tracked
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-surface-400">
+                        <Timer className="w-3.5 h-3.5" />
+                        <span>
+                            {Math.floor((project.actualTimeMinutes || 0) / 60)}h {(project.actualTimeMinutes || 0) % 60}m focused
                         </span>
                     </div>
                     {activeTasks.length > 0 && (
