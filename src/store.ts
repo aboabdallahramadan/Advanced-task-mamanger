@@ -20,6 +20,42 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+/**
+ * Internal helper — not part of the public store API.
+ * Logs a completed focus session to the database. Minutes are derived from
+ * startMs/endMs via sessionMinutes() so callers cannot pass stale values.
+ * Only called from pauseFocusSession and stopFocusSession.
+ */
+function logFocusSession(
+  get: () => AppState,
+  targetType: 'task' | 'project',
+  targetId: string,
+  startMs: number,
+  endMs: number,
+): void {
+  const minutes = sessionMinutes(startMs, endMs);
+  if (minutes <= 0) return;
+  const { tasks, projects } = get();
+  let taskId: string | null = null;
+  let project = '';
+  if (targetType === 'task') {
+    taskId = targetId;
+    project = tasks.find((t) => t.id === targetId)?.project || '';
+  } else {
+    project = projects.find((p) => p.id === targetId)?.name || '';
+  }
+  window.api.focusSessions
+    .add({
+      taskId,
+      project,
+      startedAt: new Date(startMs).toISOString(),
+      endedAt: new Date(endMs).toISOString(),
+      minutes,
+      date: format(new Date(startMs), 'yyyy-MM-dd'),
+    })
+    .catch((e) => console.error('Failed to log focus session:', e));
+}
+
 interface AppState {
   // Tasks
   tasks: Task[];
@@ -160,13 +196,6 @@ interface AppState {
   closePlanningFlow: () => void;
 
   // Focus Mode Actions
-  logFocusSession: (
-    targetType: 'task' | 'project',
-    targetId: string,
-    startMs: number,
-    endMs: number,
-    minutes: number,
-  ) => void;
   startFocusSession: (taskId: string) => void;
   startProjectFocus: (projectId: string) => void;
   pauseFocusSession: () => void;
@@ -974,28 +1003,6 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // Focus Mode Actions
-  logFocusSession: (targetType, targetId, startMs, endMs, minutes) => {
-    const { tasks, projects } = get();
-    let taskId: string | null = null;
-    let project = '';
-    if (targetType === 'task') {
-      taskId = targetId;
-      project = tasks.find((t) => t.id === targetId)?.project || '';
-    } else {
-      project = projects.find((p) => p.id === targetId)?.name || '';
-    }
-    window.api.focusSessions
-      .add({
-        taskId,
-        project,
-        startedAt: new Date(startMs).toISOString(),
-        endedAt: new Date(endMs).toISOString(),
-        minutes,
-        date: format(new Date(startMs), 'yyyy-MM-dd'),
-      })
-      .catch((e) => console.error('Failed to log focus session:', e));
-  },
-
   startFocusSession: (taskId: string) => {
     get().pauseFocusSession(); // flush any running session first
     set({
@@ -1034,12 +1041,12 @@ export const useStore = create<AppState>((set, get) => ({
     const elapsedMinutes = sessionMinutes(focusMode.sessionStartTime, endMs);
 
     if (elapsedMinutes > 0) {
-      get().logFocusSession(
+      logFocusSession(
+        get,
         focusMode.targetType,
         focusMode.targetId,
         focusMode.sessionStartTime,
         endMs,
-        elapsedMinutes,
       );
       if (focusMode.targetType === 'task') {
         const task = tasks.find((t) => t.id === focusMode.targetId);
@@ -1074,12 +1081,12 @@ export const useStore = create<AppState>((set, get) => ({
       const elapsedMinutes = sessionMinutes(focusMode.sessionStartTime, endMs);
 
       if (elapsedMinutes > 0) {
-        get().logFocusSession(
+        logFocusSession(
+          get,
           focusMode.targetType,
           focusMode.targetId,
           focusMode.sessionStartTime,
           endMs,
-          elapsedMinutes,
         );
         if (focusMode.targetType === 'task') {
           const task = tasks.find((t) => t.id === focusMode.targetId);
