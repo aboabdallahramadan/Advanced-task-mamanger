@@ -7,8 +7,11 @@ export class ReportService {
         const stmt = this.db.prepare(sql);
         stmt.bind(params);
         const rows: any[] = [];
-        while (stmt.step()) rows.push(stmt.getAsObject());
-        stmt.free();
+        try {
+            while (stmt.step()) rows.push(stmt.getAsObject());
+        } finally {
+            stmt.free();
+        }
         return rows;
     }
 

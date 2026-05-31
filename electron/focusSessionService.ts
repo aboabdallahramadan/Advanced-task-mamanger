@@ -17,12 +17,17 @@ export class FocusSessionService {
     add(input: FocusSessionInput) {
         const id = uuid();
         const now = new Date().toISOString();
-        this.db.run(
-            `INSERT INTO focus_sessions (id, task_id, project, started_at, ended_at, minutes, date, created_at)
+        try {
+            this.db.run(
+                `INSERT INTO focus_sessions (id, task_id, project, started_at, ended_at, minutes, date, created_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id, input.taskId, input.project, input.startedAt, input.endedAt, input.minutes, input.date, now],
-        );
-        saveDatabase();
+                [id, input.taskId, input.project, input.startedAt, input.endedAt, input.minutes, input.date, now],
+            );
+            saveDatabase();
+        } catch (e) {
+            console.error('FocusSessionService.add failed:', e);
+            throw e;
+        }
         return { id, ...input, createdAt: now };
     }
 }
