@@ -39,8 +39,7 @@ export function ReportsView() {
 
   useEffect(() => {
     loadReports();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadReports]);
 
   const summary = reportData?.summary ?? null;
   const throughput = reportData?.throughput ?? [];
