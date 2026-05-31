@@ -229,4 +229,8 @@ const migrations = [
       CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id)
         `,
     },
+    {
+        name: '010_add_project_actual_time',
+        sql: `ALTER TABLE projects ADD COLUMN actual_time_minutes INTEGER DEFAULT 0`,
+    },
 ];

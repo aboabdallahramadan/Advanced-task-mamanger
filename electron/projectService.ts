@@ -8,6 +8,7 @@ export interface Project {
     color: string;
     emoji: string;
     order: number;
+    actualTimeMinutes: number;
     createdAt: string;
     updatedAt: string;
 }
@@ -22,6 +23,7 @@ export class ProjectService {
             color: row.color,
             emoji: row.emoji,
             order: row.sort_order,
+            actualTimeMinutes: row.actual_time_minutes ?? 0,
             createdAt: row.created_at,
             updatedAt: row.updated_at,
         };
@@ -71,7 +73,7 @@ export class ProjectService {
         return this.getById(id)!;
     }
 
-    update(id: string, updates: Partial<{ name: string; color: string; emoji: string; order: number }>): Project {
+    update(id: string, updates: Partial<{ name: string; color: string; emoji: string; order: number; actualTimeMinutes: number }>): Project {
         const sets: string[] = [];
         const values: any[] = [];
 
@@ -79,6 +81,7 @@ export class ProjectService {
         if (updates.color !== undefined) { sets.push('color = ?'); values.push(updates.color); }
         if (updates.emoji !== undefined) { sets.push('emoji = ?'); values.push(updates.emoji); }
         if (updates.order !== undefined) { sets.push('sort_order = ?'); values.push(updates.order); }
+        if (updates.actualTimeMinutes !== undefined) { sets.push('actual_time_minutes = ?'); values.push(updates.actualTimeMinutes); }
 
         if (sets.length === 0) return this.getById(id)!;
 
