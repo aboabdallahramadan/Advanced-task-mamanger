@@ -23,6 +23,7 @@ import { AllTasksView } from './components/AllTasksView';
 import { NoteGroupView } from './components/NoteGroupView';
 import { NoteEditorView } from './components/NoteEditorView';
 import { AllNotesView } from './components/AllNotesView';
+import { ReportsView } from './components/ReportsView';
 import { NoteGroupDialog } from './components/NoteGroupDialog';
 import { useStore } from './store';
 import { Task } from './types';
@@ -143,6 +144,8 @@ export default function App() {
           <NoteGroupView />
         ) : currentView === 'noteEditor' ? (
           <NoteEditorView />
+        ) : currentView === 'reports' ? (
+          <ReportsView />
         ) : (
           <div className="flex-1 flex min-w-0">
             {/* Task List Panel */}
