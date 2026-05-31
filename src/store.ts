@@ -116,6 +116,7 @@ interface AppState {
     isOpen: boolean;
     phase: PlanningPhase;
     targetDate: string; // YYYY-MM-DD
+    commitError: string | null; // non-null when the last commitDay call failed
   };
   focusMode: {
     targetType: 'task' | 'project' | null;
@@ -315,6 +316,7 @@ export const useStore = create<AppState>((set, get) => ({
     isOpen: false,
     phase: 'review',
     targetDate: format(new Date(), 'yyyy-MM-dd'),
+    commitError: null,
   },
   focusMode: {
     targetType: null,
@@ -942,7 +944,12 @@ export const useStore = create<AppState>((set, get) => ({
   closeTaskDialog: () => set({ taskDialog: { isOpen: false, mode: 'create', taskId: null } }),
   startPlanningFlow: () =>
     set({
-      planningFlow: { isOpen: true, phase: 'review', targetDate: format(new Date(), 'yyyy-MM-dd') },
+      planningFlow: {
+        isOpen: true,
+        phase: 'review',
+        targetDate: format(new Date(), 'yyyy-MM-dd'),
+        commitError: null,
+      },
     }),
   setPlanningPhase: (phase: PlanningPhase) =>
     set((state) => ({ planningFlow: { ...state.planningFlow, phase } })),
@@ -963,10 +970,18 @@ export const useStore = create<AppState>((set, get) => ({
         plannedTaskIds: tasksForDay.map((t) => t.id),
         plannedMinutes,
       });
+      // Only close the canvas and clear any previous error when the DB write succeeds.
+      set((state) => ({
+        planningFlow: { ...state.planningFlow, isOpen: false, commitError: null },
+      }));
     } catch (e) {
+      // Store the error so the canvas can display a failure state, then re-throw
+      // so callers (e.g. the canvas component) can also react to the failure.
+      const message = e instanceof Error ? e.message : String(e);
       console.error('Failed to commit day:', e);
+      set((state) => ({ planningFlow: { ...state.planningFlow, commitError: message } }));
+      throw e;
     }
-    set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } }));
   },
 
   // Settings Persistence
@@ -1181,19 +1196,26 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   leftoverTasks: (beforeDate: string) => {
+    // Only returns tasks that were actively planned (status 'planned' or 'scheduled') for
+    // a past date. Inbox and backlog tasks with a stale plannedDate are excluded because
+    // they were never committed to a day and should not appear as 'leftovers' in the
+    // Review column of the planning canvas.
     const { tasks } = get();
     return tasks.filter(
       (t) =>
-        t.status !== 'done' &&
-        t.status !== 'archived' &&
+        (t.status === 'planned' || t.status === 'scheduled') &&
         !!t.plannedDate &&
         t.plannedDate < beforeDate,
     );
   },
   plannedForDate: (date: string) => {
+    // Only returns tasks that are actively planned or scheduled for the given date.
+    // Inbox and backlog tasks are not meaningfully 'planned for a date' and are excluded
+    // even if they happen to carry a matching plannedDate.
     const { tasks } = get();
     return tasks.filter(
-      (t) => t.plannedDate === date && t.status !== 'archived' && t.status !== 'done',
+      (t) =>
+        t.plannedDate === date && (t.status === 'planned' || t.status === 'scheduled'),
     );
   },
   unscheduledPlannedTasks: (date: string) => {
@@ -1201,8 +1223,7 @@ export const useStore = create<AppState>((set, get) => ({
     return tasks.filter(
       (t) =>
         t.plannedDate === date &&
-        t.status !== 'archived' &&
-        t.status !== 'done' &&
+        (t.status === 'planned' || t.status === 'scheduled') &&
         !t.scheduledStart,
     );
   },
