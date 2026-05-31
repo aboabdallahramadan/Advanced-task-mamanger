@@ -1331,7 +1331,7 @@ export const useStore = create<AppState>((set, get) => ({
       });
     } catch (e) {
       console.error('Failed to load reports:', e);
-      set({ reportLoading: false });
+      set({ reportData: null, reportLoading: false });
     }
   },
 }));
