@@ -66,7 +66,8 @@ interface AppState {
         step: 0 | 1 | 2; // 0: Review Yesterday, 1: Triage Inbox, 2: Timebox
     };
     focusMode: {
-        activeTaskId: string | null;
+        targetType: 'task' | 'project' | null;
+        targetId: string | null;
         isPlaying: boolean;
         sessionStartTime: number | null;
     };
@@ -128,8 +129,11 @@ interface AppState {
 
     // Focus Mode Actions
     startFocusSession: (taskId: string) => void;
+    startProjectFocus: (projectId: string) => void;
     pauseFocusSession: () => void;
     stopFocusSession: () => Promise<void>;
+    isTaskFocused: (taskId: string) => boolean;
+    isProjectFocused: (projectId: string) => boolean;
 
     // Settings Persistence
     loadSettings: () => Promise<void>;
@@ -220,7 +224,8 @@ export const useStore = create<AppState>((set, get) => ({
         step: 0,
     },
     focusMode: {
-        activeTaskId: null,
+        targetType: null,
+        targetId: null,
         isPlaying: false,
         sessionStartTime: null,
     },
@@ -325,6 +330,10 @@ export const useStore = create<AppState>((set, get) => ({
 
     deleteTask: async (id: string) => {
         try {
+            const { focusMode } = get();
+            if (focusMode.targetType === 'task' && focusMode.targetId === id) {
+                set({ focusMode: { targetType: null, targetId: null, isPlaying: false, sessionStartTime: null } });
+            }
             await window.api.tasks.delete(id);
             set((s) => ({
                 tasks: s.tasks.filter((t) => t.id !== id),
@@ -539,6 +548,10 @@ export const useStore = create<AppState>((set, get) => ({
 
     deleteProject: async (id) => {
         try {
+            const { focusMode } = get();
+            if (focusMode.targetType === 'project' && focusMode.targetId === id) {
+                set({ focusMode: { targetType: null, targetId: null, isPlaying: false, sessionStartTime: null } });
+            }
             await window.api.projects.delete(id);
             set((s) => ({
                 projects: s.projects.filter((p) => p.id !== id),
@@ -871,9 +884,23 @@ export const useStore = create<AppState>((set, get) => ({
 
     // Focus Mode Actions
     startFocusSession: (taskId: string) => {
+        get().pauseFocusSession(); // flush any running session first
         set({
             focusMode: {
-                activeTaskId: taskId,
+                targetType: 'task',
+                targetId: taskId,
+                isPlaying: true,
+                sessionStartTime: Date.now(),
+            }
+        });
+    },
+
+    startProjectFocus: (projectId: string) => {
+        get().pauseFocusSession(); // flush any running session first
+        set({
+            focusMode: {
+                targetType: 'project',
+                targetId: projectId,
                 isPlaying: true,
                 sessionStartTime: Date.now(),
             }
@@ -881,17 +908,20 @@ export const useStore = create<AppState>((set, get) => ({
     },
 
     pauseFocusSession: () => {
-        const { focusMode, updateTask, tasks } = get();
-        if (!focusMode.activeTaskId || !focusMode.isPlaying || !focusMode.sessionStartTime) return;
+        const { focusMode, updateTask, updateProject, tasks, projects } = get();
+        if (!focusMode.targetType || !focusMode.targetId || !focusMode.isPlaying || !focusMode.sessionStartTime) return;
 
-        // Calculate elapsed minutes (round to nearest minute to preserve seconds)
         const elapsedMs = Date.now() - focusMode.sessionStartTime;
         const elapsedMinutes = Math.round(elapsedMs / 60000);
 
-        const task = tasks.find(t => t.id === focusMode.activeTaskId);
-        if (task && elapsedMinutes > 0) {
-            const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
-            updateTask(task.id, { actualTimeMinutes: newActual });
+        if (elapsedMinutes > 0) {
+            if (focusMode.targetType === 'task') {
+                const task = tasks.find(t => t.id === focusMode.targetId);
+                if (task) updateTask(task.id, { actualTimeMinutes: (task.actualTimeMinutes || 0) + elapsedMinutes });
+            } else {
+                const project = projects.find(p => p.id === focusMode.targetId);
+                if (project) updateProject(project.id, { actualTimeMinutes: (project.actualTimeMinutes || 0) + elapsedMinutes });
+            }
         }
 
         set({
@@ -904,28 +934,42 @@ export const useStore = create<AppState>((set, get) => ({
     },
 
     stopFocusSession: async () => {
-        const { focusMode, updateTask, tasks } = get();
-        if (!focusMode.activeTaskId) return;
+        const { focusMode, updateTask, updateProject, tasks, projects } = get();
+        if (!focusMode.targetType || !focusMode.targetId) return;
 
-        // Save any pending time if playing
         if (focusMode.isPlaying && focusMode.sessionStartTime) {
             const elapsedMs = Date.now() - focusMode.sessionStartTime;
             const elapsedMinutes = Math.round(elapsedMs / 60000);
 
-            const task = tasks.find(t => t.id === focusMode.activeTaskId);
-            if (task && elapsedMinutes > 0) {
-                const newActual = (task.actualTimeMinutes || 0) + elapsedMinutes;
-                await updateTask(task.id, { actualTimeMinutes: newActual });
+            if (elapsedMinutes > 0) {
+                if (focusMode.targetType === 'task') {
+                    const task = tasks.find(t => t.id === focusMode.targetId);
+                    if (task) await updateTask(task.id, { actualTimeMinutes: (task.actualTimeMinutes || 0) + elapsedMinutes });
+                } else {
+                    const project = projects.find(p => p.id === focusMode.targetId);
+                    if (project) await updateProject(project.id, { actualTimeMinutes: (project.actualTimeMinutes || 0) + elapsedMinutes });
+                }
             }
         }
 
         set({
             focusMode: {
-                activeTaskId: null,
+                targetType: null,
+                targetId: null,
                 isPlaying: false,
                 sessionStartTime: null,
             }
         });
+    },
+
+    isTaskFocused: (taskId: string) => {
+        const { focusMode } = get();
+        return focusMode.targetType === 'task' && focusMode.targetId === taskId;
+    },
+
+    isProjectFocused: (projectId: string) => {
+        const { focusMode } = get();
+        return focusMode.targetType === 'project' && focusMode.targetId === projectId;
     },
 
     todayTasks: () => {

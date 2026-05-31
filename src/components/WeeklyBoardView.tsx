@@ -259,7 +259,7 @@ export function WeeklyBoardView() {
                                 }}
                                 onOpenDetail={(task) => openTaskDialog('edit', task.id)}
                                 onStartTimer={(task) => startFocusSession(task.id)}
-                                focusActiveId={focusMode.activeTaskId}
+                                focusActiveId={focusMode.targetType === 'task' ? focusMode.targetId : null}
                             />
                         );
                     })}

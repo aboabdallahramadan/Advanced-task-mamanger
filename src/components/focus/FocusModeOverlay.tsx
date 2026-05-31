@@ -7,9 +7,11 @@ import { getTextDirection, getDirectionStyle } from '../../useTextDirection';
 export const FocusModeOverlay: React.FC = () => {
     const {
         tasks,
+        projects,
         focusMode,
         pauseFocusSession,
         startFocusSession,
+        startProjectFocus,
         stopFocusSession,
         markDone
     } = useStore();
@@ -60,22 +62,43 @@ export const FocusModeOverlay: React.FC = () => {
         document.addEventListener('mouseup', handleMouseUp);
     }, []);
 
-    const activeTask = tasks.find(t => t.id === focusMode.activeTaskId);
+    const focusedTask = focusMode.targetType === 'task' ? tasks.find(t => t.id === focusMode.targetId) : undefined;
+    const focusedProject = focusMode.targetType === 'project' ? projects.find(p => p.id === focusMode.targetId) : undefined;
+    const target = focusedTask
+        ? {
+            kind: 'task' as const,
+            title: focusedTask.title,
+            accumulatedMinutes: focusedTask.actualTimeMinutes || 0,
+            plannedMinutes: focusedTask.durationMinutes || 0,
+        }
+        : focusedProject
+        ? {
+            kind: 'project' as const,
+            title: `${focusedProject.emoji} ${focusedProject.name}`,
+            accumulatedMinutes: focusedProject.actualTimeMinutes || 0,
+            plannedMinutes: 0,
+        }
+        : null;
+
+    const resumeFocus = () => {
+        if (focusMode.targetType === 'task' && focusMode.targetId) startFocusSession(focusMode.targetId);
+        else if (focusMode.targetType === 'project' && focusMode.targetId) startProjectFocus(focusMode.targetId);
+    };
 
     // Update timer every second
     useEffect(() => {
-        if (!focusMode.isPlaying || !focusMode.sessionStartTime || !activeTask) {
+        if (!focusMode.isPlaying || !focusMode.sessionStartTime || !target) {
             return;
         }
 
         const interval = setInterval(() => {
             const currentSessionMs = Date.now() - focusMode.sessionStartTime!;
-            const totalMs = (activeTask.actualTimeMinutes || 0) * 60000 + currentSessionMs;
+            const totalMs = target.accumulatedMinutes * 60000 + currentSessionMs;
             setElapsedSeconds(Math.floor(totalMs / 1000));
         }, 1000);
 
         return () => clearInterval(interval);
-    }, [focusMode.isPlaying, focusMode.sessionStartTime, activeTask]);
+    }, [focusMode.isPlaying, focusMode.sessionStartTime, target?.accumulatedMinutes]);
 
     const formatTime = (totalSeconds: number) => {
         const h = Math.floor(totalSeconds / 3600);
@@ -87,7 +110,7 @@ export const FocusModeOverlay: React.FC = () => {
         return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
-    const plannedMinutes = activeTask?.durationMinutes || 0;
+    const plannedMinutes = target?.plannedMinutes || 0;
     const elapsedMins = Math.floor(elapsedSeconds / 60);
     const isOvertime = plannedMinutes > 0 && elapsedMins >= plannedMinutes;
     const progressPercent = plannedMinutes > 0 ? Math.min(100, (elapsedMins / plannedMinutes) * 100) : 0;
@@ -95,46 +118,46 @@ export const FocusModeOverlay: React.FC = () => {
     // ─── Always-on-top Widget Window ──────────────────────────
     // Show/hide the external focus widget when a session starts/ends
     useEffect(() => {
-        if (activeTask) {
+        if (target) {
             window.api?.focus?.showWidget();
         } else {
             window.api?.focus?.hideWidget();
         }
 
         return () => {
-            // Hide widget when unmounting (session ended)
             window.api?.focus?.hideWidget();
         };
-    }, [!!activeTask]);
+    }, [!!target]);
 
     // Push timing state to the external widget (only on state changes, not every tick)
     // The widget runs its own local timer using these raw values
     useEffect(() => {
-        if (!activeTask) return;
+        if (!target) return;
 
         window.api?.focus?.sendWidgetState({
-            taskTitle: activeTask.title,
+            taskTitle: target.title,
             isPlaying: focusMode.isPlaying,
             sessionStartTime: focusMode.sessionStartTime,
-            accumulatedMinutes: activeTask.actualTimeMinutes || 0,
-            plannedMinutes: activeTask.durationMinutes || 0,
+            accumulatedMinutes: target.accumulatedMinutes,
+            plannedMinutes: target.plannedMinutes,
+            canComplete: target.kind === 'task',
         });
-    }, [activeTask?.id, activeTask?.title, activeTask?.actualTimeMinutes, focusMode.isPlaying, focusMode.sessionStartTime]);
+    }, [focusMode.targetId, target?.title, target?.accumulatedMinutes, target?.plannedMinutes, target?.kind, focusMode.isPlaying, focusMode.sessionStartTime]);
 
     // ─── Tray Communication ───────────────────────────────────
     useEffect(() => {
-        if (!activeTask) {
+        if (!target) {
             window.api?.focus?.updateTray({ taskTitle: null, elapsed: null, isPlaying: false });
             return;
         }
 
         const elapsed = formatTime(elapsedSeconds);
         window.api?.focus?.updateTray({
-            taskTitle: activeTask.title,
+            taskTitle: target.title,
             elapsed,
             isPlaying: focusMode.isPlaying,
         });
-    }, [activeTask, elapsedSeconds, focusMode.isPlaying]);
+    }, [target?.title, target?.kind, elapsedSeconds, focusMode.isPlaying]);
 
     // Listen for commands from tray and external widget
     useEffect(() => {
@@ -145,12 +168,14 @@ export const FocusModeOverlay: React.FC = () => {
 
         const handleToggle = () => {
             const state = useStore.getState();
-            if (state.focusMode.activeTaskId) {
-                if (state.focusMode.isPlaying) {
-                    state.pauseFocusSession();
-                } else {
-                    state.startFocusSession(state.focusMode.activeTaskId);
-                }
+            const fm = state.focusMode;
+            if (!fm.targetId) return;
+            if (fm.isPlaying) {
+                state.pauseFocusSession();
+            } else if (fm.targetType === 'task') {
+                state.startFocusSession(fm.targetId);
+            } else if (fm.targetType === 'project') {
+                state.startProjectFocus(fm.targetId);
             }
         };
 
@@ -160,9 +185,12 @@ export const FocusModeOverlay: React.FC = () => {
 
         const handleDone = async () => {
             const state = useStore.getState();
-            if (state.focusMode.activeTaskId) {
-                await state.stopFocusSession();
-                await state.markDone(state.focusMode.activeTaskId);
+            const fm = state.focusMode;
+            if (!fm.targetId) return;
+            await state.stopFocusSession();
+            // "Done" only marks tasks complete; projects are never "done".
+            if (fm.targetType === 'task') {
+                await state.markDone(fm.targetId);
             }
         };
 
@@ -170,17 +198,32 @@ export const FocusModeOverlay: React.FC = () => {
         window.api?.on('focus:stop', handleStop);
         window.api?.on('focus:done', handleDone);
 
-        // When the widget is toggled via shortcut, resync state to it
         const handleResync = () => {
             const s = useStore.getState();
-            const task = s.tasks.find(t => t.id === s.focusMode.activeTaskId);
-            if (task) {
+            const fm = s.focusMode;
+            const t = fm.targetType === 'task'
+                ? s.tasks.find(x => x.id === fm.targetId)
+                : undefined;
+            const p = fm.targetType === 'project'
+                ? s.projects.find(x => x.id === fm.targetId)
+                : undefined;
+            if (t) {
                 window.api?.focus?.sendWidgetState({
-                    taskTitle: task.title,
-                    isPlaying: s.focusMode.isPlaying,
-                    sessionStartTime: s.focusMode.sessionStartTime,
-                    accumulatedMinutes: task.actualTimeMinutes || 0,
-                    plannedMinutes: task.durationMinutes || 0,
+                    taskTitle: t.title,
+                    isPlaying: fm.isPlaying,
+                    sessionStartTime: fm.sessionStartTime,
+                    accumulatedMinutes: t.actualTimeMinutes || 0,
+                    plannedMinutes: t.durationMinutes || 0,
+                    canComplete: true,
+                });
+            } else if (p) {
+                window.api?.focus?.sendWidgetState({
+                    taskTitle: `${p.emoji} ${p.name}`,
+                    isPlaying: fm.isPlaying,
+                    sessionStartTime: fm.sessionStartTime,
+                    accumulatedMinutes: p.actualTimeMinutes || 0,
+                    plannedMinutes: 0,
+                    canComplete: false,
                 });
             }
         };
@@ -194,11 +237,11 @@ export const FocusModeOverlay: React.FC = () => {
         };
     }, []);
 
-    if (!activeTask) return null;
+    if (!target) return null;
 
     const handleComplete = async () => {
         await stopFocusSession();
-        await markDone(activeTask.id);
+        if (target.kind === 'task' && focusMode.targetId) await markDone(focusMode.targetId);
     };
 
     // ─── Minimized Compact View ───────────────────────────────
@@ -231,7 +274,7 @@ export const FocusModeOverlay: React.FC = () => {
                             <Pause className="w-3.5 h-3.5" />
                         </button>
                     ) : (
-                        <button onClick={() => startFocusSession(activeTask.id)} className="p-1 rounded-md text-accent-400 hover:text-accent-300 hover:bg-accent-600/20 transition-colors">
+                        <button onClick={resumeFocus} className="p-1 rounded-md text-accent-400 hover:text-accent-300 hover:bg-accent-600/20 transition-colors">
                             <Play className="w-3.5 h-3.5" />
                         </button>
                     )}
@@ -272,7 +315,7 @@ export const FocusModeOverlay: React.FC = () => {
                 </div>
 
                 <div className="p-4">
-                    <h3 dir={getTextDirection(activeTask.title)} style={getDirectionStyle(activeTask.title)} className="text-surface-100 font-medium truncate mb-3" title={activeTask.title}>{activeTask.title}</h3>
+                    <h3 dir={getTextDirection(target.title)} style={getDirectionStyle(target.title)} className="text-surface-100 font-medium truncate mb-3" title={target.title}>{target.title}</h3>
 
                     <div className="flex items-center justify-between">
                         <div className={clsx("text-3xl font-mono font-semibold tracking-tight tabular-nums", isOvertime ? "text-warning-400" : "text-surface-100")}>
@@ -301,7 +344,7 @@ export const FocusModeOverlay: React.FC = () => {
                                 <Pause className="w-4 h-4" /> Pause
                             </button>
                         ) : (
-                            <button onClick={() => startFocusSession(activeTask.id)} className="flex-1 py-2.5 flex justify-center items-center gap-2 rounded-xl bg-accent-600/20 hover:bg-accent-600/30 text-accent-400 transition-all font-medium text-sm" title="Resume">
+                            <button onClick={resumeFocus} className="flex-1 py-2.5 flex justify-center items-center gap-2 rounded-xl bg-accent-600/20 hover:bg-accent-600/30 text-accent-400 transition-all font-medium text-sm" title="Resume">
                                 <Play className="w-4 h-4" /> Resume
                             </button>
                         )}
@@ -310,9 +353,11 @@ export const FocusModeOverlay: React.FC = () => {
                             <Square className="w-4 h-4" />
                         </button>
 
-                        <button onClick={handleComplete} className="p-2.5 flex justify-center items-center rounded-xl bg-success-600/20 hover:bg-success-600/30 text-success-500 transition-all" title="Complete">
-                            <CheckCircle2 className="w-4 h-4" />
-                        </button>
+                        {target.kind === 'task' && (
+                            <button onClick={handleComplete} className="p-2.5 flex justify-center items-center rounded-xl bg-success-600/20 hover:bg-success-600/30 text-success-500 transition-all" title="Complete">
+                                <CheckCircle2 className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

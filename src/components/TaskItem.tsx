@@ -40,7 +40,7 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
         archiveTask,
         deleteTask,
         startFocusSession,
-        focusMode,
+        isTaskFocused,
         openTaskDialog,
     } = useStore();
 
@@ -236,13 +236,13 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
                             }}
                             className={clsx(
                                 "flex items-center justify-center w-6 h-6 rounded-md transition-all",
-                                focusMode.activeTaskId === task.id
+                                isTaskFocused(task.id)
                                     ? "bg-accent-500 text-white animate-pulse shadow-glow"
                                     : "opacity-0 group-hover:opacity-100 text-surface-400 hover:text-accent-400 hover:bg-accent-500/10"
                             )}
                             title="Focus on this task"
                         >
-                            <Play className="w-3.5 h-3.5" fill={focusMode.activeTaskId === task.id ? "currentColor" : "none"} />
+                            <Play className="w-3.5 h-3.5" fill={isTaskFocused(task.id) ? "currentColor" : "none"} />
                         </button>
                     )}
 

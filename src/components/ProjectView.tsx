@@ -310,7 +310,7 @@ export function ProjectView() {
                                             onToggleDone={() => markDone(task.id)}
                                             onClick={() => openTaskDialog('edit', task.id)}
                                             onStartTimer={() => startFocusSession(task.id)}
-                                            isFocused={focusMode.activeTaskId === task.id}
+                                            isFocused={focusMode.targetType === 'task' && focusMode.targetId === task.id}
                                         />
                                     ))}
                                 </div>
