@@ -10,9 +10,15 @@ import {
   RecurrenceEndType,
   RecurrenceRule,
   PlanningPhase,
+  ReportRangeMode,
+  ReportSummary,
+  ThroughputPoint,
+  ProjectTime,
 } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 import { sessionMinutes } from './lib/focusSession';
+import { getRange, getPreviousRange, daysInRange } from './lib/dateRange';
+import { summarize, throughputByDay, timeByProject as timeByProjectFn } from './lib/reports';
 
 function stripHtml(html: string): string {
   return html
@@ -259,6 +265,17 @@ interface AppState {
   // Project Reorder
   reorderProjects: (items: { id: string; order: number }[]) => Promise<void>;
 
+  // Reports
+  reportRange: ReportRangeMode;
+  reportData: {
+    summary: ReportSummary;
+    throughput: ThroughputPoint[];
+    timeByProject: ProjectTime[];
+  } | null;
+  reportLoading: boolean;
+  setReportRange: (mode: ReportRangeMode) => void;
+  loadReports: () => Promise<void>;
+
   // Computed
   todayTasks: () => Task[];
   scheduledTasks: () => Task[];
@@ -324,6 +341,9 @@ export const useStore = create<AppState>((set, get) => ({
     isPlaying: false,
     sessionStartTime: null,
   },
+  reportRange: 'week',
+  reportData: null,
+  reportLoading: false,
 
   loadTasks: async () => {
     set({ loading: true });
@@ -1284,5 +1304,34 @@ export const useStore = create<AppState>((set, get) => ({
     const totalWorkMinutes = (workEndHour - workStartHour) * 60;
     const scheduledMinutes = scheduled.reduce((sum, t) => sum + (t.durationMinutes || 0), 0);
     return totalWorkMinutes - scheduledMinutes;
+  },
+
+  setReportRange: (mode: ReportRangeMode) => {
+    set({ reportRange: mode });
+    get().loadReports();
+  },
+  loadReports: async () => {
+    const { reportRange } = get();
+    set({ reportLoading: true });
+    try {
+      const now = new Date();
+      const range = getRange(reportRange, now);
+      const prev = getPreviousRange(reportRange, now);
+      const [current, previous] = await Promise.all([
+        window.api.reports.getData(range.start, range.end),
+        window.api.reports.getData(prev.start, prev.end),
+      ]);
+      set({
+        reportData: {
+          summary: summarize(current, previous),
+          throughput: throughputByDay(current, daysInRange(range)),
+          timeByProject: timeByProjectFn(current.sessions),
+        },
+        reportLoading: false,
+      });
+    } catch (e) {
+      console.error('Failed to load reports:', e);
+      set({ reportLoading: false });
+    }
   },
 }));
