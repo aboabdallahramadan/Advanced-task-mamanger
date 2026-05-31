@@ -24,6 +24,7 @@ interface AppState {
     noteGroups: NoteGroup[];
     selectedNoteGroupId: string | null;
     selectedNoteId: string | null;
+    noteEditorReturnView: ViewMode | null;
     currentNotes: Note[];
     noteGroupDialog: {
         isOpen: boolean;
@@ -32,6 +33,7 @@ interface AppState {
         defaultProjectId?: string | null;
     };
     projectNotes: Note[];
+    allNotes: Note[];
     projectActiveTab: 'tasks' | 'notes';
     notesCollapsed: boolean;
     projectsCollapsed: boolean;
@@ -144,13 +146,14 @@ interface AppState {
     reorderNoteGroups: (items: { id: string; order: number }[]) => Promise<void>;
 
     // Note Actions
+    loadAllNotes: () => Promise<void>;
     loadNotesByProject: (projectId: string) => Promise<void>;
     createProjectNote: (projectId: string) => Promise<Note | null>;
     loadNotesByGroup: (groupId: string) => Promise<void>;
     createNote: (groupId: string) => Promise<Note | null>;
     updateNote: (id: string, updates: Partial<{ title: string; content: string; groupId: string; projectId: string; order: number }>) => Promise<void>;
     deleteNote: (id: string) => Promise<void>;
-    selectNote: (noteId: string) => void;
+    selectNote: (noteId: string, returnView?: ViewMode) => void;
     reorderNotes: (items: { id: string; order: number }[]) => Promise<void>;
     setProjectActiveTab: (tab: 'tasks' | 'notes') => void;
     setNotesCollapsed: (collapsed: boolean) => void;
@@ -181,6 +184,7 @@ export const useStore = create<AppState>((set, get) => ({
     noteGroups: [],
     selectedNoteGroupId: null,
     selectedNoteId: null,
+    noteEditorReturnView: null,
     currentNotes: [],
     noteGroupDialog: {
         isOpen: false,
@@ -189,6 +193,7 @@ export const useStore = create<AppState>((set, get) => ({
         defaultProjectId: null,
     },
     projectNotes: [],
+    allNotes: [],
     projectActiveTab: 'tasks',
     notesCollapsed: false,
     projectsCollapsed: false,
@@ -621,6 +626,15 @@ export const useStore = create<AppState>((set, get) => ({
     },
 
     // ─── Note Actions ────────────────────────────────────────
+    loadAllNotes: async () => {
+        try {
+            const notes = await window.api.notes.getAll();
+            set({ allNotes: notes });
+        } catch (e) {
+            console.error('Failed to load all notes:', e);
+        }
+    },
+
     loadNotesByProject: async (projectId) => {
         try {
             const notes = await window.api.notes.getByProject(projectId);
@@ -675,6 +689,7 @@ export const useStore = create<AppState>((set, get) => ({
             set((s) => ({
                 currentNotes: s.currentNotes.map((n) => (n.id === id ? updated : n)),
                 projectNotes: s.projectNotes.map((n) => (n.id === id ? updated : n)),
+                allNotes: s.allNotes.map((n) => (n.id === id ? updated : n)),
             }));
         } catch (e) {
             console.error('Failed to update note:', e);
@@ -685,14 +700,17 @@ export const useStore = create<AppState>((set, get) => ({
         try {
             // Capture note context before deleting for smart navigation
             const note = get().currentNotes.find((n) => n.id === id)
-                || get().projectNotes.find((n) => n.id === id);
+                || get().projectNotes.find((n) => n.id === id)
+                || get().allNotes.find((n) => n.id === id);
 
             await window.api.notes.delete(id);
-            const { selectedNoteId, selectedNoteGroupId } = get();
+            const { selectedNoteId, selectedNoteGroupId, noteEditorReturnView } = get();
 
             let viewUpdate: Record<string, any> = {};
             if (selectedNoteId === id) {
-                if (note?.projectId && !note.groupId) {
+                if (noteEditorReturnView === 'allNotes') {
+                    viewUpdate = { selectedNoteId: null, currentView: 'allNotes' as ViewMode };
+                } else if (note?.projectId && !note.groupId) {
                     // Project note — go back to project view, notes tab
                     viewUpdate = { selectedNoteId: null, currentView: 'project' as ViewMode };
                     get().setProjectActiveTab('notes');
@@ -706,6 +724,7 @@ export const useStore = create<AppState>((set, get) => ({
             set((s) => ({
                 currentNotes: s.currentNotes.filter((n) => n.id !== id),
                 projectNotes: s.projectNotes.filter((n) => n.id !== id),
+                allNotes: s.allNotes.filter((n) => n.id !== id),
                 ...viewUpdate,
             }));
         } catch (e) {
@@ -713,8 +732,12 @@ export const useStore = create<AppState>((set, get) => ({
         }
     },
 
-    selectNote: (noteId: string) =>
-        set({ selectedNoteId: noteId, currentView: 'noteEditor' as ViewMode }),
+    selectNote: (noteId: string, returnView?: ViewMode) =>
+        set({
+            selectedNoteId: noteId,
+            currentView: 'noteEditor' as ViewMode,
+            noteEditorReturnView: returnView ?? null,
+        }),
 
     reorderNotes: async (items) => {
         try {

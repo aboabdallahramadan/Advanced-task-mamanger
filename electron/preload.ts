@@ -67,6 +67,7 @@ const api = {
             ipcRenderer.invoke('noteGroups:reorder', items),
     },
     notes: {
+        getAll: () => ipcRenderer.invoke('notes:getAll'),
         getByGroup: (groupId: string) => ipcRenderer.invoke('notes:getByGroup', groupId),
         getByProject: (projectId: string) => ipcRenderer.invoke('notes:getByProject', projectId),
         getById: (id: string) => ipcRenderer.invoke('notes:getById', id),

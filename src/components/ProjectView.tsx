@@ -13,7 +13,13 @@ import {
     GripVertical,
     FileText,
     StickyNote,
+    Search,
+    X,
 } from 'lucide-react';
+
+function stripHtml(html: string): string {
+    return html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
 import { clsx } from 'clsx';
 import { format, parseISO } from 'date-fns';
 import { getTextDirection, getDirectionStyle } from '../useTextDirection';
@@ -370,9 +376,21 @@ function ProjectNotesTab({ projectId }: { projectId: string }) {
         useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     );
 
+    const [search, setSearch] = useState('');
+
     React.useEffect(() => {
         loadNotesByProject(projectId);
     }, [projectId, loadNotesByProject]);
+
+    const filteredNotes = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        if (!q) return projectNotes;
+        return projectNotes.filter(
+            (n) =>
+                n.title.toLowerCase().includes(q) ||
+                stripHtml(n.content).toLowerCase().includes(q),
+        );
+    }, [projectNotes, search]);
 
     const handleCreateNote = async () => {
         await createProjectNote(projectId);
@@ -381,6 +399,7 @@ function ProjectNotesTab({ projectId }: { projectId: string }) {
     const handleDragEnd = (event: DragEndEvent) => {
         const { active, over } = event;
         if (!over || active.id === over.id) return;
+        if (search.trim()) return;
 
         const oldIndex = projectNotes.findIndex((n) => n.id === active.id);
         const newIndex = projectNotes.findIndex((n) => n.id === over.id);
@@ -396,13 +415,35 @@ function ProjectNotesTab({ projectId }: { projectId: string }) {
 
     return (
         <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-            <button
-                onClick={handleCreateNote}
-                className="flex items-center gap-2 text-sm text-surface-400 hover:text-accent-400 transition-colors mb-4"
-            >
-                <Plus className="w-4 h-4" />
-                <span>New note</span>
-            </button>
+            <div className="flex items-center gap-3 mb-4">
+                <button
+                    onClick={handleCreateNote}
+                    className="flex items-center gap-2 text-sm text-surface-400 hover:text-accent-400 transition-colors flex-shrink-0"
+                >
+                    <Plus className="w-4 h-4" />
+                    <span>New note</span>
+                </button>
+                {projectNotes.length > 0 && (
+                    <div className="relative flex-1 max-w-md ml-auto">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-500" />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search notes..."
+                            className="w-full pl-8 pr-7 py-1.5 text-xs bg-surface-900 border border-surface-800/60 rounded-lg text-surface-100 placeholder-surface-600 outline-none focus:border-accent-500/50 transition-colors"
+                        />
+                        {search && (
+                            <button
+                                onClick={() => setSearch('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-500 hover:text-surface-300"
+                            >
+                                <X className="w-3 h-3" />
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
 
             {projectNotes.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-48 text-center">
@@ -412,6 +453,14 @@ function ProjectNotesTab({ projectId }: { projectId: string }) {
                         Create a note to get started
                     </p>
                 </div>
+            ) : filteredNotes.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-48 text-center">
+                    <Search className="w-8 h-8 text-surface-600 mb-2" />
+                    <h3 className="text-sm font-medium text-surface-400">No notes match</h3>
+                    <p className="text-xs text-surface-500 mt-1">
+                        Try a different search term
+                    </p>
+                </div>
             ) : (
                 <DndContext
                     sensors={noteSensors}
@@ -419,15 +468,15 @@ function ProjectNotesTab({ projectId }: { projectId: string }) {
                     onDragEnd={handleDragEnd}
                 >
                     <SortableContext
-                        items={projectNotes.map((n) => n.id)}
+                        items={filteredNotes.map((n) => n.id)}
                         strategy={rectSortingStrategy}
                     >
                         <div className="grid grid-cols-2 gap-3">
-                            {projectNotes.map((note) => (
+                            {filteredNotes.map((note) => (
                                 <NoteCard
                                     key={note.id}
                                     note={note}
-                                    sortable
+                                    sortable={!search.trim()}
                                     onClick={() => selectNote(note.id)}
                                     onDelete={() => deleteNote(note.id)}
                                 />

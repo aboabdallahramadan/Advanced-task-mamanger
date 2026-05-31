@@ -50,7 +50,7 @@ export interface Task {
 
 export type TaskStatus = Task['status'];
 
-export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board' | 'project' | 'all' | 'noteGroup' | 'noteEditor';
+export type ViewMode = 'today' | 'tomorrow' | 'week' | 'inbox' | 'backlog' | 'board' | 'project' | 'all' | 'noteGroup' | 'noteEditor' | 'allNotes';
 
 export interface Project {
     id: string;
@@ -121,6 +121,7 @@ export interface ElectronAPI {
         reorder: (items: { id: string; order: number }[]) => Promise<void>;
     };
     notes: {
+        getAll: () => Promise<Note[]>;
         getByGroup: (groupId: string) => Promise<Note[]>;
         getByProject: (projectId: string) => Promise<Note[]>;
         getById: (id: string) => Promise<Note | null>;

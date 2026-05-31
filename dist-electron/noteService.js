@@ -1,34 +1,15 @@
-import { Database as SqlJsDatabase } from 'sql.js';
-import { saveDatabase } from './database';
-import { v4 as uuidv4 } from 'uuid';
-
-export interface NoteGroup {
-    id: string;
-    name: string;
-    emoji: string;
-    projectId: string | null;
-    order: number;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export interface Note {
-    id: string;
-    groupId: string | null;
-    projectId: string | null;
-    title: string;
-    content: string;
-    order: number;
-    createdAt: string;
-    updatedAt: string;
-}
-
-export class NoteService {
-    constructor(private db: SqlJsDatabase) {}
-
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.NoteService = void 0;
+const database_1 = require("./database");
+const uuid_1 = require("uuid");
+class NoteService {
+    db;
+    constructor(db) {
+        this.db = db;
+    }
     // ── NoteGroup methods ──────────────────────────────────────────
-
-    private mapGroupRow(row: any): NoteGroup {
+    mapGroupRow(row) {
         return {
             id: row.id,
             name: row.name,
@@ -39,20 +20,16 @@ export class NoteService {
             updatedAt: row.updated_at,
         };
     }
-
-    getAllGroups(): NoteGroup[] {
-        const stmt = this.db.prepare(
-            'SELECT * FROM note_groups ORDER BY sort_order ASC, created_at ASC',
-        );
-        const results: NoteGroup[] = [];
+    getAllGroups() {
+        const stmt = this.db.prepare('SELECT * FROM note_groups ORDER BY sort_order ASC, created_at ASC');
+        const results = [];
         while (stmt.step()) {
             results.push(this.mapGroupRow(stmt.getAsObject()));
         }
         stmt.free();
         return results;
     }
-
-    getGroupById(id: string): NoteGroup | null {
+    getGroupById(id) {
         const stmt = this.db.prepare('SELECT * FROM note_groups WHERE id = ?');
         stmt.bind([id]);
         if (stmt.step()) {
@@ -63,41 +40,27 @@ export class NoteService {
         stmt.free();
         return null;
     }
-
-    getGroupsByProject(projectId: string): NoteGroup[] {
-        const stmt = this.db.prepare(
-            'SELECT * FROM note_groups WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC',
-        );
+    getGroupsByProject(projectId) {
+        const stmt = this.db.prepare('SELECT * FROM note_groups WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC');
         stmt.bind([projectId]);
-        const results: NoteGroup[] = [];
+        const results = [];
         while (stmt.step()) {
             results.push(this.mapGroupRow(stmt.getAsObject()));
         }
         stmt.free();
         return results;
     }
-
-    createGroup(input: { name: string; emoji?: string; projectId?: string }): NoteGroup {
-        const id = uuidv4();
+    createGroup(input) {
+        const id = (0, uuid_1.v4)();
         const now = new Date().toISOString();
-
-        this.db.run(
-            `INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [id, input.name, input.emoji || '📝', input.projectId || null, 0, now, now],
-        );
-
-        saveDatabase();
-        return this.getGroupById(id)!;
+        this.db.run(`INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`, [id, input.name, input.emoji || '📝', input.projectId || null, 0, now, now]);
+        (0, database_1.saveDatabase)();
+        return this.getGroupById(id);
     }
-
-    updateGroup(
-        id: string,
-        updates: Partial<{ name: string; emoji: string; projectId: string | null; order: number }>,
-    ): NoteGroup {
-        const sets: string[] = [];
-        const values: any[] = [];
-
+    updateGroup(id, updates) {
+        const sets = [];
+        const values = [];
         if (updates.name !== undefined) {
             sets.push('name = ?');
             values.push(updates.name);
@@ -114,37 +77,30 @@ export class NoteService {
             sets.push('sort_order = ?');
             values.push(updates.order);
         }
-
-        if (sets.length === 0) return this.getGroupById(id)!;
-
+        if (sets.length === 0)
+            return this.getGroupById(id);
         sets.push("updated_at = datetime('now')");
         values.push(id);
-
         this.db.run(`UPDATE note_groups SET ${sets.join(', ')} WHERE id = ?`, values);
-
-        saveDatabase();
-        return this.getGroupById(id)!;
+        (0, database_1.saveDatabase)();
+        return this.getGroupById(id);
     }
-
-    deleteGroup(id: string): boolean {
+    deleteGroup(id) {
         this.db.run('DELETE FROM note_groups WHERE id = ?', [id]);
-        saveDatabase();
+        (0, database_1.saveDatabase)();
         return true;
     }
-
-    reorderGroups(items: { id: string; order: number }[]): void {
+    reorderGroups(items) {
         for (const item of items) {
             this.db.run('UPDATE note_groups SET sort_order = ? WHERE id = ?', [
                 item.order,
                 item.id,
             ]);
         }
-        saveDatabase();
+        (0, database_1.saveDatabase)();
     }
-
     // ── Note methods ───────────────────────────────────────────────
-
-    private mapNoteRow(row: any): Note {
+    mapNoteRow(row) {
         return {
             id: row.id,
             groupId: row.group_id || null,
@@ -156,46 +112,36 @@ export class NoteService {
             updatedAt: row.updated_at,
         };
     }
-
-    getAllNotes(): Note[] {
-        const stmt = this.db.prepare(
-            'SELECT * FROM notes ORDER BY updated_at DESC',
-        );
-        const results: Note[] = [];
+    getAllNotes() {
+        const stmt = this.db.prepare('SELECT * FROM notes ORDER BY updated_at DESC');
+        const results = [];
         while (stmt.step()) {
             results.push(this.mapNoteRow(stmt.getAsObject()));
         }
         stmt.free();
         return results;
     }
-
-    getNotesByGroup(groupId: string): Note[] {
-        const stmt = this.db.prepare(
-            'SELECT * FROM notes WHERE group_id = ? ORDER BY sort_order ASC, created_at ASC',
-        );
+    getNotesByGroup(groupId) {
+        const stmt = this.db.prepare('SELECT * FROM notes WHERE group_id = ? ORDER BY sort_order ASC, created_at ASC');
         stmt.bind([groupId]);
-        const results: Note[] = [];
+        const results = [];
         while (stmt.step()) {
             results.push(this.mapNoteRow(stmt.getAsObject()));
         }
         stmt.free();
         return results;
     }
-
-    getNotesByProject(projectId: string): Note[] {
-        const stmt = this.db.prepare(
-            'SELECT * FROM notes WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC',
-        );
+    getNotesByProject(projectId) {
+        const stmt = this.db.prepare('SELECT * FROM notes WHERE project_id = ? ORDER BY sort_order ASC, created_at ASC');
         stmt.bind([projectId]);
-        const results: Note[] = [];
+        const results = [];
         while (stmt.step()) {
             results.push(this.mapNoteRow(stmt.getAsObject()));
         }
         stmt.free();
         return results;
     }
-
-    getNoteById(id: string): Note | null {
+    getNoteById(id) {
         const stmt = this.db.prepare('SELECT * FROM notes WHERE id = ?');
         stmt.bind([id]);
         if (stmt.step()) {
@@ -206,28 +152,17 @@ export class NoteService {
         stmt.free();
         return null;
     }
-
-    createNote(input: { groupId?: string; projectId?: string; title?: string; content?: string }): Note {
-        const id = uuidv4();
+    createNote(input) {
+        const id = (0, uuid_1.v4)();
         const now = new Date().toISOString();
-
-        this.db.run(
-            `INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [id, input.groupId || null, input.projectId || null, input.title || 'Untitled', input.content || '', 0, now, now],
-        );
-
-        saveDatabase();
-        return this.getNoteById(id)!;
+        this.db.run(`INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.groupId || null, input.projectId || null, input.title || 'Untitled', input.content || '', 0, now, now]);
+        (0, database_1.saveDatabase)();
+        return this.getNoteById(id);
     }
-
-    updateNote(
-        id: string,
-        updates: Partial<{ title: string; content: string; groupId: string; projectId: string; order: number }>,
-    ): Note {
-        const sets: string[] = [];
-        const values: any[] = [];
-
+    updateNote(id, updates) {
+        const sets = [];
+        const values = [];
         if (updates.title !== undefined) {
             sets.push('title = ?');
             values.push(updates.title);
@@ -248,39 +183,34 @@ export class NoteService {
             sets.push('sort_order = ?');
             values.push(updates.order);
         }
-
-        if (sets.length === 0) return this.getNoteById(id)!;
-
+        if (sets.length === 0)
+            return this.getNoteById(id);
         sets.push("updated_at = datetime('now')");
         values.push(id);
-
         this.db.run(`UPDATE notes SET ${sets.join(', ')} WHERE id = ?`, values);
-
-        saveDatabase();
-        return this.getNoteById(id)!;
+        (0, database_1.saveDatabase)();
+        return this.getNoteById(id);
     }
-
-    deleteNote(id: string): boolean {
+    deleteNote(id) {
         this.db.run('DELETE FROM notes WHERE id = ?', [id]);
-        saveDatabase();
+        (0, database_1.saveDatabase)();
         return true;
     }
-
-    reorderNotes(items: { id: string; order: number }[]): void {
+    reorderNotes(items) {
         for (const item of items) {
             this.db.run('UPDATE notes SET sort_order = ? WHERE id = ?', [item.order, item.id]);
         }
-        saveDatabase();
+        (0, database_1.saveDatabase)();
     }
-
-    getNoteCountByGroup(groupId: string): number {
+    getNoteCountByGroup(groupId) {
         const stmt = this.db.prepare('SELECT COUNT(*) as count FROM notes WHERE group_id = ?');
         stmt.bind([groupId]);
         let count = 0;
         if (stmt.step()) {
-            count = (stmt.getAsObject() as any).count;
+            count = stmt.getAsObject().count;
         }
         stmt.free();
         return count;
     }
 }
+exports.NoteService = NoteService;

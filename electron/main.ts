@@ -379,6 +379,10 @@ function registerIpcHandlers() {
     });
 
     // ─── Note IPC Handlers ───────────────────────────────────
+    ipcMain.handle('notes:getAll', () => {
+        return noteService.getAllNotes();
+    });
+
     ipcMain.handle('notes:getByGroup', (_e: any, groupId: string) => {
         return noteService.getNotesByGroup(groupId);
     });

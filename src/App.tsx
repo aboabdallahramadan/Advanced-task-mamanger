@@ -22,6 +22,7 @@ import { ProjectView } from './components/ProjectView';
 import { AllTasksView } from './components/AllTasksView';
 import { NoteGroupView } from './components/NoteGroupView';
 import { NoteEditorView } from './components/NoteEditorView';
+import { AllNotesView } from './components/AllNotesView';
 import { NoteGroupDialog } from './components/NoteGroupDialog';
 import { useStore } from './store';
 import { Task } from './types';
@@ -129,6 +130,8 @@ export default function App() {
                     <ProjectView />
                 ) : currentView === 'all' ? (
                     <AllTasksView />
+                ) : currentView === 'allNotes' ? (
+                    <AllNotesView />
                 ) : currentView === 'noteGroup' ? (
                     <NoteGroupView />
                 ) : currentView === 'noteEditor' ? (

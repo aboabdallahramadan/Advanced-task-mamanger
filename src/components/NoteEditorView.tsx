@@ -13,6 +13,7 @@ export function NoteEditorView() {
     const {
         selectedNoteId,
         selectedNoteGroupId,
+        noteEditorReturnView,
         noteGroups,
         projects,
         updateNote,
@@ -108,7 +109,9 @@ export function NoteEditorView() {
 
     const handleBack = () => {
         saveImmediately();
-        if (loadedNote?.projectId && !loadedNote.groupId) {
+        if (noteEditorReturnView === 'allNotes') {
+            setCurrentView('allNotes');
+        } else if (loadedNote?.projectId && !loadedNote.groupId) {
             useStore.getState().setProjectActiveTab('notes');
             selectProject(loadedNote.projectId);
         } else if (selectedNoteGroupId) {

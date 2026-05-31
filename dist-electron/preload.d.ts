@@ -69,6 +69,39 @@ declare const api: {
             order: number;
         }[]) => Promise<any>;
     };
+    noteGroups: {
+        getAll: () => Promise<any>;
+        getByProject: (projectId: string) => Promise<any>;
+        create: (input: {
+            name: string;
+            emoji?: string;
+            projectId?: string;
+        }) => Promise<any>;
+        update: (id: string, updates: any) => Promise<any>;
+        delete: (id: string) => Promise<any>;
+        reorder: (items: {
+            id: string;
+            order: number;
+        }[]) => Promise<any>;
+    };
+    notes: {
+        getAll: () => Promise<any>;
+        getByGroup: (groupId: string) => Promise<any>;
+        getByProject: (projectId: string) => Promise<any>;
+        getById: (id: string) => Promise<any>;
+        create: (input: {
+            groupId?: string;
+            projectId?: string;
+            title?: string;
+            content?: string;
+        }) => Promise<any>;
+        update: (id: string, updates: any) => Promise<any>;
+        delete: (id: string) => Promise<any>;
+        reorder: (items: {
+            id: string;
+            order: number;
+        }[]) => Promise<any>;
+    };
     settings: {
         get: () => Promise<any>;
         save: (settings: Record<string, any>) => Promise<any>;

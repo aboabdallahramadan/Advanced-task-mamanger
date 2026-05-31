@@ -69,6 +69,7 @@ export function Sidebar() {
         projectsCollapsed,
         setProjectsCollapsed,
         currentNotes,
+        loadAllNotes,
     } = useStore();
 
     const sensors = useSensors(
@@ -154,11 +155,17 @@ export function Sidebar() {
                 <div className="w-8 border-t border-surface-800/40 my-1" />
                 <button
                     onClick={() => {
-                        setSidebarCollapsed(false);
+                        loadAllNotes();
+                        setCurrentView('allNotes');
                     }}
-                    className="p-2 rounded-lg text-surface-400 hover:text-surface-200 hover:bg-surface-800/60 transition-all"
-                    aria-label="Notes"
-                    title="Notes"
+                    className={clsx(
+                        'p-2 rounded-lg transition-all',
+                        currentView === 'allNotes'
+                            ? 'text-accent-400 bg-accent-950/60'
+                            : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800/60',
+                    )}
+                    aria-label="All Notes"
+                    title="All Notes"
                 >
                     <StickyNote className="w-4 h-4" />
                 </button>
@@ -307,6 +314,24 @@ export function Sidebar() {
                             + New
                         </button>
                     </div>
+                    {!notesCollapsed && (
+                        <button
+                            onClick={() => {
+                                loadAllNotes();
+                                setCurrentView('allNotes');
+                            }}
+                            className={clsx(
+                                'flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-all cursor-pointer w-full mb-0.5',
+                                currentView === 'allNotes'
+                                    ? 'bg-accent-600/15 text-accent-300'
+                                    : 'text-surface-400 hover:text-surface-200 hover:bg-surface-800/40'
+                            )}
+                            aria-current={currentView === 'allNotes' ? 'page' : undefined}
+                        >
+                            <StickyNote className="w-3.5 h-3.5" />
+                            <span className="flex-1 text-left">All Notes</span>
+                        </button>
+                    )}
                     {!notesCollapsed && (
                         <DndContext
                             sensors={sensors}

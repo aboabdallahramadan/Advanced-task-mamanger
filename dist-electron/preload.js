@@ -1,1 +1,85 @@
-"use strict";const r=require("electron"),i={tasks:{getAll:()=>r.ipcRenderer.invoke("tasks:getAll"),getByDate:e=>r.ipcRenderer.invoke("tasks:getByDate",e),getByStatus:e=>r.ipcRenderer.invoke("tasks:getByStatus",e),create:e=>r.ipcRenderer.invoke("tasks:create",e),update:(e,t)=>r.ipcRenderer.invoke("tasks:update",e,t),delete:e=>r.ipcRenderer.invoke("tasks:delete",e),reorder:e=>r.ipcRenderer.invoke("tasks:reorder",e),search:e=>r.ipcRenderer.invoke("tasks:search",e)},subtasks:{create:(e,t)=>r.ipcRenderer.invoke("subtasks:create",e,t),update:(e,t)=>r.ipcRenderer.invoke("subtasks:update",e,t),delete:e=>r.ipcRenderer.invoke("subtasks:delete",e)},projects:{getAll:()=>r.ipcRenderer.invoke("projects:getAll"),create:e=>r.ipcRenderer.invoke("projects:create",e),update:(e,t)=>r.ipcRenderer.invoke("projects:update",e,t),delete:e=>r.ipcRenderer.invoke("projects:delete",e),reorder:e=>r.ipcRenderer.invoke("projects:reorder",e)},settings:{get:()=>r.ipcRenderer.invoke("settings:get"),save:e=>r.ipcRenderer.invoke("settings:save",e)},app:{getVersion:()=>r.ipcRenderer.invoke("app:getVersion"),showNotification:(e,t)=>r.ipcRenderer.invoke("app:showNotification",e,t),getAutoLaunch:()=>r.ipcRenderer.invoke("app:getAutoLaunch"),setAutoLaunch:e=>r.ipcRenderer.invoke("app:setAutoLaunch",e)},data:{exportAll:e=>r.ipcRenderer.invoke("data:export",e),importAll:()=>r.ipcRenderer.invoke("data:import")},recurrence:{create:(e,t)=>r.ipcRenderer.invoke("recurrence:create",e,t),updateSeries:(e,t)=>r.ipcRenderer.invoke("recurrence:updateSeries",e,t),deleteSeries:e=>r.ipcRenderer.invoke("recurrence:deleteSeries",e),deleteSeriesFuture:(e,t)=>r.ipcRenderer.invoke("recurrence:deleteSeriesFuture",e,t),detachInstance:e=>r.ipcRenderer.invoke("recurrence:detachInstance",e),ensureInstances:(e,t)=>r.ipcRenderer.invoke("recurrence:ensureInstances",e,t),updateRule:(e,t)=>r.ipcRenderer.invoke("recurrence:updateRule",e,t),getRule:e=>r.ipcRenderer.invoke("recurrence:getRule",e)},focus:{updateTray:e=>r.ipcRenderer.send("focus:updateTray",e),showWidget:()=>r.ipcRenderer.send("focus:showWidget"),hideWidget:()=>r.ipcRenderer.send("focus:hideWidget"),sendWidgetState:e=>r.ipcRenderer.send("focus:widgetState",e)},on:(e,t)=>{r.ipcRenderer.on(e,(c,...n)=>t(...n))},off:(e,t)=>{r.ipcRenderer.removeListener(e,t)},removeAllListeners:e=>{r.ipcRenderer.removeAllListeners(e)}};r.contextBridge.exposeInMainWorld("api",i);
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const electron_1 = require("electron");
+const api = {
+    tasks: {
+        getAll: () => electron_1.ipcRenderer.invoke('tasks:getAll'),
+        getByDate: (date) => electron_1.ipcRenderer.invoke('tasks:getByDate', date),
+        getByStatus: (status) => electron_1.ipcRenderer.invoke('tasks:getByStatus', status),
+        create: (task) => electron_1.ipcRenderer.invoke('tasks:create', task),
+        update: (id, updates) => electron_1.ipcRenderer.invoke('tasks:update', id, updates),
+        delete: (id) => electron_1.ipcRenderer.invoke('tasks:delete', id),
+        reorder: (tasks) => electron_1.ipcRenderer.invoke('tasks:reorder', tasks),
+        search: (query) => electron_1.ipcRenderer.invoke('tasks:search', query),
+    },
+    subtasks: {
+        create: (taskId, title) => electron_1.ipcRenderer.invoke('subtasks:create', taskId, title),
+        update: (id, updates) => electron_1.ipcRenderer.invoke('subtasks:update', id, updates),
+        delete: (id) => electron_1.ipcRenderer.invoke('subtasks:delete', id),
+    },
+    projects: {
+        getAll: () => electron_1.ipcRenderer.invoke('projects:getAll'),
+        create: (input) => electron_1.ipcRenderer.invoke('projects:create', input),
+        update: (id, updates) => electron_1.ipcRenderer.invoke('projects:update', id, updates),
+        delete: (id) => electron_1.ipcRenderer.invoke('projects:delete', id),
+        reorder: (items) => electron_1.ipcRenderer.invoke('projects:reorder', items),
+    },
+    noteGroups: {
+        getAll: () => electron_1.ipcRenderer.invoke('noteGroups:getAll'),
+        getByProject: (projectId) => electron_1.ipcRenderer.invoke('noteGroups:getByProject', projectId),
+        create: (input) => electron_1.ipcRenderer.invoke('noteGroups:create', input),
+        update: (id, updates) => electron_1.ipcRenderer.invoke('noteGroups:update', id, updates),
+        delete: (id) => electron_1.ipcRenderer.invoke('noteGroups:delete', id),
+        reorder: (items) => electron_1.ipcRenderer.invoke('noteGroups:reorder', items),
+    },
+    notes: {
+        getAll: () => electron_1.ipcRenderer.invoke('notes:getAll'),
+        getByGroup: (groupId) => electron_1.ipcRenderer.invoke('notes:getByGroup', groupId),
+        getByProject: (projectId) => electron_1.ipcRenderer.invoke('notes:getByProject', projectId),
+        getById: (id) => electron_1.ipcRenderer.invoke('notes:getById', id),
+        create: (input) => electron_1.ipcRenderer.invoke('notes:create', input),
+        update: (id, updates) => electron_1.ipcRenderer.invoke('notes:update', id, updates),
+        delete: (id) => electron_1.ipcRenderer.invoke('notes:delete', id),
+        reorder: (items) => electron_1.ipcRenderer.invoke('notes:reorder', items),
+    },
+    settings: {
+        get: () => electron_1.ipcRenderer.invoke('settings:get'),
+        save: (settings) => electron_1.ipcRenderer.invoke('settings:save', settings),
+    },
+    app: {
+        getVersion: () => electron_1.ipcRenderer.invoke('app:getVersion'),
+        showNotification: (title, body) => electron_1.ipcRenderer.invoke('app:showNotification', title, body),
+        getAutoLaunch: () => electron_1.ipcRenderer.invoke('app:getAutoLaunch'),
+        setAutoLaunch: (enabled) => electron_1.ipcRenderer.invoke('app:setAutoLaunch', enabled),
+    },
+    data: {
+        exportAll: (settings) => electron_1.ipcRenderer.invoke('data:export', settings),
+        importAll: () => electron_1.ipcRenderer.invoke('data:import'),
+    },
+    recurrence: {
+        create: (task, rule) => electron_1.ipcRenderer.invoke('recurrence:create', task, rule),
+        updateSeries: (ruleId, updates) => electron_1.ipcRenderer.invoke('recurrence:updateSeries', ruleId, updates),
+        deleteSeries: (ruleId) => electron_1.ipcRenderer.invoke('recurrence:deleteSeries', ruleId),
+        deleteSeriesFuture: (ruleId, fromDate) => electron_1.ipcRenderer.invoke('recurrence:deleteSeriesFuture', ruleId, fromDate),
+        detachInstance: (taskId) => electron_1.ipcRenderer.invoke('recurrence:detachInstance', taskId),
+        ensureInstances: (startDate, endDate) => electron_1.ipcRenderer.invoke('recurrence:ensureInstances', startDate, endDate),
+        updateRule: (ruleId, ruleUpdates) => electron_1.ipcRenderer.invoke('recurrence:updateRule', ruleId, ruleUpdates),
+        getRule: (ruleId) => electron_1.ipcRenderer.invoke('recurrence:getRule', ruleId),
+    },
+    focus: {
+        updateTray: (data) => electron_1.ipcRenderer.send('focus:updateTray', data),
+        showWidget: () => electron_1.ipcRenderer.send('focus:showWidget'),
+        hideWidget: () => electron_1.ipcRenderer.send('focus:hideWidget'),
+        sendWidgetState: (data) => electron_1.ipcRenderer.send('focus:widgetState', data),
+    },
+    on: (channel, callback) => {
+        electron_1.ipcRenderer.on(channel, (_e, ...args) => callback(...args));
+    },
+    off: (channel, callback) => {
+        electron_1.ipcRenderer.removeListener(channel, callback);
+    },
+    removeAllListeners: (channel) => {
+        electron_1.ipcRenderer.removeAllListeners(channel);
+    },
+};
+electron_1.contextBridge.exposeInMainWorld('api', api);
