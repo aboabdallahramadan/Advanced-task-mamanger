@@ -35,6 +35,7 @@ export interface Task {
     recurrenceOriginalDate: string | null;
     createdAt: string;
     updatedAt: string;
+    completedAt: string | null;
 }
 
 export interface RecurrenceRule {
@@ -77,6 +78,7 @@ function rowToTask(columns: string[], values: any[]): Task {
         recurrenceOriginalDate: row.recurrence_original_date || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        completedAt: row.completed_at || null,
     };
 }
 
@@ -205,7 +207,10 @@ export class TaskService {
         if (updates.notes !== undefined) { sets.push('notes = ?'); values.push(updates.notes); }
         if (updates.project !== undefined) { sets.push('project = ?'); values.push(updates.project); }
         if (updates.labels !== undefined) { sets.push('labels = ?'); values.push(JSON.stringify(updates.labels)); }
-        if (updates.status !== undefined) { sets.push('status = ?'); values.push(updates.status); }
+        if (updates.status !== undefined) {
+            sets.push('status = ?'); values.push(updates.status);
+            sets.push('completed_at = ?'); values.push(updates.status === 'done' ? now : null);
+        }
         if (updates.plannedDate !== undefined) { sets.push('planned_date = ?'); values.push(updates.plannedDate); }
         if (updates.scheduledStart !== undefined) { sets.push('scheduled_start = ?'); values.push(updates.scheduledStart); }
         if (updates.scheduledEnd !== undefined) { sets.push('scheduled_end = ?'); values.push(updates.scheduledEnd); }
