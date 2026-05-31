@@ -974,7 +974,7 @@ export const useStore = create<AppState>((set, get) => ({
   setPlanningPhase: (phase: PlanningPhase) =>
     set((state) => ({ planningFlow: { ...state.planningFlow, phase } })),
   closePlanningFlow: () =>
-    set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } })),
+    set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false, commitError: null } })),
   planForDate: async (id: string, date: string) => {
     const { tasks, updateTask } = get();
     const task = tasks.find((t) => t.id === id);
