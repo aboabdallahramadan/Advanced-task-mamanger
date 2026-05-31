@@ -58,6 +58,7 @@ export interface Project {
     color: string;
     emoji: string;
     order: number;
+    actualTimeMinutes?: number;
     createdAt: string;
     updatedAt: string;
 }
