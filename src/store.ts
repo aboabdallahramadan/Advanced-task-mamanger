@@ -1312,7 +1312,7 @@ export const useStore = create<AppState>((set, get) => ({
   },
   loadReports: async () => {
     const { reportRange } = get();
-    set({ reportLoading: true });
+    set({ reportLoading: true, reportData: null });
     try {
       const now = new Date();
       const range = getRange(reportRange, now);
