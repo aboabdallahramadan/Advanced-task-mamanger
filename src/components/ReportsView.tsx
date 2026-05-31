@@ -28,6 +28,12 @@ const COLORS = ['#3b82f6', '#f59e0b', '#22c55e', '#a855f7', '#ef4444', '#14b8a6'
 const fmtH = (m: number) =>
   m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
 
+function xAxisDateFormat(range: ReportRangeMode): string {
+  if (range === 'year') return 'MMM';
+  if (range === 'month') return 'd';
+  return 'EEE'; // 'week' and 'day'
+}
+
 export function ReportsView() {
   const { reportRange, reportData, reportLoading, setReportRange, loadReports } = useStore();
 
@@ -40,9 +46,18 @@ export function ReportsView() {
   const throughput = reportData?.throughput ?? [];
   const projects = reportData?.timeByProject ?? [];
 
-  const throughputData = throughput.map((p) => ({ ...p, label: format(parseISO(p.date), 'EEE') }));
-  const projectData = projects.map((p) => ({ name: p.project || 'No project', minutes: p.minutes }));
-  const avg = throughput.length ? throughput.reduce((s, p) => s + p.completed, 0) / throughput.length : 0;
+  const dateFmt = xAxisDateFormat(reportRange);
+  const throughputData = throughput.map((p) => ({
+    ...p,
+    label: format(parseISO(p.date), dateFmt),
+  }));
+  const projectData = projects.map((p) => ({
+    name: p.project || 'No project',
+    minutes: p.minutes,
+  }));
+  const avg = throughput.length
+    ? throughput.reduce((s, p) => s + p.completed, 0) / throughput.length
+    : 0;
   const totalProjMinutes = projects.reduce((s, p) => s + p.minutes, 0);
 
   return (
@@ -76,11 +91,23 @@ export function ReportsView() {
         {summary && (
           <>
             <div className="grid grid-cols-4 gap-4">
-              <StatCard label="Completed" value={String(summary.completed)} delta={summary.delta.completed} />
+              <StatCard
+                label="Completed"
+                value={String(summary.completed)}
+                delta={summary.delta.completed}
+              />
               <StatCard
                 label="Completion rate"
-                value={summary.completionRate == null ? '—' : `${Math.round(summary.completionRate * 100)}%`}
-                delta={summary.delta.completionRate == null ? null : Math.round(summary.delta.completionRate * 100)}
+                value={
+                  summary.completionRate == null
+                    ? '—'
+                    : `${Math.round(summary.completionRate * 100)}%`
+                }
+                delta={
+                  summary.delta.completionRate == null
+                    ? null
+                    : Math.round(summary.delta.completionRate * 100)
+                }
                 deltaSuffix="%"
               />
               <StatCard
@@ -99,7 +126,10 @@ export function ReportsView() {
             <div className="grid grid-cols-[1.5fr_1fr] gap-4">
               <Panel title="Tasks completed per day" subtitle={`avg ${avg.toFixed(1)}/day`}>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={throughputData} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
+                  <BarChart
+                    data={throughputData}
+                    margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                     <XAxis
                       dataKey="label"
@@ -182,7 +212,8 @@ export function ReportsView() {
 
             {!reportLoading && summary.completed === 0 && projects.length === 0 && (
               <p className="text-sm text-surface-500 text-center py-8">
-                No activity in this range yet. Complete tasks and track focus time to see reports build up.
+                No activity in this range yet. Complete tasks and track focus time to see reports
+                build up.
               </p>
             )}
           </>
@@ -215,7 +246,12 @@ function StatCard({
       <div className="text-2xl font-bold text-surface-100 mt-1 truncate">{value}</div>
       {sub && <div className="text-2xs text-surface-500 mt-0.5">{sub}</div>}
       {showDelta && (
-        <div className={clsx('text-2xs mt-1 flex items-center gap-1', up ? 'text-success-400' : 'text-danger-400')}>
+        <div
+          className={clsx(
+            'text-2xs mt-1 flex items-center gap-1',
+            up ? 'text-success-400' : 'text-danger-400',
+          )}
+        >
           {up ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
           {up ? '+' : '−'}
           {deltaFormat ? deltaFormat(Math.abs(delta!)) : Math.abs(delta!)}
