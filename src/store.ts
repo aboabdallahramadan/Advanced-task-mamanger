@@ -1034,7 +1034,13 @@ export const useStore = create<AppState>((set, get) => ({
     const elapsedMinutes = sessionMinutes(focusMode.sessionStartTime, endMs);
 
     if (elapsedMinutes > 0) {
-      get().logFocusSession(focusMode.targetType, focusMode.targetId, focusMode.sessionStartTime, endMs, elapsedMinutes);
+      get().logFocusSession(
+        focusMode.targetType,
+        focusMode.targetId,
+        focusMode.sessionStartTime,
+        endMs,
+        elapsedMinutes,
+      );
       if (focusMode.targetType === 'task') {
         const task = tasks.find((t) => t.id === focusMode.targetId);
         if (task)
@@ -1068,7 +1074,13 @@ export const useStore = create<AppState>((set, get) => ({
       const elapsedMinutes = sessionMinutes(focusMode.sessionStartTime, endMs);
 
       if (elapsedMinutes > 0) {
-        get().logFocusSession(focusMode.targetType, focusMode.targetId, focusMode.sessionStartTime, endMs, elapsedMinutes);
+        get().logFocusSession(
+          focusMode.targetType,
+          focusMode.targetId,
+          focusMode.sessionStartTime,
+          endMs,
+          elapsedMinutes,
+        );
         if (focusMode.targetType === 'task') {
           const task = tasks.find((t) => t.id === focusMode.targetId);
           if (task)
