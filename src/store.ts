@@ -11,6 +11,7 @@ import {
   RecurrenceRule,
 } from './types';
 import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
+import { sessionMinutes } from './lib/focusSession';
 
 function stripHtml(html: string): string {
   return html
@@ -159,6 +160,13 @@ interface AppState {
   closePlanningFlow: () => void;
 
   // Focus Mode Actions
+  logFocusSession: (
+    targetType: 'task' | 'project',
+    targetId: string,
+    startMs: number,
+    endMs: number,
+    minutes: number,
+  ) => void;
   startFocusSession: (taskId: string) => void;
   startProjectFocus: (projectId: string) => void;
   pauseFocusSession: () => void;
@@ -308,13 +316,13 @@ export const useStore = create<AppState>((set, get) => ({
           };
           // If task was scheduled, unschedule it (the old time slot is in the past)
           if (task.status === 'scheduled') {
-            (updates as any).status = 'todo';
+            updates.status = 'planned';
           }
           rolloverPromises.push(window.api.tasks.update(task.id, updates));
           return {
             ...task,
             ...updates,
-            status: (task.status === 'scheduled' ? 'todo' : task.status) as Task['status'],
+            status: (task.status === 'scheduled' ? 'planned' : task.status) as Task['status'],
           };
         }
         return task;
@@ -966,6 +974,28 @@ export const useStore = create<AppState>((set, get) => ({
   },
 
   // Focus Mode Actions
+  logFocusSession: (targetType, targetId, startMs, endMs, minutes) => {
+    const { tasks, projects } = get();
+    let taskId: string | null = null;
+    let project = '';
+    if (targetType === 'task') {
+      taskId = targetId;
+      project = tasks.find((t) => t.id === targetId)?.project || '';
+    } else {
+      project = projects.find((p) => p.id === targetId)?.name || '';
+    }
+    window.api.focusSessions
+      .add({
+        taskId,
+        project,
+        startedAt: new Date(startMs).toISOString(),
+        endedAt: new Date(endMs).toISOString(),
+        minutes,
+        date: format(new Date(startMs), 'yyyy-MM-dd'),
+      })
+      .catch((e) => console.error('Failed to log focus session:', e));
+  },
+
   startFocusSession: (taskId: string) => {
     get().pauseFocusSession(); // flush any running session first
     set({
@@ -1000,10 +1030,11 @@ export const useStore = create<AppState>((set, get) => ({
     )
       return;
 
-    const elapsedMs = Date.now() - focusMode.sessionStartTime;
-    const elapsedMinutes = Math.round(elapsedMs / 60000);
+    const endMs = Date.now();
+    const elapsedMinutes = sessionMinutes(focusMode.sessionStartTime, endMs);
 
     if (elapsedMinutes > 0) {
+      get().logFocusSession(focusMode.targetType, focusMode.targetId, focusMode.sessionStartTime, endMs, elapsedMinutes);
       if (focusMode.targetType === 'task') {
         const task = tasks.find((t) => t.id === focusMode.targetId);
         if (task)
@@ -1033,10 +1064,11 @@ export const useStore = create<AppState>((set, get) => ({
     if (!focusMode.targetType || !focusMode.targetId) return;
 
     if (focusMode.isPlaying && focusMode.sessionStartTime) {
-      const elapsedMs = Date.now() - focusMode.sessionStartTime;
-      const elapsedMinutes = Math.round(elapsedMs / 60000);
+      const endMs = Date.now();
+      const elapsedMinutes = sessionMinutes(focusMode.sessionStartTime, endMs);
 
       if (elapsedMinutes > 0) {
+        get().logFocusSession(focusMode.targetType, focusMode.targetId, focusMode.sessionStartTime, endMs, elapsedMinutes);
         if (focusMode.targetType === 'task') {
           const task = tasks.find((t) => t.id === focusMode.targetId);
           if (task)
