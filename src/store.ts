@@ -956,8 +956,12 @@ export const useStore = create<AppState>((set, get) => ({
   closePlanningFlow: () =>
     set((state) => ({ planningFlow: { ...state.planningFlow, isOpen: false } })),
   planForDate: async (id: string, date: string) => {
-    const { updateTask } = get();
-    await updateTask(id, { status: 'planned', plannedDate: date });
+    const { tasks, updateTask } = get();
+    const task = tasks.find((t) => t.id === id);
+    // Only promote status to 'planned' if the task is not already 'scheduled'.
+    // Demoting a 'scheduled' task to 'planned' would silently discard its time-block.
+    const statusUpdate = task?.status === 'scheduled' ? {} : { status: 'planned' as const };
+    await updateTask(id, { ...statusUpdate, plannedDate: date });
   },
   commitDay: async () => {
     const { planningFlow, plannedForDate } = get();
@@ -975,12 +979,12 @@ export const useStore = create<AppState>((set, get) => ({
         planningFlow: { ...state.planningFlow, isOpen: false, commitError: null },
       }));
     } catch (e) {
-      // Store the error so the canvas can display a failure state, then re-throw
-      // so callers (e.g. the canvas component) can also react to the failure.
+      // Store the error in commitError so the canvas can display a failure state.
+      // The re-throw is omitted: commitError drives UI feedback, and a dual-signal
+      // contract would require every future caller to add its own catch.
       const message = e instanceof Error ? e.message : String(e);
       console.error('Failed to commit day:', e);
       set((state) => ({ planningFlow: { ...state.planningFlow, commitError: message } }));
-      throw e;
     }
   },
 
@@ -1214,8 +1218,7 @@ export const useStore = create<AppState>((set, get) => ({
     // even if they happen to carry a matching plannedDate.
     const { tasks } = get();
     return tasks.filter(
-      (t) =>
-        t.plannedDate === date && (t.status === 'planned' || t.status === 'scheduled'),
+      (t) => t.plannedDate === date && (t.status === 'planned' || t.status === 'scheduled'),
     );
   },
   unscheduledPlannedTasks: (date: string) => {
