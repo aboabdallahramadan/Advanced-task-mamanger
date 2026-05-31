@@ -166,8 +166,8 @@ export class TaskService {
         : 0;
 
     this.db.run(
-      `INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (id, title, notes, project, labels, source, status, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, completed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         input.title || 'Untitled',
@@ -184,6 +184,7 @@ export class TaskService {
         input.priority ?? null,
         input.reminderMinutes ?? 0,
         maxOrder + 1,
+        input.status === 'done' ? now : null,
         now,
         now,
       ],
@@ -199,6 +200,9 @@ export class TaskService {
   }
 
   update(id: string, updates: Partial<Task>): Task | null {
+    const existing = this.getById(id);
+    if (!existing) return null;
+
     const now = new Date().toISOString();
     const sets: string[] = [];
     const values: any[] = [];
@@ -222,8 +226,15 @@ export class TaskService {
     if (updates.status !== undefined) {
       sets.push('status = ?');
       values.push(updates.status);
-      sets.push('completed_at = ?');
-      values.push(updates.status === 'done' ? now : null);
+      // Stamp completed_at only on a real done-transition; clear it only when leaving
+      // done. Editing an already-done task leaves the historical timestamp untouched.
+      if (existing.status !== 'done' && updates.status === 'done') {
+        sets.push('completed_at = ?');
+        values.push(now);
+      } else if (existing.status === 'done' && updates.status !== 'done') {
+        sets.push('completed_at = ?');
+        values.push(null);
+      }
     }
     if (updates.plannedDate !== undefined) {
       sets.push('planned_date = ?');

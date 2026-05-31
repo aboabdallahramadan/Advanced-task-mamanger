@@ -682,6 +682,34 @@ function registerIpcHandlers() {
         }
       }
 
+      // Query focus sessions
+      const focusSessionsResult = db.exec('SELECT * FROM focus_sessions');
+      const focusSessionsData: any[] = [];
+      if (focusSessionsResult.length > 0) {
+        const cols = focusSessionsResult[0].columns;
+        for (const row of focusSessionsResult[0].values) {
+          const obj: any = {};
+          cols.forEach((col: string, i: number) => {
+            obj[col] = row[i];
+          });
+          focusSessionsData.push(obj);
+        }
+      }
+
+      // Query daily plans
+      const dailyPlansResult = db.exec('SELECT * FROM daily_plans');
+      const dailyPlansData: any[] = [];
+      if (dailyPlansResult.length > 0) {
+        const cols = dailyPlansResult[0].columns;
+        for (const row of dailyPlansResult[0].values) {
+          const obj: any = {};
+          cols.forEach((col: string, i: number) => {
+            obj[col] = row[i];
+          });
+          dailyPlansData.push(obj);
+        }
+      }
+
       const exportData = {
         meta: {
           appName: 'TMap',
@@ -695,6 +723,8 @@ function registerIpcHandlers() {
         recurrenceExceptions,
         noteGroups: noteGroupsData,
         notes: notesData,
+        focusSessions: focusSessionsData,
+        dailyPlans: dailyPlansData,
       };
 
       const { canceled, filePath } = await dialog.showSaveDialog(mainWindow!, {
@@ -768,6 +798,8 @@ function registerIpcHandlers() {
         db.run('DELETE FROM notes;');
         db.run('DELETE FROM note_groups;');
         db.run('DELETE FROM recurrence_exceptions;');
+        db.run('DELETE FROM focus_sessions;');
+        db.run('DELETE FROM daily_plans;');
         db.run('DELETE FROM tasks;');
         db.run('DELETE FROM recurrence_rules;');
         db.run('DELETE FROM projects;');
@@ -797,8 +829,8 @@ function registerIpcHandlers() {
         // Insert tasks
         for (const t of parsed.tasks) {
           db.run(
-            `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, completed_at, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               t.id,
               t.title,
@@ -820,6 +852,7 @@ function registerIpcHandlers() {
               t.is_recurrence_template ?? 0,
               t.recurrence_detached ?? 0,
               t.recurrence_original_date ?? null,
+              t.completed_at ?? null,
               t.created_at || new Date().toISOString(),
               t.updated_at || new Date().toISOString(),
             ],
@@ -893,6 +926,42 @@ function registerIpcHandlers() {
                 n.sort_order ?? 0,
                 n.created_at || new Date().toISOString(),
                 n.updated_at || new Date().toISOString(),
+              ],
+            );
+          }
+        }
+
+        // Insert focus sessions
+        if (parsed.focusSessions && Array.isArray(parsed.focusSessions)) {
+          for (const s of parsed.focusSessions) {
+            db.run(
+              `INSERT INTO focus_sessions (id, task_id, project, started_at, ended_at, minutes, date, created_at)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                s.id,
+                s.task_id ?? null,
+                s.project || '',
+                s.started_at,
+                s.ended_at,
+                s.minutes ?? 0,
+                s.date,
+                s.created_at || new Date().toISOString(),
+              ],
+            );
+          }
+        }
+
+        // Insert daily plans
+        if (parsed.dailyPlans && Array.isArray(parsed.dailyPlans)) {
+          for (const d of parsed.dailyPlans) {
+            db.run(
+              `INSERT INTO daily_plans (date, committed_at, planned_task_ids, planned_minutes)
+                             VALUES (?, ?, ?, ?)`,
+              [
+                d.date,
+                d.committed_at || new Date().toISOString(),
+                d.planned_task_ids || '[]',
+                d.planned_minutes ?? 0,
               ],
             );
           }
