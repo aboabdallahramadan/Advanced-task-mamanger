@@ -36,6 +36,7 @@ function xAxisDateFormat(range: ReportRangeMode): string {
 
 export function ReportsView() {
   const { reportRange, reportData, reportLoading, setReportRange, loadReports } = useStore();
+  const allProjects = useStore((s) => s.projects);
 
   useEffect(() => {
     loadReports();
@@ -45,14 +46,39 @@ export function ReportsView() {
   const throughput = reportData?.throughput ?? [];
   const projects = reportData?.timeByProject ?? [];
 
+  const isYear = reportRange === 'year';
+  const today = format(new Date(), 'yyyy-MM-dd');
+
+  // For the 'year' range, bucket the ~365 daily points into ~12 monthly bars
+  // (sum completed per calendar month, labelled 'MMM'). Other ranges stay daily.
   const dateFmt = xAxisDateFormat(reportRange);
-  const throughputData = throughput.map((p) => ({
-    ...p,
-    label: format(parseISO(p.date), dateFmt),
-  }));
-  const projectData = projects.map((p) => ({
+  const throughputData = isYear
+    ? (() => {
+        const byMonth = new Map<string, number>();
+        for (const p of throughput) {
+          const key = p.date.slice(0, 7); // YYYY-MM
+          byMonth.set(key, (byMonth.get(key) || 0) + p.completed);
+        }
+        return Array.from(byMonth.entries())
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([month, completed]) => ({
+            date: month,
+            completed,
+            label: format(parseISO(`${month}-01`), 'MMM'),
+          }));
+      })()
+    : throughput.map((p) => ({
+        ...p,
+        label: format(parseISO(p.date), dateFmt),
+      }));
+
+  // Map each project's color from the real project list (matched by name); fall back to
+  // the positional palette for unmatched rows (including the "No project" bucket).
+  const projectColorByName = new Map(allProjects.map((p) => [p.name, p.color]));
+  const projectData = projects.map((p, i) => ({
     name: p.project || 'No project',
     minutes: p.minutes,
+    color: projectColorByName.get(p.project) ?? COLORS[i % COLORS.length],
   }));
   const avg = throughput.length
     ? throughput.reduce((s, p) => s + p.completed, 0) / throughput.length
@@ -154,7 +180,14 @@ export function ReportsView() {
                       }}
                     />
                     {avg > 0 && <ReferenceLine y={avg} stroke="#475569" strokeDasharray="4 4" />}
-                    <Bar dataKey="completed" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="completed" fill="#3b82f6" radius={[4, 4, 0, 0]}>
+                      {throughputData.map((d) => (
+                        <Cell
+                          key={d.date}
+                          fill={!isYear && d.date === today ? '#22c55e' : '#3b82f6'}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </Panel>
@@ -199,8 +232,8 @@ export function ReportsView() {
                         formatter={(v) => (typeof v === 'number' ? fmtH(v) : v)}
                       />
                       <Bar dataKey="minutes" radius={[0, 4, 4, 0]}>
-                        {projectData.map((_, i) => (
-                          <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                        {projectData.map((d, i) => (
+                          <Cell key={i} fill={d.color} />
                         ))}
                       </Bar>
                     </BarChart>

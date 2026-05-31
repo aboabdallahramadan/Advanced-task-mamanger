@@ -43,10 +43,15 @@ export const PlanningCanvas: React.FC = () => {
 
   // Sync the timeline to targetDate when the canvas opens so the Timebox column
   // always shows the day being planned, regardless of where the user last navigated.
+  // On close, restore the user's previous selectedDate so closing the canvas does not
+  // silently move them to the planned day.
   useEffect(() => {
-    if (planningFlow.isOpen) {
-      setSelectedDate(planningFlow.targetDate);
-    }
+    if (!planningFlow.isOpen) return;
+    const prevSelectedDate = useStore.getState().selectedDate;
+    setSelectedDate(planningFlow.targetDate);
+    return () => {
+      setSelectedDate(prevSelectedDate);
+    };
   }, [planningFlow.isOpen, planningFlow.targetDate, setSelectedDate]);
 
   if (!planningFlow.isOpen) return null;
