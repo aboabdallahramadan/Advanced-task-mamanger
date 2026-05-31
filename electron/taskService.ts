@@ -78,7 +78,7 @@ function rowToTask(columns: string[], values: any[]): Task {
         recurrenceOriginalDate: row.recurrence_original_date || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
-        completedAt: row.completed_at || null,
+        completedAt: row.completed_at ?? null,
     };
 }
 
