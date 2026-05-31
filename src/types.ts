@@ -46,6 +46,7 @@ export interface Task {
   recurrenceOriginalDate: string | null;
   createdAt: string;
   updatedAt: string;
+  completedAt?: string | null;
 }
 
 export type TaskStatus = Task['status'];
@@ -61,7 +62,62 @@ export type ViewMode =
   | 'all'
   | 'noteGroup'
   | 'noteEditor'
-  | 'allNotes';
+  | 'allNotes'
+  | 'reports';
+
+export type PlanningPhase = 'review' | 'choose' | 'timebox' | 'commit';
+
+export interface FocusSession {
+  id: string;
+  taskId: string | null;
+  project: string; // project NAME at session time ('' if none)
+  startedAt: string; // ISO
+  endedAt: string; // ISO
+  minutes: number;
+  date: string; // YYYY-MM-DD (local day of startedAt)
+  createdAt: string;
+}
+
+export interface DailyPlan {
+  date: string; // YYYY-MM-DD (primary key)
+  committedAt: string; // ISO
+  plannedTaskIds: string[];
+  plannedMinutes: number;
+}
+
+export type ReportRangeMode = 'day' | 'week' | 'month' | 'year';
+
+export interface ThroughputPoint {
+  date: string; // YYYY-MM-DD
+  completed: number; // tasks completed that day
+  planned: number; // committed tasks for that day (0 if no plan)
+  hasPlan: boolean;
+}
+
+export interface ProjectTime {
+  project: string; // '' => "No project"
+  minutes: number;
+}
+
+export interface ReportSummary {
+  completed: number;
+  completionRate: number | null; // 0..1, null if no planned tasks in range
+  focusMinutes: number;
+  topProject: string | null;
+  topProjectMinutes: number;
+  delta: {
+    completed: number; // current - previous
+    completionRate: number | null;
+    focusMinutes: number;
+  };
+}
+
+// Raw rows returned by reports:getData, aggregated in the renderer
+export interface ReportData {
+  completedTasks: { id: string; project: string; date: string }[];
+  sessions: { project: string; minutes: number; date: string }[];
+  dailyPlans: DailyPlan[];
+}
 
 export interface Project {
   id: string;
@@ -212,6 +268,23 @@ export interface ElectronAPI {
     showWidget: () => void;
     hideWidget: () => void;
     sendWidgetState: (data: any) => void;
+  };
+  focusSessions: {
+    add: (session: {
+      taskId: string | null;
+      project: string;
+      startedAt: string;
+      endedAt: string;
+      minutes: number;
+      date: string;
+    }) => Promise<FocusSession>;
+  };
+  dailyPlans: {
+    upsert: (plan: { date: string; plannedTaskIds: string[]; plannedMinutes: number }) => Promise<DailyPlan>;
+    get: (date: string) => Promise<DailyPlan | null>;
+  };
+  reports: {
+    getData: (start: string, end: string) => Promise<ReportData>;
   };
   on: (channel: string, callback: (...args: any[]) => void) => void;
   off: (channel: string, callback: (...args: any[]) => void) => void;
