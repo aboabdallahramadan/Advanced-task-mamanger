@@ -710,15 +710,32 @@ function registerIpcHandlers() {
         }
       }
 
+      // Query subtasks
+      const subtasksResult = db.exec('SELECT * FROM subtasks');
+      const subtasksData: any[] = [];
+      if (subtasksResult.length > 0) {
+        const cols = subtasksResult[0].columns;
+        for (const row of subtasksResult[0].values) {
+          const obj: any = {};
+          cols.forEach((col: string, i: number) => {
+            obj[col] = row[i];
+          });
+          subtasksData.push(obj);
+        }
+      }
+
       const exportData = {
         meta: {
           appName: 'TMap',
           version: app.getVersion(),
           exportedAt: new Date().toISOString(),
         },
-        settings: settings || {},
+        // Merge full persisted settings with the values passed from the renderer
+        // (renderer only forwards a subset; loadSettings covers UI collapse states etc.)
+        settings: { ...loadSettings(), ...(settings || {}) },
         tasks,
         projects,
+        subtasks: subtasksData,
         recurrenceRules,
         recurrenceExceptions,
         noteGroups: noteGroupsData,
@@ -795,6 +812,7 @@ function registerIpcHandlers() {
       db.run('BEGIN TRANSACTION;');
       try {
         // Clear existing data
+        db.run('DELETE FROM subtasks;');
         db.run('DELETE FROM notes;');
         db.run('DELETE FROM note_groups;');
         db.run('DELETE FROM recurrence_exceptions;');
@@ -859,6 +877,24 @@ function registerIpcHandlers() {
           );
         }
 
+        // Insert subtasks (after tasks — FK references tasks(id))
+        if (parsed.subtasks && Array.isArray(parsed.subtasks)) {
+          for (const s of parsed.subtasks) {
+            db.run(
+              `INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at)
+                             VALUES (?, ?, ?, ?, ?, ?)`,
+              [
+                s.id,
+                s.task_id,
+                s.title,
+                s.completed ?? 0,
+                s.sort_order ?? 0,
+                s.created_at || new Date().toISOString(),
+              ],
+            );
+          }
+        }
+
         // Insert recurrence exceptions
         if (parsed.recurrenceExceptions && Array.isArray(parsed.recurrenceExceptions)) {
           for (const e of parsed.recurrenceExceptions) {
@@ -878,14 +914,15 @@ function registerIpcHandlers() {
         // Insert projects
         for (const p of parsed.projects) {
           db.run(
-            `INSERT INTO projects (id, name, color, emoji, sort_order, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO projects (id, name, color, emoji, sort_order, actual_time_minutes, created_at, updated_at)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               p.id,
               p.name,
               p.color || '#6366f1',
               p.emoji || '📁',
               p.sort_order ?? 0,
+              p.actual_time_minutes ?? 0,
               p.created_at || new Date().toISOString(),
               p.updated_at || new Date().toISOString(),
             ],
@@ -970,10 +1007,15 @@ function registerIpcHandlers() {
         db.run('COMMIT;');
         saveDatabase();
 
+        // Persist imported settings so all fields (incl. UI collapse states)
+        // round-trip; merge over existing to keep any field the backup omits.
+        const mergedSettings = { ...loadSettings(), ...(parsed.settings || {}) };
+        persistSettings(mergedSettings);
+
         return {
           success: true,
           data: {
-            settings: parsed.settings || {},
+            settings: mergedSettings,
             taskCount: parsed.tasks.length,
             projectCount: parsed.projects.length,
           },

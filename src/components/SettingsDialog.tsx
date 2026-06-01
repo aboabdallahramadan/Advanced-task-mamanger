@@ -29,6 +29,7 @@ export function SettingsDialog() {
     setTimeIncrement,
     loadTasks,
     loadProjects,
+    loadSettings,
   } = useStore();
 
   const [start, setStart] = useState(workStartHour);
@@ -101,18 +102,15 @@ export function SettingsDialog() {
       if (result.canceled) {
         setDataStatus(null);
       } else if (result.success && result.data) {
-        // Apply imported settings if available
+        // The import handler already persisted the imported settings to disk;
+        // pull the full set (incl. UI collapse states) back into the store
+        // rather than re-saving stale in-memory values.
+        await loadSettings();
         const s = result.data.settings;
         if (s) {
-          if (typeof s.workStartHour === 'number' && typeof s.workEndHour === 'number') {
-            setWorkHours(s.workStartHour, s.workEndHour);
-            setStart(s.workStartHour);
-            setEnd(s.workEndHour);
-          }
-          if (typeof s.timeIncrement === 'number') {
-            setTimeIncrement(s.timeIncrement);
-            setIncrement(s.timeIncrement);
-          }
+          if (typeof s.workStartHour === 'number') setStart(s.workStartHour);
+          if (typeof s.workEndHour === 'number') setEnd(s.workEndHour);
+          if (typeof s.timeIncrement === 'number') setIncrement(s.timeIncrement);
         }
         // Reload data
         await loadTasks();
