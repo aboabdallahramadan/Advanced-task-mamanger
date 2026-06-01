@@ -183,11 +183,17 @@ local-only pref into sync. Purely-local UI prefs (`sidebarCollapsed`, `notesColl
   TS model but present in the import/export path. **Carry it as a nullable column** for
   round-trip fidelity (do not silently drop shipped data).
 - **`labels`** → `jsonb`; current `INTEGER` booleans → real `boolean`.
-- **Out of SP1 scope (noted):** tasks reference a project by *name string*, not FK. Kept as-is
-  for SP1. **Sync consequence:** a project rename on one device does not propagate to tasks/
-  focus_sessions on another (they hold the old name); name uniqueness is per-user. The FK
-  conversion would remove this whole class of inconsistency — **flagged for the user**
-  (Open decisions).
+- **Project reference is a real FK (decided — pulled into SP1):** `tasks.project_id uuid NULL`
+  → `projects.id` (NULL = no project), replacing the legacy name-string reference. Renames now
+  cascade everywhere and the whole "stale denormalized name under sync" class of bug is gone.
+  - **Scope note:** the *backend schema* uses `project_id` from day one (SP1). The *client*
+    still runs on local SQL.js with project-by-name until SP2; the client's switch to
+    `project_id` — and the **import-time mapping** of existing name strings → project ids —
+    lands in **SP2** when the seam swaps (the client can't use `project_id` before it talks to
+    the API anyway). So SP1 stays "backend + monorepo move, no client behavior change."
+  - **`focus_sessions.project` stays a name *snapshot*** (not an FK): a session's project label
+    is a historical record that must survive a later rename/delete for report integrity.
+  - Project name uniqueness is per-user (`projects(user_id, name) WHERE deleted_at IS NULL`).
 
 ## 3. Authentication (Identity + custom JWT)
 
@@ -293,6 +299,9 @@ legacy IPC signatures.
 ### 4.2 Two behavior-heavy endpoints (specified, not just named)
 - **`GET /reports`** returns the `ReportData` projection verbatim
   (`completedTasks[{id,project,date}]`, `sessions[{project,minutes,date}]`, `dailyPlans[]`).
+  `completedTasks[].project` is **resolved from `tasks.project_id` → project name** server-side;
+  `sessions[].project` is the `focus_sessions` name snapshot (so historical sessions keep their
+  label even after a rename). Both report as the same string shape the renderer expects.
   **Timezone:** `date` buckets are the user's **local day** (the desktop derives them from the
   device tz). The server computes buckets in the **user's timezone**, stored as a user
   setting/profile field (added to `user_settings`/profile in SP1). Soft-deleted rows are
@@ -353,14 +362,13 @@ batch of local mutations. Enabled by §2 with no data migration.
 5. Monorepo skeleton in place; existing app moved to `apps/desktop` and **still builds**.
 6. All of the above covered by green integration tests.
 
-## Open decisions for the user (raised by the review)
+## Resolved decisions (from review follow-up)
 
-1. **`daily_plans` membership:** accept **whole-day LWW** (later sync of the same day wins the
-   whole plan) — *or* build `daily_plan_items` child rows **now** to merge concurrent adds and
-   avoid an SP3 migration? (Default: accept LWW; it's a rare single-user conflict.)
-2. **Project reference:** keep **project-by-name** (deferred FK) and accept that renames don't
-   propagate across devices under sync — *or* pull the **project-by-id FK conversion into
-   SP1** to remove that inconsistency class? (Default: keep deferred; it touches client code.)
+1. **`daily_plans` membership → whole-day LWW** (chosen). `planned_task_ids` stays an array;
+   if the same day is edited offline on two devices, the later sync wins the whole day. Accepted
+   limitation; `daily_plan_items` child rows remain the documented future upgrade if needed.
+2. **Project reference → real `project_id` FK, pulled into SP1** (chosen over deferring).
+   See §2.8: backend uses the FK now; the client switch + name→id import mapping happens in SP2.
 
 ## Explicitly deferred
 
