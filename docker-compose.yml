@@ -3,15 +3,17 @@ services:
     image: postgres:16
     container_name: tmap-postgres
     environment:
-      POSTGRES_USER: tmap
-      POSTGRES_PASSWORD: tmap_dev_pw
-      POSTGRES_DB: tmap
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
-      - '5432:5432'
+      # Loopback-only: never expose the dev database on the LAN. Credentials come
+      # from a gitignored .env (see .env.example), not hard-coded here.
+      - '127.0.0.1:5432:5432'
     volumes:
       - tmap_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U tmap -d tmap']
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
       interval: 5s
       timeout: 5s
       retries: 10
