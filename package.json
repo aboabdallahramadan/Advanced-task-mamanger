@@ -4,6 +4,9 @@
   "private": true,
   "description": "TMap - Task Map: A daily planning workspace with task management and time blocking",
   "main": "./dist-electron/main.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && tsc -p tsconfig.electron.json",

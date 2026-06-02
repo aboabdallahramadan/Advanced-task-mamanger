@@ -8,3 +8,10 @@ out/
 .env
 .env.local
 .superpowers/
+
+# --- .NET backend (P0) ---
+backend/**/bin/
+backend/**/obj/
+backend/**/*.user
+backend/.vs/
+backend/**/appsettings.*.local.json

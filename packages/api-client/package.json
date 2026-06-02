@@ -1,0 +1,11 @@
+{
+  "name": "@tmap/api-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Generated OpenAPI types + openapi-fetch wrapper for the TMap API (populated in a later phase).",
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "generate": "echo \"openapi-typescript generation wired in a later phase\" && exit 0"
+  }
+}
