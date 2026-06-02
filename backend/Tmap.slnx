@@ -1,0 +1,5 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Tmap.Api/Tmap.Api.csproj" />
+  </Folder>
+</Solution>
