@@ -1,18 +1,25 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+
 namespace Tmap.Api.Common;
 
-/// <summary>
-/// HTTP-scoped implementation of <see cref="ICurrentUser"/> that reads the 'sub' claim
-/// from the current request's principal. P2 adds JWT authentication so the claim is
-/// actually populated; for now it returns null on every request.
-/// </summary>
-public class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
+public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
 {
-    public Guid? UserId
+    private ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+
+    public bool IsAuthenticated => TryGetId(out _);
+
+    public Guid Id =>
+        TryGetId(out var id)
+            ? id
+            : throw new InvalidOperationException("No authenticated user on the current request.");
+
+    private bool TryGetId(out Guid id)
     {
-        get
-        {
-            var sub = httpContextAccessor.HttpContext?.User.FindFirst("sub")?.Value;
-            return sub is null ? null : Guid.TryParse(sub, out var id) ? id : null;
-        }
+        id = Guid.Empty;
+        var sub =
+            Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? Principal?.FindFirstValue("sub");
+        return sub is not null && Guid.TryParse(sub, out id);
     }
 }
