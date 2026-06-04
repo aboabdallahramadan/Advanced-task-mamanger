@@ -22,11 +22,16 @@ public static class NoteGroupsEndpoints
     }
 
     private static async Task<Ok<List<NoteGroupResponse>>> GetAll(
+        Guid? projectId,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
-        var groups = await db.NoteGroups
+        var query = db.NoteGroups.AsQueryable();
+        if (projectId is { } pid)
+            query = query.Where(g => g.ProjectId == pid);
+
+        var groups = await query
             .OrderBy(g => EF.Functions.Collate(g.Rank, "C"))
             .ToListAsync(ct);
 
@@ -97,8 +102,15 @@ public static class NoteGroupsEndpoints
         if (group is null)
             return TypedResults.NotFound();
 
-        group.DeletedAt = DateTimeOffset.UtcNow;
+        var now = DateTimeOffset.UtcNow;
+
+        group.DeletedAt = now;
         await db.SaveChangesAsync(ct);
+
+        // Cascade-tombstone the group's live notes.
+        await db.Notes
+            .Where(n => n.GroupId == id)
+            .ExecuteUpdateAsync(s => s.SetProperty(n => n.DeletedAt, now), ct);
 
         return TypedResults.NoContent();
     }
