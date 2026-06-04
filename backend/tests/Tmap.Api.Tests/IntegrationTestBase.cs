@@ -66,7 +66,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             .UseSnakeCaseNamingConvention()
             .Options;
 
-        return new AppDbContext(options, new SystemCurrentUser(userId ?? Guid.Empty));
+        return new AppDbContext(options, new SystemCurrentUser());
     }
 }
 

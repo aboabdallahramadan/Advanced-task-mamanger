@@ -3,23 +3,24 @@ using Microsoft.AspNetCore.Http;
 
 namespace Tmap.Api.Common;
 
-public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICurrentUser
+public sealed class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
 {
-    private ClaimsPrincipal? Principal => httpContextAccessor.HttpContext?.User;
+    private Guid? TryResolve()
+    {
+        var principal = accessor.HttpContext?.User;
+        if (principal?.Identity?.IsAuthenticated != true)
+            return null;
 
-    public bool IsAuthenticated => TryGetId(out _);
+        var raw = principal.FindFirstValue("sub")
+                  ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        return Guid.TryParse(raw, out var id) ? id : null;
+    }
+
+    public bool IsAuthenticated => TryResolve() is not null;
 
     public Guid Id =>
-        TryGetId(out var id)
-            ? id
-            : throw new InvalidOperationException("No authenticated user on the current request.");
-
-    private bool TryGetId(out Guid id)
-    {
-        id = Guid.Empty;
-        var sub =
-            Principal?.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? Principal?.FindFirstValue("sub");
-        return sub is not null && Guid.TryParse(sub, out id);
-    }
+        TryResolve()
+        ?? throw new InvalidOperationException(
+            "No authenticated user is available. ICurrentUser is fail-closed for data operations.");
 }

@@ -1,15 +1,10 @@
 namespace Tmap.Api.Common;
 
-/// <summary>
-/// Non-HTTP <see cref="ICurrentUser"/> for migrations, seeding, sync, and test arrange/assert.
-/// Constructed with an explicit user id (or <see cref="Guid.Empty"/> for system-only work).
-/// </summary>
-public sealed class SystemCurrentUser(Guid userId) : ICurrentUser
+public sealed class SystemCurrentUser : ICurrentUser
 {
-    public bool IsAuthenticated => userId != Guid.Empty;
+    // Fixed, well-known identity for system/background/test contexts.
+    public static readonly Guid SystemUserId = new("00000000-0000-0000-0000-000000000001");
 
-    public Guid Id =>
-        userId != Guid.Empty
-            ? userId
-            : throw new InvalidOperationException("SystemCurrentUser has no user id set.");
+    public bool IsAuthenticated => true;
+    public Guid Id => SystemUserId;
 }
