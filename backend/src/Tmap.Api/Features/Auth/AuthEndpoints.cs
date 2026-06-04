@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Tmap.Api.Common;
@@ -23,6 +24,10 @@ public static class AuthEndpoints
 
         group.MapPost("/login", Login)
             .AddEndpointFilter<ValidationFilter<LoginRequest>>()
+            .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
+            .AllowAnonymous();
+
+        group.MapPost("/refresh", Refresh)
             .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
             .AllowAnonymous();
 
@@ -102,6 +107,59 @@ public static class AuthEndpoints
         var pair = await AuthTokenIssuer.IssueAsync(user.Id, db, jwt, jwtOptions.Value, http);
         Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp).Information("auth.login.success");
         return Results.Ok(pair);
+    }
+
+    private static async Task<IResult> Refresh(
+        RefreshRequest body,
+        HttpContext http,
+        AppDbContext db,
+        IJwtService jwt,
+        IOptions<JwtOptions> jwtOptions)
+    {
+        var raw = RefreshCookie.Resolve(http.Request, body.RefreshToken);
+        if (string.IsNullOrEmpty(raw)) return GenericUnauthorized();
+
+        var hash = jwt.HashRefreshToken(raw);
+        var token = await db.RefreshTokens.SingleOrDefaultAsync(t => t.TokenHash == hash);
+        if (token is null) return GenericUnauthorized();
+
+        var now = DateTimeOffset.UtcNow;
+
+        // Reuse-detection: a token presented after it was already revoked/rotated means the
+        // chain is compromised -> revoke the entire family (all of the user's live tokens).
+        if (token.RevokedAt is not null || token.ExpiresAt <= now)
+        {
+            var live = await db.RefreshTokens
+                .Where(t => t.UserId == token.UserId && t.RevokedAt == null)
+                .ToListAsync();
+            foreach (var t in live) t.RevokedAt = now;
+            await db.SaveChangesAsync();
+            Log.ForContext("UserId", token.UserId).ForContext("Ip", http.Connection.RemoteIpAddress?.ToString())
+                .Warning("auth.refresh.reuse_detected family_revoked count={Count}", live.Count);
+            RefreshCookie.Clear(http.Response);
+            return GenericUnauthorized();
+        }
+
+        // Rotate: issue a fresh pair, mark this token revoked + replaced.
+        var (newRaw, newHash) = jwt.CreateRefreshToken();
+        var (access, accessExp) = jwt.CreateAccessToken(token.UserId);
+
+        token.RevokedAt = now;
+        token.ReplacedByTokenHash = newHash;
+        db.RefreshTokens.Add(new RefreshToken
+        {
+            Id = Guid.CreateVersion7(),
+            UserId = token.UserId,
+            TokenHash = newHash,
+            CreatedAt = now,
+            ExpiresAt = now.AddDays(jwtOptions.Value.RefreshTokenDays),
+            DeviceInfo = token.DeviceInfo,
+        });
+        await db.SaveChangesAsync();
+
+        RefreshCookie.Write(http.Response, newRaw, now.AddDays(jwtOptions.Value.RefreshTokenDays));
+        Log.ForContext("UserId", token.UserId).Information("auth.refresh.success");
+        return Results.Ok(new TokenPairResponse(access, newRaw, accessExp));
     }
 
     private static async Task<IResult> Me(ICurrentUser currentUser, UserManager<ApplicationUser> users)

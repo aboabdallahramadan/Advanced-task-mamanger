@@ -109,4 +109,42 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         var wb = await wrong.Content.ReadAsStringAsync();
         ub.Should().Be(wb);
     }
+
+    [Fact]
+    public async Task Refresh_rotates_old_token_becomes_invalid()
+    {
+        var email = $"rot-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+
+        var first = await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = reg!.refreshToken });
+        first.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var rotated = await first.Content.ReadFromJsonAsync<TokenPair>();
+        rotated!.refreshToken.Should().NotBe(reg.refreshToken);
+
+        // Old token is now invalid.
+        var reuseOld = await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = reg.refreshToken });
+        reuseOld.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Refresh_reuse_of_revoked_token_revokes_whole_family()
+    {
+        var email = $"reuse-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+
+        // Rotate once: reg.refreshToken -> r2.
+        var r2 = await (await Client.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = reg!.refreshToken })).Content.ReadFromJsonAsync<TokenPair>();
+
+        // Attacker replays the already-rotated (revoked) original -> must revoke the family.
+        var reuse = await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = reg.refreshToken });
+        reuse.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+
+        // The legitimate current token r2 is now also dead (family revoked).
+        var afterFamilyRevoke = await Client.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = r2!.refreshToken });
+        afterFamilyRevoke.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
 }
