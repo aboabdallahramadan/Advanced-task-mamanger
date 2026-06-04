@@ -16,6 +16,7 @@ builder.Host.UseSerilog(
 );
 
 builder.Services.AddTmapProblemDetails();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 
 // HTTP-scoped current-user accessor (reads the 'sub' claim). P1 hardens the fail-closed
 // behavior; P2 makes auth actually populate the claim.
@@ -38,8 +39,8 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 // auth middleware is absent and RequireAuthorization() endpoints throw (no 401).
 builder.Services.AddTmapJwtAuth(builder.Configuration);
 
-// FluentValidation: auto-register all validators in the assembly.
-builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
+// FluentValidation: auto-register all validators in the assembly (including internal types for slice validators).
+builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTypes: true);
 
 // Rate limiting: sliding-window policy keyed by IP + email for auth endpoints.
 builder.Services.AddTmapRateLimiting();
