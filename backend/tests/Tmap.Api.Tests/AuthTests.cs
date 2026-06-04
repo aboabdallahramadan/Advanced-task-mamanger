@@ -1,3 +1,4 @@
+using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Infrastructure.Entities;
@@ -27,5 +28,13 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
 
         var loaded = await db.Users.AsNoTracking().SingleAsync(u => u.Id == user.Id);
         loaded.TimeZoneId.Should().Be("UTC");
+    }
+
+    [Fact]
+    public async Task Register_rejects_password_shorter_than_10_chars_with_400()
+    {
+        var res = await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email = $"short-{Guid.NewGuid():N}@x.io", password = "Ab1!xxxx" }); // 8 chars
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
     }
 }

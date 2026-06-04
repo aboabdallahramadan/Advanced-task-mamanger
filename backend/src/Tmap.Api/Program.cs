@@ -1,6 +1,7 @@
 using Serilog;
 using Tmap.Api.Common;
 using Tmap.Api.Features.Health;
+using Tmap.Api.Infrastructure.Identity;
 using Tmap.Api.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +22,9 @@ builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 // harness can override it via WebApplicationFactory.ConfigureAppConfiguration. P1 adds the
 // real entities, RLS, triggers, and query filters.
 builder.Services.AddPersistence();
+
+// ASP.NET Core Identity wired onto AppDbContext with SP1 password policy and lockout settings.
+builder.Services.AddTmapIdentity();
 
 var app = builder.Build();
 
