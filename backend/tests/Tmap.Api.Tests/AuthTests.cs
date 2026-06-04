@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Infrastructure.Entities;
 using Xunit;
@@ -204,5 +205,19 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         var user = await db.Users.AsNoTracking().SingleAsync(u => u.NormalizedEmail == email.ToUpperInvariant());
         user.LockoutEnd.Should().NotBeNull();
         user.LockoutEnd!.Value.Should().BeAfter(DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public async Task Auth_endpoints_return_429_when_rate_limit_exceeded()
+    {
+        // Hammer register beyond the per-window permit for one IP+email key.
+        var email = $"rl-{Guid.NewGuid():N}@x.io";
+        var statuses = new List<int>();
+        for (var i = 0; i < 30; i++)
+        {
+            var res = await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+            statuses.Add((int)res.StatusCode);
+        }
+        statuses.Should().Contain(StatusCodes.Status429TooManyRequests);
     }
 }
