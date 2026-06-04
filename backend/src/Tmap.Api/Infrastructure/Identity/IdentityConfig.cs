@@ -7,6 +7,11 @@ public static class IdentityConfig
 {
     public static IServiceCollection AddTmapIdentity(this IServiceCollection services)
     {
+        // Data Protection backs the default token providers (email confirm / password reset),
+        // which UserManager activates via AddDefaultTokenProviders(). AddIdentityCore does not
+        // register it, so without this the UserManager<ApplicationUser> ctor cannot be resolved.
+        services.AddDataProtection();
+
         services
             .AddIdentityCore<ApplicationUser>(o =>
             {

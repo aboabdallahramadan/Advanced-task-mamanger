@@ -1,5 +1,6 @@
 using Serilog;
 using Tmap.Api.Common;
+using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
 using Tmap.Api.Infrastructure.Identity;
 using Tmap.Api.Infrastructure.Persistence;
@@ -33,6 +34,7 @@ app.UseExceptionHandler();
 app.UseStatusCodePages();
 
 app.MapHealthEndpoints();
+app.MapAuthEndpoints();
 
 app.Run();
 
