@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
 using Tmap.Api.Infrastructure.Entities;
+using Tmap.Api.Infrastructure.Persistence;
 using Xunit;
 
 namespace Tmap.Api.Tests;
@@ -16,6 +18,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
 {
     private readonly PostgresFixture _fixture;
     private TmapApiFactory _factory = null!;
+    private readonly List<ServiceProvider> _scopedProviders = new();
 
     protected IntegrationTestBase(PostgresFixture fixture)
     {
@@ -34,9 +37,31 @@ public abstract class IntegrationTestBase : IAsyncLifetime
 
     public Task DisposeAsync()
     {
+        foreach (var provider in _scopedProviders)
+        {
+            provider.Dispose();
+        }
+
         Client.Dispose();
         _factory.Dispose();
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resolves an <see cref="AppDbContext"/> whose injected <see cref="ICurrentUser"/> reports
+    /// the given authed user's id (an HTTP-style scope, not <see cref="SystemCurrentUser"/>),
+    /// configured exactly like <see cref="PersistenceExtensions.AddPersistence(IServiceCollection, string)"/>
+    /// so the same connection + ownership interceptors run. The backing provider is tracked and
+    /// disposed when the test completes.
+    /// </summary>
+    protected AppDbContext NewScopedDbContextFor(AuthedClient client)
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ICurrentUser>(new FixedCurrentUser(client.UserId));
+        services.AddPersistence(_fixture.ConnectionString);
+        var provider = services.BuildServiceProvider();
+        _scopedProviders.Add(provider);
+        return provider.GetRequiredService<AppDbContext>();
     }
 
     /// <summary>

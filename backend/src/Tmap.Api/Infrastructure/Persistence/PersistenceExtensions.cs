@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Tmap.Api.Common;
 
 namespace Tmap.Api.Infrastructure.Persistence;
 
@@ -12,10 +13,15 @@ public static class PersistenceExtensions
     /// </summary>
     public static IServiceCollection AddPersistence(this IServiceCollection services, string connectionString)
     {
-        services.AddDbContext<AppDbContext>(options =>
+        AddOwnershipInterceptors(services);
+
+        services.AddDbContext<AppDbContext>((sp, options) =>
         {
             options.UseNpgsql(connectionString);
             options.UseSnakeCaseNamingConvention();
+            options.AddInterceptors(
+                sp.GetRequiredService<UserIdConnectionInterceptor>(),
+                sp.GetRequiredService<OwnershipSaveChangesInterceptor>());
         });
 
         return services;
@@ -28,14 +34,27 @@ public static class PersistenceExtensions
     /// </summary>
     public static IServiceCollection AddPersistence(this IServiceCollection services)
     {
+        AddOwnershipInterceptors(services);
+
         services.AddDbContext<AppDbContext>((sp, options) =>
         {
             var configuration = sp.GetRequiredService<IConfiguration>();
             var connectionString = configuration.GetConnectionString("Postgres") ?? string.Empty;
             options.UseNpgsql(connectionString);
             options.UseSnakeCaseNamingConvention();
+            options.AddInterceptors(
+                sp.GetRequiredService<UserIdConnectionInterceptor>(),
+                sp.GetRequiredService<OwnershipSaveChangesInterceptor>());
         });
 
         return services;
+    }
+
+    // Interceptors depend on the scoped ICurrentUser, so register them scoped and
+    // resolve them when configuring the DbContext (which is itself scoped).
+    private static void AddOwnershipInterceptors(IServiceCollection services)
+    {
+        services.AddScoped<UserIdConnectionInterceptor>();
+        services.AddScoped<OwnershipSaveChangesInterceptor>();
     }
 }

@@ -323,3 +323,31 @@ public class ChangeSeqTriggerTests(PostgresFixture fixture) : IntegrationTestBas
             "ExecuteUpdate bypasses the tracker, so only a DB trigger can advance change_seq");
     }
 }
+
+[Collection("db")]
+public class OwnershipInterceptorTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
+{
+    [Fact]
+    public async Task ClientSupplied_Foreign_UserId_Is_Overridden_On_Insert()
+    {
+        var userA = await RegisterAsync();
+        var foreignUserId = Guid.NewGuid();
+
+        // Resolve a request-scoped AppDbContext bound to userA's HTTP identity.
+        await using var ctx = NewScopedDbContextFor(userA);
+
+        var project = new Project
+        {
+            Id = Guid.NewGuid(),
+            UserId = foreignUserId,            // hostile/incorrect client value
+            Name = "owned-" + Guid.NewGuid().ToString("N"),
+            Rank = "a0",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        ctx.Projects.Add(project);
+        await ctx.SaveChangesAsync();
+
+        project.UserId.Should().Be(userA.UserId, "the interceptor stamps UserId from ICurrentUser on insert");
+        project.UserId.Should().NotBe(foreignUserId);
+    }
+}
