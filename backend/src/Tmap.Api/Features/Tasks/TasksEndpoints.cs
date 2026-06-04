@@ -18,6 +18,8 @@ public static class TasksEndpoints
         group.MapPost("/", CreateAsync)
             .AddEndpointFilter<ValidationFilter<CreateTaskRequest>>();
 
+        group.MapGet("/", GetAsync);
+
         return group;
     }
 
@@ -58,6 +60,45 @@ public static class TasksEndpoints
 
         var response = ToResponse(entity, []);
         return TypedResults.Created($"/api/v1/tasks/{entity.Id}", response);
+    }
+
+    internal static async Task<Ok<List<TaskResponse>>> GetAsync(
+        AppDbContext db,
+        ICurrentUser user,
+        CancellationToken ct,
+        string? status = null,
+        DateOnly? date = null,
+        string? q = null)
+    {
+        var query = db.Tasks.Include(t => t.Subtasks).AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TaskStatus>(status, ignoreCase: true, out var parsed))
+            query = query.Where(t => t.Status == parsed);
+
+        if (date is { } d)
+            query = query.Where(t => t.PlannedDate == d);
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var pattern = $"%{q.Trim()}%";
+            query = query.Where(t =>
+                EF.Functions.ILike(t.Title, pattern) ||
+                EF.Functions.ILike(t.Notes, pattern));
+        }
+
+        var rows = await query.OrderBy(t => t.Rank).ToListAsync(ct);
+
+        var result = rows
+            .Select(t => ToResponse(
+                t,
+                t.Subtasks
+                    .Where(s => s.DeletedAt == null)
+                    .OrderBy(s => s.SortOrder)
+                    .Select(ToSubtaskResponse)
+                    .ToList()))
+            .ToList();
+
+        return TypedResults.Ok(result);
     }
 
     // --- helpers ---

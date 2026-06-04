@@ -64,4 +64,19 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         row.Title.Should().Be("Write the plan");
         row.DeletedAt.Should().BeNull();
     }
+
+    [Fact]
+    public async Task GetAll_returns_only_callers_live_tasks()
+    {
+        var auth = await RegisterAsync();
+        await auth.Client.PostAsJsonAsync("/api/v1/tasks", new { title = "A", status = "Inbox" });
+        await auth.Client.PostAsJsonAsync("/api/v1/tasks", new { title = "B", status = "Backlog" });
+
+        var resp = await auth.Client.GetAsync("/api/v1/tasks");
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var tasks = await resp.Content.ReadFromJsonAsync<List<TaskResponse>>();
+        tasks.Should().NotBeNull();
+        tasks!.Select(t => t.Title).Should().BeEquivalentTo(["A", "B"]);
+    }
 }
