@@ -1,6 +1,7 @@
 using FluentValidation;
 using Serilog;
 using Tmap.Api.Common;
+using Tmap.Api.Common.Errors;
 using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
 using Tmap.Api.Infrastructure.Identity;
@@ -14,7 +15,7 @@ builder.Host.UseSerilog(
         configuration.ReadFrom.Configuration(context.Configuration).ReadFrom.Services(services)
 );
 
-builder.Services.AddProblemDetails();
+builder.Services.AddTmapProblemDetails();
 
 // HTTP-scoped current-user accessor (reads the 'sub' claim). P1 hardens the fail-closed
 // behavior; P2 makes auth actually populate the claim.
