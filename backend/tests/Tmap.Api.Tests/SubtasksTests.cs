@@ -58,4 +58,43 @@ public sealed class SubtasksTests(PostgresFixture fixture) : IntegrationTestBase
         updated!.Title.Should().Be("final");
         updated.Completed.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Delete_subtask_soft_deletes_and_removes_from_parent_read()
+    {
+        var auth = await RegisterAsync();
+        var task = await CreateTaskAsync(auth);
+        var sub = await (await auth.Client.PostAsJsonAsync(
+                $"/api/v1/tasks/{task.Id}/subtasks", new { title = "gone" }))
+            .Content.ReadFromJsonAsync<SubtaskResponse>();
+
+        var del = await auth.Client.DeleteAsync($"/api/v1/subtasks/{sub!.Id}");
+        del.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var parent = (await (await auth.Client.GetAsync("/api/v1/tasks"))
+            .Content.ReadFromJsonAsync<List<TaskResponse>>())!.Single(t => t.Id == task.Id);
+        parent.Subtasks.Should().NotContain(s => s.Id == sub.Id);
+
+        await using var db = NewElevatedDbContext();
+        var row = await db.Subtasks.IgnoreQueryFilters(["SoftDelete"]).SingleAsync(s => s.Id == sub.Id);
+        row.DeletedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task Cross_user_cannot_delete_anothers_subtask_returns_404()
+    {
+        var owner = await RegisterAsync("sub-owner@example.com");
+        var intruder = await RegisterAsync("sub-intruder@example.com");
+        var task = await CreateTaskAsync(owner);
+        var sub = await (await owner.Client.PostAsJsonAsync(
+                $"/api/v1/tasks/{task.Id}/subtasks", new { title = "private" }))
+            .Content.ReadFromJsonAsync<SubtaskResponse>();
+
+        var del = await intruder.Client.DeleteAsync($"/api/v1/subtasks/{sub!.Id}");
+        del.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        await using var db = NewElevatedDbContext();
+        var row = await db.Subtasks.IgnoreQueryFilters(["SoftDelete", "Tenant"]).SingleAsync(s => s.Id == sub.Id);
+        row.DeletedAt.Should().BeNull();   // intruder's call did nothing
+    }
 }
