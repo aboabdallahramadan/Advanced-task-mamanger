@@ -79,4 +79,36 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         tasks.Should().NotBeNull();
         tasks!.Select(t => t.Title).Should().BeEquivalentTo(["A", "B"]);
     }
+
+    [Fact]
+    public async Task GetAll_filters_by_status_date_and_query()
+    {
+        var auth = await RegisterAsync();
+        await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "Inbox alpha", status = "Inbox" });
+        await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "Planned beta", status = "Planned", plannedDate = "2026-06-02" });
+        await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "Planned gamma", status = "Planned", plannedDate = "2026-06-03" });
+
+        // status filter
+        var byStatus = await (await auth.Client.GetAsync("/api/v1/tasks?status=Planned"))
+            .Content.ReadFromJsonAsync<List<TaskResponse>>();
+        byStatus!.Select(t => t.Title).Should().BeEquivalentTo(["Planned beta", "Planned gamma"]);
+
+        // date filter
+        var byDate = await (await auth.Client.GetAsync("/api/v1/tasks?date=2026-06-02"))
+            .Content.ReadFromJsonAsync<List<TaskResponse>>();
+        byDate!.Select(t => t.Title).Should().BeEquivalentTo(["Planned beta"]);
+
+        // q filter (case-insensitive)
+        var byQuery = await (await auth.Client.GetAsync("/api/v1/tasks?q=alpha"))
+            .Content.ReadFromJsonAsync<List<TaskResponse>>();
+        byQuery!.Select(t => t.Title).Should().BeEquivalentTo(["Inbox alpha"]);
+
+        // combined status + date
+        var combined = await (await auth.Client.GetAsync("/api/v1/tasks?status=Planned&date=2026-06-03"))
+            .Content.ReadFromJsonAsync<List<TaskResponse>>();
+        combined!.Select(t => t.Title).Should().BeEquivalentTo(["Planned gamma"]);
+    }
 }
