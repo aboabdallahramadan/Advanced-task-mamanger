@@ -21,6 +21,13 @@ public static class AuthEndpoints
             .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
             .AllowAnonymous();
 
+        group.MapPost("/login", Login)
+            .AddEndpointFilter<ValidationFilter<LoginRequest>>()
+            .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
+            .AllowAnonymous();
+
+        group.MapGet("/me", Me).RequireAuthorization();
+
         return group;
     }
 
@@ -48,6 +55,71 @@ public static class AuthEndpoints
             .Information("auth.register.success");
         return Results.Ok(pair);
     }
+
+    private static async Task<IResult> Login(
+        LoginRequest req,
+        UserManager<ApplicationUser> users,
+        AppDbContext db,
+        IJwtService jwt,
+        IOptions<JwtOptions> jwtOptions,
+        HttpContext http)
+    {
+        var sourceIp = http.Connection.RemoteIpAddress?.ToString();
+        var user = await users.FindByEmailAsync(req.Email);
+
+        if (user is null)
+        {
+            // Constant-time path: spend the same work hashing a dummy password so timing
+            // does not reveal whether the email exists (spec §3.5).
+            users.PasswordHasher.VerifyHashedPassword(
+                new ApplicationUser(),
+                DummyPasswordHash,
+                req.Password);
+            Log.ForContext("Ip", sourceIp).Information("auth.login.failure {Reason}", "unknown_email");
+            return GenericUnauthorized();
+        }
+
+        if (await users.IsLockedOutAsync(user))
+        {
+            Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp)
+                .Warning("auth.login.lockout");
+            return GenericUnauthorized();
+        }
+
+        var ok = await users.CheckPasswordAsync(user, req.Password);
+        if (!ok)
+        {
+            await users.AccessFailedAsync(user); // increments lockout counter
+            if (await users.IsLockedOutAsync(user))
+                Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp).Warning("auth.login.lockout");
+            else
+                Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp)
+                    .Information("auth.login.failure {Reason}", "wrong_password");
+            return GenericUnauthorized();
+        }
+
+        await users.ResetAccessFailedCountAsync(user);
+        var pair = await AuthTokenIssuer.IssueAsync(user.Id, db, jwt, jwtOptions.Value, http);
+        Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp).Information("auth.login.success");
+        return Results.Ok(pair);
+    }
+
+    private static async Task<IResult> Me(ICurrentUser currentUser, UserManager<ApplicationUser> users)
+    {
+        var user = await users.FindByIdAsync(currentUser.Id.ToString());
+        if (user is null) return Results.Unauthorized();
+        return Results.Ok(new MeResponse(user.Id, user.Email ?? "", user.TimeZoneId));
+    }
+
+    // Identical body for unknown-email and wrong-password — no enumeration.
+    private static IResult GenericUnauthorized() =>
+        Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials.");
+
+    // Precomputed PBKDF2 hash of a fixed string under the default Identity hasher; used only
+    // for the constant-time no-such-user path. Not a real credential.
+    private static readonly string DummyPasswordHash =
+        new Microsoft.AspNetCore.Identity.PasswordHasher<ApplicationUser>()
+            .HashPassword(new ApplicationUser(), "constant-time-dummy-password");
 }
 
 internal static class AuthTokenIssuer

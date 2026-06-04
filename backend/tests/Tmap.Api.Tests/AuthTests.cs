@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Infrastructure.Entities;
@@ -63,5 +64,49 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
             .StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
         var second = await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
         second.StatusCode.Should().Be(System.Net.HttpStatusCode.Conflict);
+    }
+
+    [Fact]
+    public async Task Login_then_access_me_returns_profile()
+    {
+        var email = $"login-{Guid.NewGuid():N}@x.io";
+        await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+
+        var login = await Client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = "Password123!x" });
+        login.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var pair = await login.Content.ReadFromJsonAsync<TokenPair>();
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        req.Headers.Authorization = new("Bearer", pair!.accessToken);
+        var me = await Client.SendAsync(req);
+        me.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var profile = await me.Content.ReadFromJsonAsync<JsonElement>();
+        profile.GetProperty("email").GetString().Should().Be(email);
+    }
+
+    [Fact]
+    public async Task Me_without_token_returns_401()
+    {
+        var res = await Client.GetAsync("/api/v1/auth/me");
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Login_unknown_email_and_wrong_password_both_return_generic_401()
+    {
+        var email = $"gen-{Guid.NewGuid():N}@x.io";
+        await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+
+        var unknown = await Client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email = $"nobody-{Guid.NewGuid():N}@x.io", password = "Password123!x" });
+        var wrong = await Client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email, password = "WrongPassword!9" });
+
+        unknown.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        wrong.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        // Bodies must be identical (no enumeration via message).
+        var ub = await unknown.Content.ReadAsStringAsync();
+        var wb = await wrong.Content.ReadAsStringAsync();
+        ub.Should().Be(wb);
     }
 }
