@@ -1,9 +1,11 @@
+using System.Text.Json.Serialization;
 using FluentValidation;
 using Serilog;
 using Tmap.Api.Common;
 using Tmap.Api.Common.Errors;
 using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
+using Tmap.Api.Features.Tasks;
 using Tmap.Api.Infrastructure.Identity;
 using Tmap.Api.Infrastructure.Jwt;
 using Tmap.Api.Infrastructure.Persistence;
@@ -17,6 +19,13 @@ builder.Host.UseSerilog(
 
 builder.Services.AddTmapProblemDetails();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+
+// Configure System.Text.Json for Minimal APIs: serialize enums as strings so client DTOs
+// can send "Inbox" instead of 0 for enum values.
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+});
 
 // HTTP-scoped current-user accessor (reads the 'sub' claim). P1 hardens the fail-closed
 // behavior; P2 makes auth actually populate the claim.
@@ -79,6 +88,7 @@ app.UseAuthorization();
 
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();
+app.MapTasks();
 
 app.Run();
 

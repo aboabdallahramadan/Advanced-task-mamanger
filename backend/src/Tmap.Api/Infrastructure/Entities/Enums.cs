@@ -1,5 +1,8 @@
+using System.Text.Json.Serialization;
+
 namespace Tmap.Api.Infrastructure.Entities;
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum TaskStatus
 {
     Inbox,

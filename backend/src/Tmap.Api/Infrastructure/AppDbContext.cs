@@ -16,6 +16,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
 
     private readonly ICurrentUser _currentUser = currentUser;
 
+    // False when the context is running as the system/elevated user (e.g. in tests for arrange/assert).
+    // Captured once at construction time so EF Core can translate the filter to SQL.
+    private readonly bool _isTenantFilterActive = currentUser is not SystemCurrentUser;
+
     public DbSet<TaskItem> Tasks => Set<TaskItem>();
     public DbSet<Subtask> Subtasks => Set<Subtask>();
     public DbSet<Project> Projects => Set<Project>();
@@ -204,10 +208,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
 
     // EF Core 10 NAMED query filters: "Tenant" (UserId == currentUser.Id) and "SoftDelete" (DeletedAt == null).
     // _currentUser.Id is read AT QUERY TIME inside the expression (context is Scoped).
+    // When _currentUser is SystemCurrentUser (elevated/system context), _isTenantFilterActive is false
+    // so the Tenant filter becomes a no-op and cross-user arrange/assert works without IgnoreQueryFilters().
     private void ApplyTenantAndSoftDeleteFilters<TEntity>(EntityTypeBuilder<TEntity> b)
         where TEntity : class, IOwnedByUser, ISyncable
     {
-        b.HasQueryFilter(TenantFilter, e => e.UserId == _currentUser.Id);
+        b.HasQueryFilter(TenantFilter, e =>
+            !_isTenantFilterActive || e.UserId == _currentUser.Id);
         b.HasQueryFilter(SoftDeleteFilter, e => e.DeletedAt == null);
     }
 }
