@@ -8,7 +8,7 @@ using Tmap.Api.Infrastructure.Entities;
 
 namespace Tmap.Api.Infrastructure;
 
-public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser currentUser)
+public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser currentUser)
     : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>(options)
 {
     public const string TenantFilter = "Tenant";
@@ -164,6 +164,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options, ICurrentUser c
             b.Property(x => x.TokenHash).IsRequired();
             b.HasIndex(x => x.TokenHash).IsUnique();
             b.HasIndex(x => x.UserId);
+            b.HasOne<ApplicationUser>()
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
             // no sync columns, no query filters
         });
 

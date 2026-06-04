@@ -1,6 +1,6 @@
 namespace Tmap.Api.Infrastructure.Entities;
 
-public class RefreshToken
+public sealed class RefreshToken
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }

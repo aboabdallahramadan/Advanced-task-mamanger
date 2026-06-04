@@ -12,8 +12,8 @@ using Tmap.Api.Infrastructure;
 namespace Tmap.Api.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20260604083929_InitialSchema")]
-    partial class InitialSchema
+    [Migration("20260604092848_AddIdentityAndRefreshTokens")]
+    partial class AddIdentityAndRefreshTokens
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -1015,6 +1015,16 @@ namespace Tmap.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_asp_net_user_tokens_asp_net_users_user_id");
+                });
+
+            modelBuilder.Entity("Tmap.Api.Infrastructure.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("Tmap.Api.Infrastructure.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_refresh_tokens_asp_net_users_user_id");
                 });
 
             modelBuilder.Entity("Tmap.Api.Infrastructure.Entities.Subtask", b =>

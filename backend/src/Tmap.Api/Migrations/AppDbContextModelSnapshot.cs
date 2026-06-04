@@ -1014,6 +1014,16 @@ namespace Tmap.Api.Migrations
                         .HasConstraintName("fk_asp_net_user_tokens_asp_net_users_user_id");
                 });
 
+            modelBuilder.Entity("Tmap.Api.Infrastructure.Entities.RefreshToken", b =>
+                {
+                    b.HasOne("Tmap.Api.Infrastructure.Entities.ApplicationUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_refresh_tokens_asp_net_users_user_id");
+                });
+
             modelBuilder.Entity("Tmap.Api.Infrastructure.Entities.Subtask", b =>
                 {
                     b.HasOne("Tmap.Api.Infrastructure.Entities.TaskItem", "Task")
