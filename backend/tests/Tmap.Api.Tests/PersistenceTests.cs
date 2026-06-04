@@ -232,3 +232,27 @@ public class AppDbContextModelTests(PostgresFixture fixture)
                 && fk.Properties.Any(p => p.Name == nameof(Subtask.TaskId)));
     }
 }
+
+[Collection("db")]
+public class MigrationSchemaTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
+{
+    [Fact]
+    public async Task Migration_Creates_All_Core_Tables()
+    {
+        await using var ctx = NewElevatedDbContext();
+        var tables = new[]
+        {
+            "tasks", "subtasks", "projects", "note_groups", "notes",
+            "recurrence_rules", "recurrence_exceptions", "focus_sessions",
+            "daily_plans", "user_settings", "refresh_tokens"
+        };
+
+        foreach (var table in tables)
+        {
+            var exists = await ctx.Database
+                .SqlQuery<bool>($"SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = {table}) AS \"Value\"")
+                .SingleAsync();
+            exists.Should().BeTrue($"table {table} should exist after migration");
+        }
+    }
+}
