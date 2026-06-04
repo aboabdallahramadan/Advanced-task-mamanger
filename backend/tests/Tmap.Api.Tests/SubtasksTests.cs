@@ -40,4 +40,22 @@ public sealed class SubtasksTests(PostgresFixture fixture) : IntegrationTestBase
         row.UserId.Should().Be(auth.UserId);
         row.TaskId.Should().Be(task.Id);
     }
+
+    [Fact]
+    public async Task Patch_subtask_updates_completed_and_title()
+    {
+        var auth = await RegisterAsync();
+        var task = await CreateTaskAsync(auth);
+        var sub = await (await auth.Client.PostAsJsonAsync(
+                $"/api/v1/tasks/{task.Id}/subtasks", new { title = "draft" }))
+            .Content.ReadFromJsonAsync<SubtaskResponse>();
+
+        var resp = await auth.Client.PatchAsJsonAsync(
+            $"/api/v1/subtasks/{sub!.Id}", new { title = "final", completed = true });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await resp.Content.ReadFromJsonAsync<SubtaskResponse>();
+        updated!.Title.Should().Be("final");
+        updated.Completed.Should().BeTrue();
+    }
 }
