@@ -112,8 +112,16 @@ public static class AuthEndpoints
     }
 
     // Identical body for unknown-email and wrong-password — no enumeration.
+    // Results.Problem injects a per-request traceId extension, which would make the two
+    // failure bodies differ; use a fixed payload so unknown-email and wrong-password match byte-for-byte.
     private static IResult GenericUnauthorized() =>
-        Results.Problem(statusCode: StatusCodes.Status401Unauthorized, title: "Invalid credentials.");
+        Results.Json(
+            new ProblemDetails
+            {
+                Status = StatusCodes.Status401Unauthorized,
+                Title = "Invalid credentials.",
+            },
+            statusCode: StatusCodes.Status401Unauthorized);
 
     // Precomputed PBKDF2 hash of a fixed string under the default Identity hasher; used only
     // for the constant-time no-such-user path. Not a real credential.

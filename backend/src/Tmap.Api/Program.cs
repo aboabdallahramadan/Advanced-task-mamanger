@@ -33,6 +33,10 @@ builder.Services.AddTmapIdentity();
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
 builder.Services.AddScoped<IJwtService, JwtService>();
 
+// JWT bearer authentication + authorization middleware services. Without this the
+// auth middleware is absent and RequireAuthorization() endpoints throw (no 401).
+builder.Services.AddTmapJwtAuth(builder.Configuration);
+
 // FluentValidation: auto-register all validators in the assembly.
 builder.Services.AddValidatorsFromAssemblyContaining<RegisterRequestValidator>();
 
@@ -67,6 +71,9 @@ app.Use(async (ctx, next) =>
 });
 
 app.UseRateLimiter();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();
