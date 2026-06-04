@@ -293,7 +293,10 @@ public class ChangeSeqTriggerTests(PostgresFixture fixture) : IntegrationTestBas
     {
         var user = await RegisterAsync();
 
-        await using var ctx = NewElevatedDbContext();
+        // Pass the owning user id so the EF tenant query filter resolves to this user's rows;
+        // the read-back/ExecuteUpdate below would otherwise be filtered out by the default
+        // (system) tenant scope. RLS still passes via the elevated system-id GUC.
+        await using var ctx = NewElevatedDbContext(user.UserId);
         var task = new TaskItem
         {
             Id = Guid.NewGuid(),

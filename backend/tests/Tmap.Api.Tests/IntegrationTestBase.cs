@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
+using Tmap.Api.Infrastructure.Entities;
 using Xunit;
 
 namespace Tmap.Api.Tests;
@@ -40,24 +41,52 @@ public abstract class IntegrationTestBase : IAsyncLifetime
 
     /// <summary>
     /// Registers a new user and returns an <see cref="AuthedClient"/> whose
-    /// <see cref="AuthedClient.Client"/> carries the Bearer access token and whose
     /// <see cref="AuthedClient.UserId"/> is the new user's id.
-    /// CONTRACT SIGNATURE — frozen in P0; implemented in P2 once POST /api/v1/auth/register exists.
+    /// CONTRACT SIGNATURE — frozen in P0. P1 minimal implementation: inserts an
+    /// <see cref="ApplicationUser"/> row directly via the elevated DbContext (no HTTP, no JWT)
+    /// so persistence-layer tests have a real, FK-valid owning user. The carried
+    /// <see cref="AuthedClient.Client"/> is the unauthenticated <see cref="Client"/> until P2
+    /// wires POST /api/v1/auth/register and attaches a real Bearer token.
     /// </summary>
-    protected Task<AuthedClient> RegisterAsync(
+    protected async Task<AuthedClient> RegisterAsync(
         string? email = null,
         string password = "Password123!x"
     )
     {
-        throw new NotImplementedException(
-            "RegisterAsync is implemented in Phase P2 once POST /api/v1/auth/register exists."
-        );
+        // AspNetUsers (Identity) tables are not RLS-protected, so this insert succeeds
+        // regardless of app.user_id. The elevated context already targets the system id.
+        await using var ctx = NewElevatedDbContext();
+
+        var userId = Guid.NewGuid();
+        var resolvedEmail = email ?? $"user-{userId:N}@test.local";
+        var user = new ApplicationUser
+        {
+            Id = userId,
+            UserName = resolvedEmail,
+            NormalizedUserName = resolvedEmail.ToUpperInvariant(),
+            Email = resolvedEmail,
+            NormalizedEmail = resolvedEmail.ToUpperInvariant(),
+            EmailConfirmed = true,
+            SecurityStamp = Guid.NewGuid().ToString("N"),
+            // password is not hashed here; P2 replaces this with the real register endpoint.
+            PasswordHash = password,
+        };
+        ctx.Users.Add(user);
+        await ctx.SaveChangesAsync();
+
+        return new AuthedClient(Client, userId);
     }
 
     /// <summary>
-    /// A DbContext bound to an elevated <see cref="SystemCurrentUser"/> for arrange/assert in
-    /// tests. Query filters (added in P1) are available; the caller passes the owning user id so
-    /// the tenant filter resolves. Caller disposes the returned context.
+    /// A DbContext bound to an elevated current user for arrange/assert in tests. Query filters
+    /// (added in P1) are available; the caller passes the owning user id so the EF
+    /// <see cref="AppDbContext.TenantFilter"/> resolves to that user's rows. When
+    /// <paramref name="userId"/> is null the context behaves as <see cref="SystemCurrentUser"/>.
+    /// Caller disposes the returned context.
+    /// The connection's <c>app.user_id</c> GUC is always set to the elevated system id so writes
+    /// and reads against RLS <c>FORCE</c>-protected synced tables satisfy the
+    /// <c>tenant_isolation</c> policy (which explicitly allows the system id) until the P1-8
+    /// connection interceptor lands.
     /// </summary>
     protected AppDbContext NewElevatedDbContext(Guid? userId = null)
     {
@@ -66,8 +95,33 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             .UseSnakeCaseNamingConvention()
             .Options;
 
-        return new AppDbContext(options, new SystemCurrentUser());
+        // EF tenant filter resolves to the requested user (default: the elevated system id).
+        ICurrentUser currentUser =
+            userId is { } id ? new FixedCurrentUser(id) : new SystemCurrentUser();
+        var ctx = new AppDbContext(options, currentUser);
+
+        // Pin app.user_id to the elevated system id for this context's connection so RLS FORCE
+        // does not block cross-user arrange/assert. Session-level SET (not SET LOCAL) persists for
+        // the connection's lifetime; multiplexing is off (see PostgresFixture) so it stays pinned.
+        ctx.Database.OpenConnection();
+        var systemUserId = SystemCurrentUser.SystemUserId.ToString();
+        // set_config(..., is_local: false) = session-level GUC; parameterized to avoid EF1002.
+        ctx.Database.ExecuteSql(
+            $"SELECT set_config('app.user_id', {systemUserId}, false);"
+        );
+
+        return ctx;
     }
+}
+
+/// <summary>
+/// Test-only <see cref="ICurrentUser"/> bound to a fixed, known user id so the elevated
+/// DbContext's tenant query filter resolves to a specific user's rows during arrange/assert.
+/// </summary>
+internal sealed class FixedCurrentUser(Guid id) : ICurrentUser
+{
+    public bool IsAuthenticated => true;
+    public Guid Id { get; } = id;
 }
 
 /// <summary>
