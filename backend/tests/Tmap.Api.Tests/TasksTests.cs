@@ -132,4 +132,44 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         updated.Notes.Should().Be("keep me");          // untouched field preserved
         updated.ChangeSeq.Should().BeGreaterThan(created.ChangeSeq);
     }
+
+    [Fact]
+    public async Task Delete_soft_deletes_task_and_tombstones_subtasks()
+    {
+        var auth = await RegisterAsync();
+        var task = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "Parent", status = "Inbox" }))
+            .Content.ReadFromJsonAsync<TaskResponse>();
+
+        // Arrange subtask directly via elevated DbContext (subtask POST not yet implemented)
+        await using var arrangeDb = NewElevatedDbContext(auth.UserId);
+        arrangeDb.Subtasks.Add(new Tmap.Api.Infrastructure.Entities.Subtask
+        {
+            Id = Guid.CreateVersion7(),
+            UserId = auth.UserId,
+            TaskId = task!.Id,
+            Title = "child",
+            SortOrder = 1,
+        });
+        await arrangeDb.SaveChangesAsync();
+
+        var del = await auth.Client.DeleteAsync($"/api/v1/tasks/{task.Id}");
+        del.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // gone from the normal read path
+        var afterGet = await auth.Client.GetAsync($"/api/v1/tasks");
+        var live = await afterGet.Content.ReadFromJsonAsync<List<TaskResponse>>();
+        live!.Should().NotContain(t => t.Id == task.Id);
+
+        // tombstones exist in the DB (SoftDelete filter ignored)
+        await using var db = NewElevatedDbContext();
+        var taskRow = await db.Tasks.IgnoreQueryFilters(["SoftDelete"])
+            .SingleAsync(t => t.Id == task.Id);
+        taskRow.DeletedAt.Should().NotBeNull();
+
+        var childRows = await db.Subtasks.IgnoreQueryFilters(["SoftDelete"])
+            .Where(s => s.TaskId == task.Id).ToListAsync();
+        childRows.Should().NotBeEmpty();
+        childRows.Should().OnlyContain(s => s.DeletedAt != null);
+    }
 }

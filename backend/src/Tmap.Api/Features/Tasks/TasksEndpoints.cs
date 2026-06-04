@@ -23,6 +23,8 @@ public static class TasksEndpoints
         group.MapPatch("/{id:guid}", UpdateAsync)
             .AddEndpointFilter<ValidationFilter<UpdateTaskRequest>>();
 
+        group.MapDelete("/{id:guid}", DeleteAsync);
+
         return group;
     }
 
@@ -141,6 +143,26 @@ public static class TasksEndpoints
             .Select(ToSubtaskResponse)
             .ToList();
         return TypedResults.Ok(ToResponse(task, subtasks));
+    }
+
+    internal static async Task<Results<NoContent, NotFound>> DeleteAsync(
+        Guid id,
+        AppDbContext db,
+        ICurrentUser user,
+        CancellationToken ct)
+    {
+        var task = await db.Tasks
+            .Include(t => t.Subtasks)
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (task is null) return TypedResults.NotFound();
+
+        var now = DateTimeOffset.UtcNow;
+        task.DeletedAt = now;
+        foreach (var st in task.Subtasks.Where(s => s.DeletedAt == null))
+            st.DeletedAt = now;
+
+        await db.SaveChangesAsync(ct);
+        return TypedResults.NoContent();
     }
 
     // --- helpers ---
