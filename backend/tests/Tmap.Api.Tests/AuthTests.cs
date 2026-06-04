@@ -9,13 +9,16 @@ namespace Tmap.Api.Tests;
 [Collection("db")]
 public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
 {
+    private sealed record TokenPair(string accessToken, string refreshToken, DateTimeOffset accessTokenExpiresAt);
+
     [Fact]
     public async Task RefreshTokens_table_exists_with_owner_and_hash_columns()
     {
         await using var db = NewElevatedDbContext();
         // Should not throw: table + columns mapped & migrated.
+        // Count >= 0 (other tests in the same container run may have inserted tokens).
         var count = await db.Set<RefreshToken>().CountAsync();
-        count.Should().Be(0);
+        count.Should().BeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
@@ -36,5 +39,29 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         var res = await Client.PostAsJsonAsync("/api/v1/auth/register",
             new { email = $"short-{Guid.NewGuid():N}@x.io", password = "Ab1!xxxx" }); // 8 chars
         res.StatusCode.Should().Be(System.Net.HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Register_returns_access_and_refresh_tokens()
+    {
+        var email = $"reg-{Guid.NewGuid():N}@x.io";
+        var res = await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" });
+
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var body = await res.Content.ReadFromJsonAsync<TokenPair>();
+        body!.accessToken.Should().NotBeNullOrWhiteSpace();
+        body.refreshToken.Should().NotBeNullOrWhiteSpace();
+        body.accessTokenExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow);
+    }
+
+    [Fact]
+    public async Task Register_duplicate_email_returns_409()
+    {
+        var email = $"dup-{Guid.NewGuid():N}@x.io";
+        (await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" }))
+            .StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var second = await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+        second.StatusCode.Should().Be(System.Net.HttpStatusCode.Conflict);
     }
 }

@@ -17,6 +17,13 @@ public sealed class TmapApiFactory(string connectionString) : WebApplicationFact
                     new Dictionary<string, string?>
                     {
                         ["ConnectionStrings:Postgres"] = connectionString,
+                        ["Jwt:Issuer"] = "tmap-test",
+                        ["Jwt:Audience"] = "tmap-clients",
+                        ["Jwt:AccessTokenMinutes"] = "15",
+                        ["Jwt:RefreshTokenDays"] = "60",
+                        ["Jwt:ActiveKeyId"] = "k1",
+                        ["Jwt:SigningKeys:k1"] = "0123456789ABCDEF0123456789ABCDEF",
+                        ["Jwt:SigningKeys:k2"] = "FEDCBA9876543210FEDCBA9876543210",
                     }
                 );
             }
