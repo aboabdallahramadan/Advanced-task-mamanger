@@ -181,4 +181,28 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         (await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = login!.refreshToken }))
             .StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
     }
+
+    [Fact]
+    public async Task Account_locks_out_after_five_failed_logins()
+    {
+        var email = $"lock-{Guid.NewGuid():N}@x.io";
+        await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+
+        for (var i = 0; i < 5; i++)
+        {
+            var bad = await Client.PostAsJsonAsync("/api/v1/auth/login", new { email, password = "Wrong!Password9" });
+            bad.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        }
+
+        // Correct password now blocked due to lockout.
+        var correctButLocked = await Client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email, password = "Password123!x" });
+        correctButLocked.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+
+        // Assert at the data layer that the account is actually locked.
+        await using var db = NewElevatedDbContext();
+        var user = await db.Users.AsNoTracking().SingleAsync(u => u.NormalizedEmail == email.ToUpperInvariant());
+        user.LockoutEnd.Should().NotBeNull();
+        user.LockoutEnd!.Value.Should().BeAfter(DateTimeOffset.UtcNow);
+    }
 }
