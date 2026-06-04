@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Features.Tasks;
+using Tmap.Api.Infrastructure.Entities;
 using Xunit;
+using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
 
 namespace Tmap.Api.Tests;
 
@@ -110,5 +112,24 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         var combined = await (await auth.Client.GetAsync("/api/v1/tasks?status=Planned&date=2026-06-03"))
             .Content.ReadFromJsonAsync<List<TaskResponse>>();
         combined!.Select(t => t.Title).Should().BeEquivalentTo(["Planned gamma"]);
+    }
+
+    [Fact]
+    public async Task Patch_updates_only_supplied_fields_and_advances_change_seq()
+    {
+        var auth = await RegisterAsync();
+        var created = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "Original", notes = "keep me", status = "Inbox" }))
+            .Content.ReadFromJsonAsync<TaskResponse>();
+
+        var resp = await auth.Client.PatchAsJsonAsync($"/api/v1/tasks/{created!.Id}",
+            new { title = "Renamed", status = "Done" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var updated = await resp.Content.ReadFromJsonAsync<TaskResponse>();
+        updated!.Title.Should().Be("Renamed");
+        updated.Status.Should().Be(TaskStatus.Done);
+        updated.Notes.Should().Be("keep me");          // untouched field preserved
+        updated.ChangeSeq.Should().BeGreaterThan(created.ChangeSeq);
     }
 }

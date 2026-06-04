@@ -20,6 +20,9 @@ public static class TasksEndpoints
 
         group.MapGet("/", GetAsync);
 
+        group.MapPatch("/{id:guid}", UpdateAsync)
+            .AddEndpointFilter<ValidationFilter<UpdateTaskRequest>>();
+
         return group;
     }
 
@@ -99,6 +102,45 @@ public static class TasksEndpoints
             .ToList();
 
         return TypedResults.Ok(result);
+    }
+
+    internal static async Task<Results<Ok<TaskResponse>, NotFound, ValidationProblem>> UpdateAsync(
+        Guid id,
+        UpdateTaskRequest req,
+        AppDbContext db,
+        ICurrentUser user,
+        CancellationToken ct)
+    {
+        var task = await db.Tasks
+            .Include(t => t.Subtasks)
+            .FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (task is null) return TypedResults.NotFound();
+
+        if (req.Title is not null) task.Title = req.Title;
+        if (req.Notes is not null) task.Notes = req.Notes;
+        if (req.ProjectId is not null) task.ProjectId = req.ProjectId;
+        if (req.Labels is not null) task.Labels = req.Labels;
+        if (req.Source is not null) task.Source = req.Source;
+        if (req.Status is { } s) task.Status = s;
+        if (req.PlannedDate is not null) task.PlannedDate = req.PlannedDate;
+        if (req.ScheduledStart is not null) task.ScheduledStart = req.ScheduledStart;
+        if (req.ScheduledEnd is not null) task.ScheduledEnd = req.ScheduledEnd;
+        if (req.DurationMinutes is { } dm) task.DurationMinutes = dm;
+        if (req.ActualTimeMinutes is { } am) task.ActualTimeMinutes = am;
+        if (req.Priority is not null) task.Priority = req.Priority;
+        if (req.ReminderMinutes is not null) task.ReminderMinutes = req.ReminderMinutes;
+        if (!string.IsNullOrEmpty(req.Rank)) task.Rank = req.Rank;
+        if (req.DueDate is not null) task.DueDate = req.DueDate;
+        if (req.CompletedAt is not null) task.CompletedAt = req.CompletedAt;
+
+        await db.SaveChangesAsync(ct);
+
+        var subtasks = task.Subtasks
+            .Where(st => st.DeletedAt == null)
+            .OrderBy(st => st.SortOrder)
+            .Select(ToSubtaskResponse)
+            .ToList();
+        return TypedResults.Ok(ToResponse(task, subtasks));
     }
 
     // --- helpers ---
