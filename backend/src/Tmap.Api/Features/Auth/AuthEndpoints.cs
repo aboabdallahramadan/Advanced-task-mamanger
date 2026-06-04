@@ -33,6 +33,9 @@ public static class AuthEndpoints
 
         group.MapGet("/me", Me).RequireAuthorization();
 
+        group.MapPost("/logout", Logout).AllowAnonymous();          // refresh token in body/cookie; no access token required
+        group.MapPost("/logout-all", LogoutAll).RequireAuthorization();
+
         return group;
     }
 
@@ -167,6 +170,36 @@ public static class AuthEndpoints
         var user = await users.FindByIdAsync(currentUser.Id.ToString());
         if (user is null) return Results.Unauthorized();
         return Results.Ok(new MeResponse(user.Id, user.Email ?? "", user.TimeZoneId));
+    }
+
+    private static async Task<IResult> Logout(LogoutRequest body, HttpContext http, AppDbContext db, IJwtService jwt)
+    {
+        var raw = RefreshCookie.Resolve(http.Request, body.RefreshToken);
+        if (!string.IsNullOrEmpty(raw))
+        {
+            var hash = jwt.HashRefreshToken(raw);
+            var token = await db.RefreshTokens.SingleOrDefaultAsync(t => t.TokenHash == hash && t.RevokedAt == null);
+            if (token is not null)
+            {
+                token.RevokedAt = DateTimeOffset.UtcNow;
+                await db.SaveChangesAsync();
+                Log.ForContext("UserId", token.UserId).Information("auth.logout");
+            }
+        }
+        RefreshCookie.Clear(http.Response);
+        return Results.NoContent(); // idempotent: always 204, never reveals validity
+    }
+
+    private static async Task<IResult> LogoutAll(ICurrentUser currentUser, HttpContext http, AppDbContext db)
+    {
+        var userId = currentUser.Id;
+        var now = DateTimeOffset.UtcNow;
+        var live = await db.RefreshTokens.Where(t => t.UserId == userId && t.RevokedAt == null).ToListAsync();
+        foreach (var t in live) t.RevokedAt = now;
+        await db.SaveChangesAsync();
+        Log.ForContext("UserId", userId).Information("auth.logout_all count={Count}", live.Count);
+        RefreshCookie.Clear(http.Response);
+        return Results.NoContent();
     }
 
     // Identical body for unknown-email and wrong-password — no enumeration.

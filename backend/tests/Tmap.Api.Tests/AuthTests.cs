@@ -147,4 +147,38 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
             new { refreshToken = r2!.refreshToken });
         afterFamilyRevoke.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
     }
+
+    [Fact]
+    public async Task Logout_revokes_presented_refresh_token()
+    {
+        var email = $"lo-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+
+        var logout = await Client.PostAsJsonAsync("/api/v1/auth/logout", new { refreshToken = reg!.refreshToken });
+        logout.StatusCode.Should().Be(System.Net.HttpStatusCode.NoContent);
+
+        var afterLogout = await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = reg.refreshToken });
+        afterLogout.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task LogoutAll_revokes_every_refresh_token_for_user()
+    {
+        var email = $"loall-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+        var login = await (await Client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/logout-all");
+        req.Headers.Authorization = new("Bearer", reg!.accessToken);
+        (await Client.SendAsync(req)).StatusCode.Should().Be(System.Net.HttpStatusCode.NoContent);
+
+        // Both refresh tokens are now dead.
+        (await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = reg.refreshToken }))
+            .StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        (await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = login!.refreshToken }))
+            .StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
 }
