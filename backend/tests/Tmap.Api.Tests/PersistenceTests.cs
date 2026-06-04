@@ -3,7 +3,9 @@ using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Tmap.Api.Common;
+using Tmap.Api.Infrastructure.Entities;
 using Xunit;
+using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
 
 namespace Tmap.Api.Tests;
 
@@ -63,5 +65,58 @@ public class CurrentUserTests
         var sut = new SystemCurrentUser();
         sut.IsAuthenticated.Should().BeTrue();
         sut.Id.Should().Be(SystemCurrentUser.SystemUserId);
+    }
+}
+
+public class EntityShapeTests
+{
+    [Fact]
+    public void Enums_Have_Exact_Members()
+    {
+        Enum.GetNames<TaskStatus>().Should().Equal(
+            "Inbox", "Backlog", "Planned", "Scheduled", "Done", "Archived");
+        Enum.GetNames<RecurrenceFrequency>().Should().Equal("Daily", "Weekly");
+        Enum.GetNames<RecurrenceEndType>().Should().Equal("Never", "Count", "Date");
+    }
+
+    [Fact]
+    public void SyncEntities_Derive_From_SyncEntity()
+    {
+        foreach (var t in new[]
+        {
+            typeof(TaskItem), typeof(Subtask), typeof(Project), typeof(NoteGroup),
+            typeof(Note), typeof(RecurrenceRule), typeof(RecurrenceException), typeof(FocusSession)
+        })
+        {
+            t.BaseType.Should().Be(typeof(Tmap.Api.Common.SyncEntity), $"{t.Name} must be a SyncEntity");
+        }
+    }
+
+    [Fact]
+    public void Composite_Key_Entities_Implement_Sync_Interfaces_But_Not_SyncEntity()
+    {
+        // DailyPlan and UserSetting have composite keys and NO Id.
+        typeof(DailyPlan).BaseType.Should().Be(typeof(object));
+        typeof(UserSetting).BaseType.Should().Be(typeof(object));
+        typeof(Tmap.Api.Common.IOwnedByUser).IsAssignableFrom(typeof(DailyPlan)).Should().BeTrue();
+        typeof(Tmap.Api.Common.ISyncable).IsAssignableFrom(typeof(DailyPlan)).Should().BeTrue();
+        typeof(Tmap.Api.Common.IOwnedByUser).IsAssignableFrom(typeof(UserSetting)).Should().BeTrue();
+        typeof(Tmap.Api.Common.ISyncable).IsAssignableFrom(typeof(UserSetting)).Should().BeTrue();
+        typeof(DailyPlan).GetProperty("Id").Should().BeNull("DailyPlan has no Id (composite key)");
+        typeof(UserSetting).GetProperty("Id").Should().BeNull("UserSetting has no Id (composite key)");
+    }
+
+    [Fact]
+    public void TaskItem_Has_Contract_Fields()
+    {
+        var t = typeof(TaskItem);
+        t.GetProperty("Title")!.PropertyType.Should().Be(typeof(string));
+        t.GetProperty("ProjectId")!.PropertyType.Should().Be(typeof(Guid?));
+        t.GetProperty("Labels")!.PropertyType.Should().Be(typeof(List<string>));
+        t.GetProperty("Status")!.PropertyType.Should().Be(typeof(TaskStatus));
+        t.GetProperty("PlannedDate")!.PropertyType.Should().Be(typeof(DateOnly?));
+        t.GetProperty("Rank")!.PropertyType.Should().Be(typeof(string));
+        t.GetProperty("DueDate")!.PropertyType.Should().Be(typeof(DateOnly?));
+        t.GetProperty("Subtasks")!.PropertyType.Should().Be(typeof(List<Subtask>));
     }
 }
