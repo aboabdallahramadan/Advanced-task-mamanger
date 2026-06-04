@@ -1,8 +1,10 @@
 using System;
+using System.Linq;
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
@@ -141,5 +143,92 @@ public class AppDbContextWiringTests(PostgresFixture fixture)
         var ctx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
         ctx.Database.CanConnect().Should().BeTrue();
+    }
+}
+
+[Collection("db")]
+public class AppDbContextModelTests(PostgresFixture fixture)
+{
+    private AppDbContext NewContext()
+    {
+        var services = new ServiceCollection();
+        services.AddHttpContextAccessor();
+        services.AddScoped<Tmap.Api.Common.ICurrentUser, Tmap.Api.Common.SystemCurrentUser>();
+        services.AddDbContext<AppDbContext>(o =>
+        {
+            o.UseNpgsql(fixture.ConnectionString);
+            o.UseSnakeCaseNamingConvention();
+        });
+        var provider = services.BuildServiceProvider();
+        return provider.GetRequiredService<AppDbContext>();
+    }
+
+    [Fact]
+    public void ChangeSeq_Is_ValueGeneratedOnAddOrUpdate_And_Not_Concurrency_Token()
+    {
+        using var ctx = NewContext();
+        var prop = ctx.Model.FindEntityType(typeof(TaskItem))!.FindProperty(nameof(TaskItem.ChangeSeq))!;
+        prop.ValueGenerated.Should().Be(ValueGenerated.OnAddOrUpdate);
+        prop.IsConcurrencyToken.Should().BeFalse();
+        prop.GetBeforeSaveBehavior().Should().Be(PropertySaveBehavior.Ignore);
+        prop.GetAfterSaveBehavior().Should().Be(PropertySaveBehavior.Save);
+    }
+
+    [Fact]
+    public void Labels_DaysOfWeek_PlannedTaskIds_Are_Jsonb()
+    {
+        using var ctx = NewContext();
+        ctx.Model.FindEntityType(typeof(TaskItem))!
+           .FindProperty(nameof(TaskItem.Labels))!.GetColumnType().Should().Be("jsonb");
+        ctx.Model.FindEntityType(typeof(RecurrenceRule))!
+           .FindProperty(nameof(RecurrenceRule.DaysOfWeek))!.GetColumnType().Should().Be("jsonb");
+        ctx.Model.FindEntityType(typeof(DailyPlan))!
+           .FindProperty(nameof(DailyPlan.PlannedTaskIds))!.GetColumnType().Should().Be("jsonb");
+        ctx.Model.FindEntityType(typeof(UserSetting))!
+           .FindProperty(nameof(UserSetting.Value))!.GetColumnType().Should().Be("jsonb");
+    }
+
+    [Fact]
+    public void Status_And_Frequency_Are_Stored_As_Text()
+    {
+        using var ctx = NewContext();
+        ctx.Model.FindEntityType(typeof(TaskItem))!
+           .FindProperty(nameof(TaskItem.Status))!.GetColumnType().Should().Be("text");
+        ctx.Model.FindEntityType(typeof(RecurrenceRule))!
+           .FindProperty(nameof(RecurrenceRule.Frequency))!.GetColumnType().Should().Be("text");
+        ctx.Model.FindEntityType(typeof(RecurrenceRule))!
+           .FindProperty(nameof(RecurrenceRule.EndType))!.GetColumnType().Should().Be("text");
+    }
+
+    [Fact]
+    public void Composite_Keys_Are_Configured()
+    {
+        using var ctx = NewContext();
+        var dp = ctx.Model.FindEntityType(typeof(DailyPlan))!.FindPrimaryKey()!;
+        dp.Properties.Select(p => p.Name).Should().Equal(nameof(DailyPlan.UserId), nameof(DailyPlan.Date));
+        var us = ctx.Model.FindEntityType(typeof(UserSetting))!.FindPrimaryKey()!;
+        us.Properties.Select(p => p.Name).Should().Equal(nameof(UserSetting.UserId), nameof(UserSetting.Key));
+    }
+
+    [Fact]
+    public void Named_Query_Filters_Tenant_And_SoftDelete_Exist_On_TaskItem()
+    {
+        using var ctx = NewContext();
+        var filters = ctx.Model.FindEntityType(typeof(TaskItem))!.GetDeclaredQueryFilters();
+        filters.Select(f => f.Key).Should().Contain(new[] { AppDbContext.TenantFilter, AppDbContext.SoftDeleteFilter });
+    }
+
+    [Fact]
+    public void TaskItem_To_Project_FK_And_Subtask_To_Task_FK_Configured()
+    {
+        using var ctx = NewContext();
+        var taskType = ctx.Model.FindEntityType(typeof(TaskItem))!;
+        taskType.GetForeignKeys()
+            .Should().Contain(fk => fk.PrincipalEntityType.ClrType == typeof(Project)
+                && fk.Properties.Any(p => p.Name == nameof(TaskItem.ProjectId)));
+        var subtaskType = ctx.Model.FindEntityType(typeof(Subtask))!;
+        subtaskType.GetForeignKeys()
+            .Should().Contain(fk => fk.PrincipalEntityType.ClrType == typeof(TaskItem)
+                && fk.Properties.Any(p => p.Name == nameof(Subtask.TaskId)));
     }
 }
