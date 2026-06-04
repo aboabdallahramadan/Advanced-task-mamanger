@@ -351,3 +351,47 @@ public class OwnershipInterceptorTests(PostgresFixture fixture) : IntegrationTes
         project.UserId.Should().NotBe(foreignUserId);
     }
 }
+
+[Collection("db")]
+public class SoftDeleteFilterTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
+{
+    [Fact]
+    public async Task SoftDelete_Hides_From_Normal_Reads_But_Visible_With_SoftDelete_Filter_Disabled()
+    {
+        var user = await RegisterAsync();
+        var id = Guid.NewGuid();
+
+        await using (var ctx = NewScopedDbContextFor(user))
+        {
+            ctx.Projects.Add(new Project
+            {
+                Id = id,
+                Name = "sd-" + Guid.NewGuid().ToString("N"),
+                Rank = "a0",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await ctx.SaveChangesAsync();
+        }
+
+        // Soft delete: set DeletedAt (never EF Remove for user data).
+        await using (var ctx = NewScopedDbContextFor(user))
+        {
+            var p = await ctx.Projects.SingleAsync(x => x.Id == id);
+            p.DeletedAt = DateTimeOffset.UtcNow;
+            await ctx.SaveChangesAsync();
+        }
+
+        await using (var ctx = NewScopedDbContextFor(user))
+        {
+            // Normal read: both Tenant + SoftDelete filters on -> hidden.
+            (await ctx.Projects.AnyAsync(x => x.Id == id)).Should().BeFalse();
+
+            // Disable ONLY SoftDelete -> tombstone visible, tenant filter still applied.
+            var tombstone = await ctx.Projects
+                .IgnoreQueryFilters([AppDbContext.SoftDeleteFilter])
+                .SingleOrDefaultAsync(x => x.Id == id);
+            tombstone.Should().NotBeNull();
+            tombstone!.DeletedAt.Should().NotBeNull();
+        }
+    }
+}
