@@ -1,9 +1,6 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Tmap.Api.Infrastructure;
 
 namespace Tmap.Api.Tests;
 
@@ -25,13 +22,9 @@ public sealed class TmapApiFactory(string connectionString) : WebApplicationFact
             }
         );
 
-        builder.ConfigureServices(services =>
-        {
-            // Apply migrations against the Testcontainers database on startup.
-            // In P0 there are no migrations yet, so this is a no-op; P1 adds the first migration.
-            using var scope = services.BuildServiceProvider().CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Database.Migrate();
-        });
+        // Migrations are applied once by PostgresFixture as the superuser/table owner (DDL,
+        // ENABLE/FORCE RLS, policies). The app connects as a NON-SUPERUSER role that has no
+        // CREATE privilege on schema public, so it must NOT attempt Migrate() here (EF's
+        // CREATE TABLE IF NOT EXISTS "__EFMigrationsHistory" would fail with permission denied).
     }
 }

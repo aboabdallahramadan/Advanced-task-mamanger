@@ -395,3 +395,50 @@ public class SoftDeleteFilterTests(PostgresFixture fixture) : IntegrationTestBas
         }
     }
 }
+
+// RLS REQUIREMENT (contract "(d)"): Postgres RLS — not EF — is the cross-tenant backstop.
+// Postgres bypasses RLS (even FORCE) for table owners and superusers, so these tests only
+// prove isolation when the app connects as a NON-SUPERUSER role that is NOT the table owner.
+// The test database role must therefore be a plain LOGIN/NOSUPERUSER user with table grants
+// (see PostgresFixture, which provisions an `app_user` role for the runtime connection).
+[Collection("db")]
+public class RlsCrossTenantTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
+{
+    [Fact]
+    public async Task UserA_Connection_Cannot_See_UserB_Rows_Even_With_IgnoreQueryFilters_Or_RawSql()
+    {
+        var userA = await RegisterAsync();
+        var userB = await RegisterAsync();
+        var userBProjectId = Guid.NewGuid();
+
+        // Arrange userB's row using the elevated/system context (allowed by policy OR-clause).
+        await using (var elevated = NewElevatedDbContext())
+        {
+            elevated.Projects.Add(new Project
+            {
+                Id = userBProjectId,
+                UserId = userB.UserId,
+                Name = "B-secret-" + Guid.NewGuid().ToString("N"),
+                Rank = "a0",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await elevated.SaveChangesAsync();
+        }
+
+        // Probe as userA: the connection interceptor sets app.user_id = userA.
+        await using var asUserA = NewScopedDbContextFor(userA);
+
+        // (1) EF read with BOTH filters bypassed -> still empty because RLS (DB) blocks it.
+        var viaEf = await asUserA.Projects
+            .IgnoreQueryFilters([AppDbContext.TenantFilter, AppDbContext.SoftDeleteFilter])
+            .Where(p => p.Id == userBProjectId)
+            .ToListAsync();
+        viaEf.Should().BeEmpty("RLS must block userB's row even when EF query filters are off");
+
+        // (2) Raw SQL read -> still empty because RLS (DB) blocks it.
+        var rawCount = await asUserA.Database
+            .SqlQuery<int>($"SELECT COUNT(*)::int AS \"Value\" FROM projects WHERE id = {userBProjectId}")
+            .SingleAsync();
+        rawCount.Should().Be(0, "RLS must block userB's row even for raw SQL");
+    }
+}
