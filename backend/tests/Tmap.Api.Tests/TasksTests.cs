@@ -192,4 +192,36 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         childRows.Should().NotBeEmpty();
         childRows.Should().OnlyContain(s => s.DeletedAt != null);
     }
+
+    [Fact]
+    public async Task Cross_user_cannot_read_update_or_delete_anothers_task_returns_404()
+    {
+        var owner = await RegisterAsync("owner@example.com");
+        var intruder = await RegisterAsync("intruder@example.com");
+
+        var task = await (await owner.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "secret", status = "Inbox" }))
+            .Content.ReadFromJsonAsync<TaskResponse>();
+
+        // intruder's list must not contain it
+        var intruderList = await (await intruder.Client.GetAsync("/api/v1/tasks"))
+            .Content.ReadFromJsonAsync<List<TaskResponse>>();
+        intruderList!.Should().NotContain(t => t.Id == task!.Id);
+
+        // update → 404
+        var patch = await intruder.Client.PatchAsJsonAsync($"/api/v1/tasks/{task!.Id}",
+            new { title = "hijack" });
+        patch.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // delete → 404
+        var del = await intruder.Client.DeleteAsync($"/api/v1/tasks/{task.Id}");
+        del.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // owner's row is intact & not tombstoned
+        await using var db = NewElevatedDbContext();
+        var row = await db.Tasks.IgnoreQueryFilters(["SoftDelete", "Tenant"])
+            .SingleAsync(t => t.Id == task.Id);
+        row.DeletedAt.Should().BeNull();
+        row.Title.Should().Be("secret");
+    }
 }
