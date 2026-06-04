@@ -252,4 +252,22 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         var profile = await me.Content.ReadFromJsonAsync<JsonElement>();
         Guid.Parse(profile.GetProperty("id").GetString()!).Should().Be(authed.UserId);
     }
+
+    [Fact]
+    public async Task Refresh_reuse_logs_family_revoke_without_leaking_tokens()
+    {
+        TestLogSink.Clear();
+
+        var email = $"log-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+        var r2 = await (await Client.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = reg!.refreshToken })).Content.ReadFromJsonAsync<TokenPair>();
+        await Client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken = reg.refreshToken }); // reuse
+
+        var log = TestLogSink.Messages;
+        log.Should().Contain(m => m.Contains("auth.refresh.reuse_detected"));
+        // Never log raw/hashed tokens or passwords.
+        log.Should().NotContain(m => m.Contains(reg.refreshToken) || m.Contains(r2!.refreshToken) || m.Contains("Password123!x"));
+    }
 }

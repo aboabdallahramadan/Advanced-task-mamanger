@@ -1,11 +1,31 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using Serilog;
 
 namespace Tmap.Api.Tests;
 
 public sealed class TmapApiFactory(string connectionString) : WebApplicationFactory<Program>
 {
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        // Override Serilog to use the in-memory delegating sink so integration tests can
+        // assert security events are emitted and no secrets (tokens, passwords) are logged.
+        builder.UseSerilog((_, lc) => lc
+            .MinimumLevel.Information()
+            .WriteTo.Sink(new DelegatingSink(evt =>
+            {
+                var sw = new System.IO.StringWriter();
+                evt.RenderMessage(sw);
+                // Include property values so token-leak assertions are meaningful.
+                var props = string.Join(" ", evt.Properties.Select(p => $"{p.Key}={p.Value}"));
+                TestLogSink.Add($"{sw} {props}");
+            })));
+
+        return base.CreateHost(builder);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
