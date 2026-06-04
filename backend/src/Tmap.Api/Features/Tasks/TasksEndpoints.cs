@@ -20,6 +20,9 @@ public static class TasksEndpoints
 
         group.MapGet("/", GetAsync);
 
+        group.MapPatch("/reorder", ReorderAsync)
+            .AddEndpointFilter<ValidationFilter<IReadOnlyList<ReorderItem>>>();
+
         group.MapPatch("/{id:guid}", UpdateAsync)
             .AddEndpointFilter<ValidationFilter<UpdateTaskRequest>>();
 
@@ -160,6 +163,24 @@ public static class TasksEndpoints
         task.DeletedAt = now;
         foreach (var st in task.Subtasks.Where(s => s.DeletedAt == null))
             st.DeletedAt = now;
+
+        await db.SaveChangesAsync(ct);
+        return TypedResults.NoContent();
+    }
+
+    internal static async Task<Results<NoContent, ValidationProblem>> ReorderAsync(
+        IReadOnlyList<ReorderItem> items,
+        AppDbContext db,
+        ICurrentUser user,
+        CancellationToken ct)
+    {
+        var ids = items.Select(i => i.Id).ToList();
+        var tasks = await db.Tasks.Where(t => ids.Contains(t.Id)).ToListAsync(ct);
+
+        var byId = tasks.ToDictionary(t => t.Id);
+        foreach (var item in items)
+            if (byId.TryGetValue(item.Id, out var task))
+                task.Rank = item.Rank;
 
         await db.SaveChangesAsync(ct);
         return TypedResults.NoContent();

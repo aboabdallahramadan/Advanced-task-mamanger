@@ -134,6 +134,26 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Reorder_updates_rank_on_targeted_rows_only()
+    {
+        var auth = await RegisterAsync();
+        var a = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "A", status = "Inbox" })).Content.ReadFromJsonAsync<TaskResponse>();
+        var b = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "B", status = "Inbox" })).Content.ReadFromJsonAsync<TaskResponse>();
+
+        var resp = await auth.Client.PatchAsJsonAsync("/api/v1/tasks/reorder",
+            new[] { new { id = a!.Id, rank = "zzz" } });
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db = NewElevatedDbContext();
+        var aRow = await db.Tasks.SingleAsync(t => t.Id == a.Id);
+        var bRow = await db.Tasks.SingleAsync(t => t.Id == b!.Id);
+        aRow.Rank.Should().Be("zzz");
+        bRow.Rank.Should().Be(b!.Rank);   // unchanged
+    }
+
+    [Fact]
     public async Task Delete_soft_deletes_task_and_tombstones_subtasks()
     {
         var auth = await RegisterAsync();
