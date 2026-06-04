@@ -1,8 +1,8 @@
+using System.Net.Http.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
-using Tmap.Api.Infrastructure.Entities;
 using Tmap.Api.Infrastructure.Persistence;
 using Xunit;
 
@@ -65,42 +65,39 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     }
 
     /// <summary>
-    /// Registers a new user and returns an <see cref="AuthedClient"/> whose
-    /// <see cref="AuthedClient.UserId"/> is the new user's id.
-    /// CONTRACT SIGNATURE — frozen in P0. P1 minimal implementation: inserts an
-    /// <see cref="ApplicationUser"/> row directly via the elevated DbContext (no HTTP, no JWT)
-    /// so persistence-layer tests have a real, FK-valid owning user. The carried
-    /// <see cref="AuthedClient.Client"/> is the unauthenticated <see cref="Client"/> until P2
-    /// wires POST /api/v1/auth/register and attaches a real Bearer token.
+    /// Registers a new user via POST /api/v1/auth/register, attaches the returned Bearer token
+    /// to a fresh <see cref="HttpClient"/>, calls GET /api/v1/auth/me to obtain the canonical
+    /// user id, and returns an <see cref="AuthedClient"/> ready for authenticated slice tests.
+    /// CONTRACT SIGNATURE — frozen in P0.
     /// </summary>
     protected async Task<AuthedClient> RegisterAsync(
         string? email = null,
         string password = "Password123!x"
     )
     {
-        // AspNetUsers (Identity) tables are not RLS-protected, so this insert succeeds
-        // regardless of app.user_id. The elevated context already targets the system id.
-        await using var ctx = NewElevatedDbContext();
+        email ??= $"user-{Guid.NewGuid():N}@tmap.test";
 
-        var userId = Guid.NewGuid();
-        var resolvedEmail = email ?? $"user-{userId:N}@test.local";
-        var user = new ApplicationUser
-        {
-            Id = userId,
-            UserName = resolvedEmail,
-            NormalizedUserName = resolvedEmail.ToUpperInvariant(),
-            Email = resolvedEmail,
-            NormalizedEmail = resolvedEmail.ToUpperInvariant(),
-            EmailConfirmed = true,
-            SecurityStamp = Guid.NewGuid().ToString("N"),
-            // password is not hashed here; P2 replaces this with the real register endpoint.
-            PasswordHash = password,
-        };
-        ctx.Users.Add(user);
-        await ctx.SaveChangesAsync();
+        var registerRes = await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password });
+        registerRes.EnsureSuccessStatusCode();
+        var pair = await registerRes.Content.ReadFromJsonAsync<TokenPairDto>()
+                   ?? throw new InvalidOperationException("register returned no token pair");
 
-        return new AuthedClient(Client, userId);
+        // Fresh HttpClient bound to the same in-process server, with Bearer preset.
+        var authedHttp = _factory.CreateClient();
+        authedHttp.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", pair.AccessToken);
+
+        var meRes = await authedHttp.GetAsync("/api/v1/auth/me");
+        meRes.EnsureSuccessStatusCode();
+        var me = await meRes.Content.ReadFromJsonAsync<MeDto>()
+                 ?? throw new InvalidOperationException("me returned no profile");
+
+        return new AuthedClient(authedHttp, me.Id);
     }
+
+    // Local DTOs for the harness (kept private so they don't leak into slice tests).
+    private sealed record TokenPairDto(string AccessToken, string RefreshToken, DateTimeOffset AccessTokenExpiresAt);
+    private sealed record MeDto(Guid Id, string Email, string TimeZoneId);
 
     /// <summary>
     /// A DbContext bound to an elevated current user for arrange/assert in tests. Query filters

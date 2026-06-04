@@ -239,4 +239,17 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         req.Headers.Authorization = new("Bearer", tampered);
         (await Client.SendAsync(req)).StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
     }
+
+    [Fact]
+    public async Task RegisterAsync_yields_authed_client_reaching_me()
+    {
+        var authed = await RegisterAsync();
+        authed.UserId.Should().NotBe(Guid.Empty);
+
+        var me = await authed.Client.GetAsync("/api/v1/auth/me");
+        me.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+
+        var profile = await me.Content.ReadFromJsonAsync<JsonElement>();
+        Guid.Parse(profile.GetProperty("id").GetString()!).Should().Be(authed.UserId);
+    }
 }
