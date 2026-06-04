@@ -256,3 +256,67 @@ public class MigrationSchemaTests(PostgresFixture fixture) : IntegrationTestBase
         }
     }
 }
+
+[Collection("db")]
+public class ChangeSeqTriggerTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
+{
+    [Fact]
+    public async Task Insert_Assigns_ChangeSeq_And_Update_Bumps_It()
+    {
+        var user = await RegisterAsync();
+
+        await using var arrange = NewElevatedDbContext();
+        var project = new Project
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.UserId,
+            Name = "P-" + Guid.NewGuid().ToString("N"),
+            Rank = "a0",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        arrange.Projects.Add(project);
+        await arrange.SaveChangesAsync();
+
+        project.ChangeSeq.Should().BeGreaterThan(0, "the trigger assigns change_seq on INSERT");
+        var afterInsert = project.ChangeSeq;
+        var insertedUpdatedAt = project.UpdatedAt;
+
+        project.Name = "renamed-" + Guid.NewGuid().ToString("N");
+        await arrange.SaveChangesAsync();
+
+        project.ChangeSeq.Should().BeGreaterThan(afterInsert, "the trigger bumps change_seq on UPDATE");
+        project.UpdatedAt.Should().BeAfter(insertedUpdatedAt, "the trigger refreshes updated_at on UPDATE");
+    }
+
+    [Fact]
+    public async Task ExecuteUpdate_Bumps_ChangeSeq_Proving_Trigger_Not_Interceptor()
+    {
+        var user = await RegisterAsync();
+
+        await using var ctx = NewElevatedDbContext();
+        var task = new TaskItem
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.UserId,
+            Title = "T",
+            Rank = "a0",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        ctx.Tasks.Add(task);
+        await ctx.SaveChangesAsync();
+        var seqBefore = task.ChangeSeq;
+
+        // Bulk update bypasses the ChangeTracker (and any SaveChanges interceptor).
+        await ctx.Tasks
+            .Where(t => t.Id == task.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.DurationMinutes, 45));
+
+        var seqAfter = await ctx.Tasks
+            .Where(t => t.Id == task.Id)
+            .Select(t => t.ChangeSeq)
+            .SingleAsync();
+
+        seqAfter.Should().BeGreaterThan(seqBefore,
+            "ExecuteUpdate bypasses the tracker, so only a DB trigger can advance change_seq");
+    }
+}
