@@ -22,7 +22,9 @@ public sealed class JwtService(IOptions<JwtOptions> options) : IJwtService
     public string CreateAccessTokenWithKey(Guid userId, string keyId)
     {
         if (!_o.SigningKeys.TryGetValue(keyId, out var secret))
+        {
             throw new InvalidOperationException($"Unknown signing key id '{keyId}'.");
+        }
 
         var now = DateTimeOffset.UtcNow;
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret)) { KeyId = keyId };

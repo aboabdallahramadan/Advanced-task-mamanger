@@ -40,7 +40,10 @@ public static class RateLimitPolicies
     private static string ResolveEmailKey(HttpContext ctx)
     {
         if (ctx.Items.TryGetValue("rl_email", out var cached) && cached is string s)
+        {
             return s;
+        }
+
         return "no-email";
     }
 }

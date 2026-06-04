@@ -49,14 +49,18 @@ public static class AuthEndpoints
     {
         var existing = await users.FindByEmailAsync(req.Email);
         if (existing is not null)
+        {
             // Register enumeration is an accepted v1 trade-off (spec §3.5), compensated by rate limiting.
             return Results.Problem(statusCode: StatusCodes.Status409Conflict, title: "Email already registered.");
+        }
 
         var user = new ApplicationUser { Id = Guid.CreateVersion7(), UserName = req.Email, Email = req.Email };
         var result = await users.CreateAsync(user, req.Password);
         if (!result.Succeeded)
+        {
             return Results.ValidationProblem(result.Errors.GroupBy(e => e.Code)
                 .ToDictionary(g => g.Key, g => g.Select(e => e.Description).ToArray()));
+        }
 
         var pair = await AuthTokenIssuer.IssueAsync(user.Id, db, jwt, jwtOptions.Value, http);
         Log.ForContext("UserId", user.Id).ForContext("Ip", http.Connection.RemoteIpAddress?.ToString())
@@ -99,10 +103,15 @@ public static class AuthEndpoints
         {
             await users.AccessFailedAsync(user); // increments lockout counter
             if (await users.IsLockedOutAsync(user))
+            {
                 Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp).Warning("auth.login.lockout");
+            }
             else
+            {
                 Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp)
                     .Information("auth.login.failure {Reason}", "wrong_password");
+            }
+
             return GenericUnauthorized();
         }
 
@@ -120,11 +129,17 @@ public static class AuthEndpoints
         IOptions<JwtOptions> jwtOptions)
     {
         var raw = RefreshCookie.Resolve(http.Request, body.RefreshToken);
-        if (string.IsNullOrEmpty(raw)) return GenericUnauthorized();
+        if (string.IsNullOrEmpty(raw))
+        {
+            return GenericUnauthorized();
+        }
 
         var hash = jwt.HashRefreshToken(raw);
         var token = await db.RefreshTokens.SingleOrDefaultAsync(t => t.TokenHash == hash);
-        if (token is null) return GenericUnauthorized();
+        if (token is null)
+        {
+            return GenericUnauthorized();
+        }
 
         var now = DateTimeOffset.UtcNow;
 
@@ -135,7 +150,11 @@ public static class AuthEndpoints
             var live = await db.RefreshTokens
                 .Where(t => t.UserId == token.UserId && t.RevokedAt == null)
                 .ToListAsync();
-            foreach (var t in live) t.RevokedAt = now;
+            foreach (var t in live)
+            {
+                t.RevokedAt = now;
+            }
+
             await db.SaveChangesAsync();
             Log.ForContext("UserId", token.UserId).ForContext("Ip", http.Connection.RemoteIpAddress?.ToString())
                 .Warning("auth.refresh.reuse_detected family_revoked count={Count}", live.Count);
@@ -168,7 +187,11 @@ public static class AuthEndpoints
     private static async Task<IResult> Me(ICurrentUser currentUser, UserManager<ApplicationUser> users)
     {
         var user = await users.FindByIdAsync(currentUser.Id.ToString());
-        if (user is null) return Results.Unauthorized();
+        if (user is null)
+        {
+            return Results.Unauthorized();
+        }
+
         return Results.Ok(new MeResponse(user.Id, user.Email ?? "", user.TimeZoneId));
     }
 
@@ -195,7 +218,11 @@ public static class AuthEndpoints
         var userId = currentUser.Id;
         var now = DateTimeOffset.UtcNow;
         var live = await db.RefreshTokens.Where(t => t.UserId == userId && t.RevokedAt == null).ToListAsync();
-        foreach (var t in live) t.RevokedAt = now;
+        foreach (var t in live)
+        {
+            t.RevokedAt = now;
+        }
+
         await db.SaveChangesAsync();
         Log.ForContext("UserId", userId).Information("auth.logout_all count={Count}", live.Count);
         RefreshCookie.Clear(http.Response);

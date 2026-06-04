@@ -9,7 +9,9 @@ public sealed class CurrentUser(IHttpContextAccessor accessor) : ICurrentUser
     {
         var principal = accessor.HttpContext?.User;
         if (principal?.Identity?.IsAuthenticated != true)
+        {
             return null;
+        }
 
         var raw = principal.FindFirstValue("sub")
                   ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);

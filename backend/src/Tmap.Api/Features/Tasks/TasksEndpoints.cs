@@ -81,10 +81,14 @@ public static class TasksEndpoints
         var query = db.Tasks.Include(t => t.Subtasks).AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(status) && Enum.TryParse<TaskStatus>(status, ignoreCase: true, out var parsed))
+        {
             query = query.Where(t => t.Status == parsed);
+        }
 
         if (date is { } d)
+        {
             query = query.Where(t => t.PlannedDate == d);
+        }
 
         if (!string.IsNullOrWhiteSpace(q))
         {
@@ -119,24 +123,90 @@ public static class TasksEndpoints
         var task = await db.Tasks
             .Include(t => t.Subtasks)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
-        if (task is null) return TypedResults.NotFound();
+        if (task is null)
+        {
+            return TypedResults.NotFound();
+        }
 
-        if (req.Title is not null) task.Title = req.Title;
-        if (req.Notes is not null) task.Notes = req.Notes;
-        if (req.ProjectId is not null) task.ProjectId = req.ProjectId;
-        if (req.Labels is not null) task.Labels = req.Labels;
-        if (req.Source is not null) task.Source = req.Source;
-        if (req.Status is { } s) task.Status = s;
-        if (req.PlannedDate is not null) task.PlannedDate = req.PlannedDate;
-        if (req.ScheduledStart is not null) task.ScheduledStart = req.ScheduledStart;
-        if (req.ScheduledEnd is not null) task.ScheduledEnd = req.ScheduledEnd;
-        if (req.DurationMinutes is { } dm) task.DurationMinutes = dm;
-        if (req.ActualTimeMinutes is { } am) task.ActualTimeMinutes = am;
-        if (req.Priority is not null) task.Priority = req.Priority;
-        if (req.ReminderMinutes is not null) task.ReminderMinutes = req.ReminderMinutes;
-        if (!string.IsNullOrEmpty(req.Rank)) task.Rank = req.Rank;
-        if (req.DueDate is not null) task.DueDate = req.DueDate;
-        if (req.CompletedAt is not null) task.CompletedAt = req.CompletedAt;
+        if (req.Title is not null)
+        {
+            task.Title = req.Title;
+        }
+
+        if (req.Notes is not null)
+        {
+            task.Notes = req.Notes;
+        }
+
+        if (req.ProjectId is not null)
+        {
+            task.ProjectId = req.ProjectId;
+        }
+
+        if (req.Labels is not null)
+        {
+            task.Labels = req.Labels;
+        }
+
+        if (req.Source is not null)
+        {
+            task.Source = req.Source;
+        }
+
+        if (req.Status is { } s)
+        {
+            task.Status = s;
+        }
+
+        if (req.PlannedDate is not null)
+        {
+            task.PlannedDate = req.PlannedDate;
+        }
+
+        if (req.ScheduledStart is not null)
+        {
+            task.ScheduledStart = req.ScheduledStart;
+        }
+
+        if (req.ScheduledEnd is not null)
+        {
+            task.ScheduledEnd = req.ScheduledEnd;
+        }
+
+        if (req.DurationMinutes is { } dm)
+        {
+            task.DurationMinutes = dm;
+        }
+
+        if (req.ActualTimeMinutes is { } am)
+        {
+            task.ActualTimeMinutes = am;
+        }
+
+        if (req.Priority is not null)
+        {
+            task.Priority = req.Priority;
+        }
+
+        if (req.ReminderMinutes is not null)
+        {
+            task.ReminderMinutes = req.ReminderMinutes;
+        }
+
+        if (!string.IsNullOrEmpty(req.Rank))
+        {
+            task.Rank = req.Rank;
+        }
+
+        if (req.DueDate is not null)
+        {
+            task.DueDate = req.DueDate;
+        }
+
+        if (req.CompletedAt is not null)
+        {
+            task.CompletedAt = req.CompletedAt;
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -157,12 +227,17 @@ public static class TasksEndpoints
         var task = await db.Tasks
             .Include(t => t.Subtasks)
             .FirstOrDefaultAsync(t => t.Id == id, ct);
-        if (task is null) return TypedResults.NotFound();
+        if (task is null)
+        {
+            return TypedResults.NotFound();
+        }
 
         var now = DateTimeOffset.UtcNow;
         task.DeletedAt = now;
         foreach (var st in task.Subtasks.Where(s => s.DeletedAt == null))
+        {
             st.DeletedAt = now;
+        }
 
         await db.SaveChangesAsync(ct);
         return TypedResults.NoContent();
@@ -179,8 +254,12 @@ public static class TasksEndpoints
 
         var byId = tasks.ToDictionary(t => t.Id);
         foreach (var item in items)
+        {
             if (byId.TryGetValue(item.Id, out var task))
+            {
                 task.Rank = item.Rank;
+            }
+        }
 
         await db.SaveChangesAsync(ct);
         return TypedResults.NoContent();

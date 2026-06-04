@@ -1,8 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Testcontainers.PostgreSql;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace Tmap.Api.Tests;

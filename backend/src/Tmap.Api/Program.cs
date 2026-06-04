@@ -74,7 +74,9 @@ app.Use(async (ctx, next) =>
         {
             using var doc = await System.Text.Json.JsonDocument.ParseAsync(ctx.Request.Body, default, ctx.RequestAborted);
             if (doc.RootElement.TryGetProperty("email", out var e) && e.ValueKind == System.Text.Json.JsonValueKind.String)
+            {
                 ctx.Items["rl_email"] = e.GetString()!.ToLowerInvariant();
+            }
         }
         catch (System.Text.Json.JsonException) { /* not JSON / no email: fall back to IP-only key */ }
         ctx.Request.Body.Position = 0; // rewind for model binding

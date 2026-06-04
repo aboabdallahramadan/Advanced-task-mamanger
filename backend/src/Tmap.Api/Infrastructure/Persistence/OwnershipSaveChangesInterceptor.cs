@@ -26,14 +26,18 @@ public sealed class OwnershipSaveChangesInterceptor(ICurrentUser currentUser) : 
     {
         var context = eventData.Context;
         if (context is null)
+        {
             return;
+        }
 
         var ownedEntries = context.ChangeTracker.Entries<IOwnedByUser>()
             .Where(e => e.State is EntityState.Added or EntityState.Modified)
             .ToList();
 
         if (ownedEntries.Count == 0)
+        {
             return; // Nothing to stamp — skip ICurrentUser resolution (allows unauthenticated saves, e.g. refresh-token insert during register).
+        }
 
         var ownerId = currentUser.Id; // fail-closed: throws if unauthenticated (only reached when owned entities are in flight)
 

@@ -33,7 +33,10 @@ public static class SubtasksEndpoints
     {
         // parent must be visible to the caller (tenant filter) else 404
         var parentExists = await db.Tasks.AnyAsync(t => t.Id == taskId, ct);
-        if (!parentExists) return TypedResults.NotFound();
+        if (!parentExists)
+        {
+            return TypedResults.NotFound();
+        }
 
         var maxOrder = await db.Subtasks
             .Where(s => s.TaskId == taskId)
@@ -66,11 +69,25 @@ public static class SubtasksEndpoints
         CancellationToken ct)
     {
         var sub = await db.Subtasks.FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (sub is null) return TypedResults.NotFound();
+        if (sub is null)
+        {
+            return TypedResults.NotFound();
+        }
 
-        if (req.Title is not null) sub.Title = req.Title;
-        if (req.Completed is { } c) sub.Completed = c;
-        if (req.SortOrder is { } order) sub.SortOrder = order;
+        if (req.Title is not null)
+        {
+            sub.Title = req.Title;
+        }
+
+        if (req.Completed is { } c)
+        {
+            sub.Completed = c;
+        }
+
+        if (req.SortOrder is { } order)
+        {
+            sub.SortOrder = order;
+        }
 
         await db.SaveChangesAsync(ct);
         return TypedResults.Ok(TasksEndpoints.ToSubtaskResponse(sub));
@@ -83,7 +100,10 @@ public static class SubtasksEndpoints
         CancellationToken ct)
     {
         var sub = await db.Subtasks.FirstOrDefaultAsync(s => s.Id == id, ct);
-        if (sub is null) return TypedResults.NotFound();
+        if (sub is null)
+        {
+            return TypedResults.NotFound();
+        }
 
         sub.DeletedAt = DateTimeOffset.UtcNow;   // soft delete only
         await db.SaveChangesAsync(ct);

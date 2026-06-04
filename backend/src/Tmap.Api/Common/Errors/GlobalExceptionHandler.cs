@@ -22,11 +22,15 @@ public sealed class GlobalExceptionHandler(
         };
 
         if (status >= 500)
+        {
             logger.LogError(exception, "Unhandled exception processing {Method} {Path}",
                 httpContext.Request.Method, httpContext.Request.Path);
+        }
         else
+        {
             logger.LogWarning(exception, "Handled exception ({Status}) on {Method} {Path}",
                 status, httpContext.Request.Method, httpContext.Request.Path);
+        }
 
         httpContext.Response.StatusCode = status;
 

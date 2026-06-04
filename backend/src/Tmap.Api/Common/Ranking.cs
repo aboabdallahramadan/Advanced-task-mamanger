@@ -13,9 +13,17 @@ public static class Ranking
     /// </summary>
     public static string RankAfter(string? prev)
     {
-        if (string.IsNullOrEmpty(prev)) return "n"; // mid of 'a'..'z'
+        if (string.IsNullOrEmpty(prev))
+        {
+            return "n"; // mid of 'a'..'z'
+        }
+
         var last = prev[^1];
-        if (last < 'z') return prev[..^1] + (char)(last + 1);
+        if (last < 'z')
+        {
+            return prev[..^1] + (char)(last + 1);
+        }
+
         return prev + "n";
     }
 
@@ -25,7 +33,10 @@ public static class Ranking
     /// </summary>
     public static string RankBetween(string? prev, string? next)
     {
-        if (string.IsNullOrEmpty(next)) return RankAfter(prev);
+        if (string.IsNullOrEmpty(next))
+        {
+            return RankAfter(prev);
+        }
 
         // Find a string that lexicographically sits between prev and next.
         // Simple approach: if prev is a prefix of next or they share a common prefix,

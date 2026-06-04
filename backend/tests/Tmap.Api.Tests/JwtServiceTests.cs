@@ -72,7 +72,7 @@ public class JwtServiceTests
         var none =
             "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0." +
             System.Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(
-                $$"""{"sub":"{{Guid.NewGuid()}}","iss":"tmap-test","aud":"tmap-clients"}""")).TrimEnd('=').Replace('+','-').Replace('/','_') +
+                $$"""{"sub":"{{Guid.NewGuid()}}","iss":"tmap-test","aud":"tmap-clients"}""")).TrimEnd('=').Replace('+', '-').Replace('/', '_') +
             ".";
         var handler = new JwtSecurityTokenHandler();
         var act = () => handler.ValidateToken(none, tvp, out _);

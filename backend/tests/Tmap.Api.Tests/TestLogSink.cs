@@ -11,9 +11,32 @@ public static class TestLogSink
     private static readonly List<string> _messages = new();
     private static readonly object _gate = new();
 
-    public static IReadOnlyList<string> Messages { get { lock (_gate) return _messages.ToList(); } }
-    public static void Clear() { lock (_gate) _messages.Clear(); }
-    public static void Add(string rendered) { lock (_gate) _messages.Add(rendered); }
+    public static IReadOnlyList<string> Messages
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _messages.ToList();
+            }
+        }
+    }
+
+    public static void Clear()
+    {
+        lock (_gate)
+        {
+            _messages.Clear();
+        }
+    }
+
+    public static void Add(string rendered)
+    {
+        lock (_gate)
+        {
+            _messages.Add(rendered);
+        }
+    }
 }
 
 /// <summary>

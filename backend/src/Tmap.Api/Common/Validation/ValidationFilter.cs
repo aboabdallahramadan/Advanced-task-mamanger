@@ -8,7 +8,11 @@ public sealed class ValidationFilter<T>(IValidator<T> validator) : IEndpointFilt
     {
         var arg = ctx.Arguments.OfType<T>().First();
         var r = await validator.ValidateAsync(arg);
-        if (!r.IsValid) return TypedResults.ValidationProblem(r.ToDictionary());
+        if (!r.IsValid)
+        {
+            return TypedResults.ValidationProblem(r.ToDictionary());
+        }
+
         return await next(ctx);
     }
 }
