@@ -220,4 +220,23 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         }
         statuses.Should().Contain(StatusCodes.Status429TooManyRequests);
     }
+
+    [Fact]
+    public async Task Me_with_token_signed_by_unknown_key_returns_401()
+    {
+        var email = $"badkey-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" })).Content.ReadFromJsonAsync<TokenPair>();
+
+        // Tamper: flip a character in the signature segment.
+        var parts = reg!.accessToken.Split('.');
+        parts[2] = parts[2].Length > 0
+            ? (parts[2][0] == 'A' ? "B" : "A") + parts[2][1..]
+            : "AAAA";
+        var tampered = string.Join('.', parts);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "/api/v1/auth/me");
+        req.Headers.Authorization = new("Bearer", tampered);
+        (await Client.SendAsync(req)).StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
 }
