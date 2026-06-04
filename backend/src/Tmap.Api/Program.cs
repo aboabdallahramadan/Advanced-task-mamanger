@@ -5,6 +5,7 @@ using Tmap.Api.Common;
 using Tmap.Api.Common.Errors;
 using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
+using Tmap.Api.Features.Subtasks;
 using Tmap.Api.Features.Tasks;
 using Tmap.Api.Infrastructure.Identity;
 using Tmap.Api.Infrastructure.Jwt;
@@ -89,6 +90,7 @@ app.UseAuthorization();
 app.MapHealthEndpoints();
 app.MapAuthEndpoints();
 app.MapTasks();
+app.MapSubtasks();
 
 app.Run();
 
