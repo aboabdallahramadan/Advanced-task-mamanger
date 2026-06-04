@@ -21,3 +21,5 @@ public sealed record NoteGroupResponse(
     string Rank,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+public sealed record ReorderItem(Guid Id, string Rank);
