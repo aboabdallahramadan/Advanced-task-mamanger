@@ -1,8 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using Serilog;
 using Tmap.Api.Common;
 using Tmap.Api.Features.Health;
-using Tmap.Api.Infrastructure;
+using Tmap.Api.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -18,16 +17,10 @@ builder.Services.AddProblemDetails();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
-// AppDbContext is Scoped. Connection string comes from configuration / user-secrets in dev
-// and is overridden by the test harness (P0-8). Placeholder context defined in P0-4; P1
-// adds the real entities, RLS, triggers, and query filters.
-builder.Services.AddDbContext<AppDbContext>(
-    (sp, options) =>
-    {
-        var connectionString = builder.Configuration.GetConnectionString("Postgres");
-        options.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
-    }
-);
+// AppDbContext is Scoped. Connection string is read lazily from IConfiguration so the test
+// harness can override it via WebApplicationFactory.ConfigureAppConfiguration. P1 adds the
+// real entities, RLS, triggers, and query filters.
+builder.Services.AddPersistence();
 
 var app = builder.Build();
 

@@ -2,8 +2,12 @@ using System;
 using System.Security.Claims;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Tmap.Api.Common;
+using Tmap.Api.Infrastructure;
 using Tmap.Api.Infrastructure.Entities;
+using Tmap.Api.Infrastructure.Persistence;
 using Xunit;
 using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
 
@@ -118,5 +122,24 @@ public class EntityShapeTests
         t.GetProperty("Rank")!.PropertyType.Should().Be(typeof(string));
         t.GetProperty("DueDate")!.PropertyType.Should().Be(typeof(DateOnly?));
         t.GetProperty("Subtasks")!.PropertyType.Should().Be(typeof(List<Subtask>));
+    }
+}
+
+[Collection("db")]
+public class AppDbContextWiringTests(PostgresFixture fixture)
+{
+    [Fact]
+    public void AddPersistence_Registers_Scoped_AppDbContext_That_Can_Connect()
+    {
+        var services = new ServiceCollection();
+        services.AddHttpContextAccessor();
+        services.AddScoped<Tmap.Api.Common.ICurrentUser, Tmap.Api.Common.SystemCurrentUser>();
+        services.AddPersistence(fixture.ConnectionString);
+
+        using var provider = services.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var ctx = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        ctx.Database.CanConnect().Should().BeTrue();
     }
 }
