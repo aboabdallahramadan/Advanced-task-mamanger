@@ -30,7 +30,7 @@ public sealed class ReorderItemsValidator : AbstractValidator<IReadOnlyList<Reor
         RuleForEach(x => x).ChildRules(item =>
         {
             item.RuleFor(i => i.Id).NotEmpty();
-            item.RuleFor(i => i.Rank).NotEmpty().MaximumLength(64);
+            item.RuleFor(i => i.Rank).NotEmpty().MaximumLength(255);
         });
     }
 }

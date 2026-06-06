@@ -37,6 +37,12 @@ public static class TasksEndpoints
         ICurrentUser user,
         CancellationToken ct)
     {
+        // WRITE-side ownership: tenant-filtered Projects means a non-match = not the caller's.
+        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return ProjectNotOwned();
+        }
+
         var entity = new TaskItem
         {
             Id = req.Id is { } id && id != Guid.Empty ? id : Guid.CreateVersion7(),
@@ -126,6 +132,12 @@ public static class TasksEndpoints
         if (task is null)
         {
             return TypedResults.NotFound();
+        }
+
+        // WRITE-side ownership: validate the (re)assigned project belongs to the caller.
+        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return ProjectNotOwned();
         }
 
         if (req.Title is not null)
@@ -266,6 +278,13 @@ public static class TasksEndpoints
     }
 
     // --- helpers ---
+
+    /// <summary>RFC 9457 400 for a ProjectId that is not owned by the caller (tenant-filtered absence).</summary>
+    private static ValidationProblem ProjectNotOwned() =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["projectId"] = ["projectId does not reference one of your projects."],
+        });
 
     /// <summary>Append a new rank after the user's current max task rank (simple end-append scheme).</summary>
     private static async Task<string> NextRankAsync(AppDbContext db, Guid userId, CancellationToken ct)

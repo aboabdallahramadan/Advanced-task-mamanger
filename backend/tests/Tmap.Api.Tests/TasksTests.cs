@@ -194,6 +194,125 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Create_with_another_users_projectId_returns_400_and_does_not_persist()
+    {
+        var owner = await RegisterAsync();
+        var intruder = await RegisterAsync();
+
+        // Owner's project: only the owner may attach rows to it.
+        var ownerProjectId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project
+            {
+                Id = ownerProjectId,
+                UserId = owner.UserId,
+                Name = "Owner P",
+                Color = "#1",
+                Emoji = "📁",
+                Rank = "a0",
+                ActualTimeMinutes = 0,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var resp = await intruder.Client.PostAsJsonAsync("/api/v1/tasks", new
+        {
+            title = "smuggled",
+            status = "Inbox",
+            projectId = ownerProjectId,
+        });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        var problem = await resp.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("projectId");
+
+        // Nothing persisted for the intruder.
+        await using var db = NewElevatedDbContext(intruder.UserId);
+        var any = await db.Tasks.IgnoreQueryFilters(["SoftDelete"]).AnyAsync(t => t.Title == "smuggled");
+        any.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Patch_with_another_users_projectId_returns_400_and_does_not_persist()
+    {
+        var owner = await RegisterAsync();
+        var intruder = await RegisterAsync();
+
+        var ownerProjectId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project
+            {
+                Id = ownerProjectId,
+                UserId = owner.UserId,
+                Name = "Owner P",
+                Color = "#1",
+                Emoji = "📁",
+                Rank = "a0",
+                ActualTimeMinutes = 0,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var task = await (await intruder.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "mine", status = "Inbox" }))
+            .Content.ReadFromJsonAsync<TaskResponse>();
+
+        var resp = await intruder.Client.PatchAsJsonAsync($"/api/v1/tasks/{task!.Id}",
+            new { projectId = ownerProjectId });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await resp.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("projectId");
+
+        // The task's project assignment was NOT changed.
+        await using var db = NewElevatedDbContext(intruder.UserId);
+        var row = await db.Tasks.SingleAsync(t => t.Id == task.Id);
+        row.ProjectId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Create_and_patch_with_own_projectId_succeeds()
+    {
+        var owner = await RegisterAsync();
+
+        var ownProjectId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project
+            {
+                Id = ownProjectId,
+                UserId = owner.UserId,
+                Name = "Own P",
+                Color = "#1",
+                Emoji = "📁",
+                Rank = "a0",
+                ActualTimeMinutes = 0,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var createResp = await owner.Client.PostAsJsonAsync("/api/v1/tasks", new
+        {
+            title = "linked",
+            status = "Inbox",
+            projectId = ownProjectId,
+        });
+        createResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResp.Content.ReadFromJsonAsync<TaskResponse>();
+        created!.ProjectId.Should().Be(ownProjectId);
+
+        // Detach then re-link via PATCH to exercise the update path too.
+        var patchResp = await owner.Client.PatchAsJsonAsync($"/api/v1/tasks/{created.Id}",
+            new { projectId = ownProjectId });
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var patched = await patchResp.Content.ReadFromJsonAsync<TaskResponse>();
+        patched!.ProjectId.Should().Be(ownProjectId);
+    }
+
+    [Fact]
     public async Task Cross_user_cannot_read_update_or_delete_anothers_task_returns_404()
     {
         var owner = await RegisterAsync("owner@example.com");

@@ -68,12 +68,23 @@ public static class NotesEndpoints
         return TypedResults.Ok(ToResponse(note));
     }
 
-    private static async Task<Created<NoteResponse>> Create(
+    private static async Task<Results<Created<NoteResponse>, ValidationProblem>> Create(
         CreateNoteRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        // WRITE-side ownership: tenant-filtered NoteGroups/Projects mean a non-match = not the caller's.
+        if (req.GroupId is { } gid && !await db.NoteGroups.AnyAsync(g => g.Id == gid, ct))
+        {
+            return GroupNotOwned();
+        }
+
+        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return ProjectNotOwned();
+        }
+
         var rank = !string.IsNullOrEmpty(req.Rank)
             ? req.Rank
             : await NextRankAsync(db, currentUser.Id, req.GroupId, req.ProjectId, ct);
@@ -95,7 +106,7 @@ public static class NotesEndpoints
         return TypedResults.Created($"/api/v1/notes/{note.Id}", ToResponse(note));
     }
 
-    private static async Task<Results<Ok<NoteResponse>, NotFound>> Update(
+    private static async Task<Results<Ok<NoteResponse>, NotFound, ValidationProblem>> Update(
         Guid id,
         UpdateNoteRequest req,
         AppDbContext db,
@@ -106,6 +117,17 @@ public static class NotesEndpoints
         if (note is null)
         {
             return TypedResults.NotFound();
+        }
+
+        // WRITE-side ownership: validate the (re)assigned group/project belongs to the caller.
+        if (req.GroupId is { } gid && !await db.NoteGroups.AnyAsync(g => g.Id == gid, ct))
+        {
+            return GroupNotOwned();
+        }
+
+        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return ProjectNotOwned();
         }
 
         if (req.Title is not null)
@@ -173,6 +195,20 @@ public static class NotesEndpoints
     }
 
     // --- helpers ---
+
+    /// <summary>RFC 9457 400 for a ProjectId that is not owned by the caller (tenant-filtered absence).</summary>
+    private static ValidationProblem ProjectNotOwned() =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["projectId"] = ["projectId does not reference one of your projects."],
+        });
+
+    /// <summary>RFC 9457 400 for a GroupId that is not owned by the caller (tenant-filtered absence).</summary>
+    private static ValidationProblem GroupNotOwned() =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["groupId"] = ["groupId does not reference one of your note groups."],
+        });
 
     /// <summary>Append a new rank after the user's current max note rank for the given container.</summary>
     private static async Task<string> NextRankAsync(

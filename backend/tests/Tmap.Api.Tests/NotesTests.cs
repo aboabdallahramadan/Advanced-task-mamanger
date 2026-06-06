@@ -134,6 +134,108 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Create_with_another_users_projectId_returns_400_and_does_not_persist()
+    {
+        var owner = await RegisterAsync();
+        var intruder = await RegisterAsync();
+
+        var ownerProjectId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project { Id = ownerProjectId, UserId = owner.UserId, Name = "Owner P", Color = "#1", Emoji = "📁", Rank = "a0", ActualTimeMinutes = 0 });
+            await arrange.SaveChangesAsync();
+        }
+
+        var resp = await intruder.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(GroupId: null, ProjectId: ownerProjectId, Title: "Smuggled", Content: "x", Rank: "a0"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        resp.Content.Headers.ContentType?.MediaType.Should().Be("application/problem+json");
+        var problem = await resp.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("projectId");
+
+        await using var db = NewElevatedDbContext(intruder.UserId);
+        var any = await db.Notes.IgnoreQueryFilters(["SoftDelete"]).AnyAsync(n => n.Title == "Smuggled");
+        any.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Create_with_another_users_groupId_returns_400_and_does_not_persist()
+    {
+        var owner = await RegisterAsync();
+        var intruder = await RegisterAsync();
+
+        var ownerGroupId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.NoteGroups.Add(new NoteGroup { Id = ownerGroupId, UserId = owner.UserId, Name = "Owner G", Emoji = "📁", ProjectId = null, Rank = "a0" });
+            await arrange.SaveChangesAsync();
+        }
+
+        var resp = await intruder.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(GroupId: ownerGroupId, ProjectId: null, Title: "SmuggledGroup", Content: "x", Rank: "a0"));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await resp.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("groupId");
+
+        await using var db = NewElevatedDbContext(intruder.UserId);
+        var any = await db.Notes.IgnoreQueryFilters(["SoftDelete"]).AnyAsync(n => n.Title == "SmuggledGroup");
+        any.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Patch_with_another_users_groupId_returns_400_and_does_not_persist()
+    {
+        var owner = await RegisterAsync();
+        var intruder = await RegisterAsync();
+
+        var ownerGroupId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.NoteGroups.Add(new NoteGroup { Id = ownerGroupId, UserId = owner.UserId, Name = "Owner G", Emoji = "📁", ProjectId = null, Rank = "a0" });
+            await arrange.SaveChangesAsync();
+        }
+
+        var note = await (await intruder.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, null, "Mine", "x", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+
+        var resp = await intruder.Client.PatchAsJsonAsync($"/api/v1/notes/{note!.Id}",
+            new UpdateNoteRequest(GroupId: ownerGroupId, ProjectId: null, Title: null, Content: null, Rank: null));
+
+        resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var problem = await resp.Content.ReadFromJsonAsync<Microsoft.AspNetCore.Mvc.ValidationProblemDetails>();
+        problem!.Errors.Should().ContainKey("groupId");
+
+        await using var db = NewElevatedDbContext(intruder.UserId);
+        var row = await db.Notes.SingleAsync(n => n.Id == note.Id);
+        row.GroupId.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Create_with_own_group_and_project_succeeds()
+    {
+        var owner = await RegisterAsync();
+
+        var ownProjectId = Guid.CreateVersion7();
+        var ownGroupId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project { Id = ownProjectId, UserId = owner.UserId, Name = "Own P", Color = "#1", Emoji = "📁", Rank = "a0", ActualTimeMinutes = 0 });
+            arrange.NoteGroups.Add(new NoteGroup { Id = ownGroupId, UserId = owner.UserId, Name = "Own G", Emoji = "📁", ProjectId = null, Rank = "a0" });
+            await arrange.SaveChangesAsync();
+        }
+
+        var resp = await owner.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(GroupId: ownGroupId, ProjectId: ownProjectId, Title: "Linked", Content: "x", Rank: "a0"));
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await resp.Content.ReadFromJsonAsync<NoteResponse>();
+        created!.GroupId.Should().Be(ownGroupId);
+        created.ProjectId.Should().Be(ownProjectId);
+    }
+
+    [Fact]
     public async Task Delete_softdeletes_note_and_removes_from_live_reads()
     {
         var authed = await RegisterAsync();

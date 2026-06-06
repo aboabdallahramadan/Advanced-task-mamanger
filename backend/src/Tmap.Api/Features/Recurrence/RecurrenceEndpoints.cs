@@ -101,13 +101,24 @@ public static class RecurrenceEndpoints
             .WithName("DetachRecurrenceInstance");
     }
 
-    private static async Task<Created<RecurringTaskResponse>> Create(
+    private static async Task<Results<Created<RecurringTaskResponse>, ValidationProblem>> Create(
         CreateRecurringTaskRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
         var userId = currentUser.Id;
+
+        // WRITE-side ownership: the template task's ProjectId must belong to the caller
+        // (tenant-filtered Projects means a non-match = not the caller's).
+        if (req.Task.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["projectId"] = ["projectId does not reference one of your projects."],
+            });
+        }
+
         var startDate = req.Task.PlannedDate ?? DateOnly.FromDateTime(DateTime.UtcNow);
 
         var rule = new RecurrenceRule

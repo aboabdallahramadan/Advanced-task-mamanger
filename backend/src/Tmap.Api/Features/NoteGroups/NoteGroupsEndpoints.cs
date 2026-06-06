@@ -40,12 +40,18 @@ public static class NoteGroupsEndpoints
         return TypedResults.Ok(groups.Select(ToResponse).ToList());
     }
 
-    private static async Task<Created<NoteGroupResponse>> Create(
+    private static async Task<Results<Created<NoteGroupResponse>, ValidationProblem>> Create(
         CreateNoteGroupRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        // WRITE-side ownership: tenant-filtered Projects means a non-match = not the caller's.
+        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return ProjectNotOwned();
+        }
+
         var rank = !string.IsNullOrEmpty(req.Rank)
             ? req.Rank
             : await NextRankAsync(db, currentUser.Id, req.ProjectId, ct);
@@ -66,7 +72,7 @@ public static class NoteGroupsEndpoints
         return TypedResults.Created($"/api/v1/note-groups/{group.Id}", ToResponse(group));
     }
 
-    private static async Task<Results<Ok<NoteGroupResponse>, NotFound>> Update(
+    private static async Task<Results<Ok<NoteGroupResponse>, NotFound, ValidationProblem>> Update(
         Guid id,
         UpdateNoteGroupRequest req,
         AppDbContext db,
@@ -77,6 +83,12 @@ public static class NoteGroupsEndpoints
         if (group is null)
         {
             return TypedResults.NotFound();
+        }
+
+        // WRITE-side ownership: validate the (re)assigned project belongs to the caller.
+        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        {
+            return ProjectNotOwned();
         }
 
         if (req.Name is not null)
@@ -130,6 +142,13 @@ public static class NoteGroupsEndpoints
     }
 
     // --- helpers ---
+
+    /// <summary>RFC 9457 400 for a ProjectId that is not owned by the caller (tenant-filtered absence).</summary>
+    private static ValidationProblem ProjectNotOwned() =>
+        TypedResults.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["projectId"] = ["projectId does not reference one of your projects."],
+        });
 
     /// <summary>Append a new rank after the user's current max note-group rank for the given project container.</summary>
     private static async Task<string> NextRankAsync(AppDbContext db, Guid userId, Guid? projectId, CancellationToken ct)
