@@ -109,4 +109,31 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
         var bobDelete = await bob.Client.DeleteAsync($"/api/v1/notes/{created.Id}");
         bobDelete.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
+
+    [Fact]
+    public async Task Delete_softdeletes_note_and_removes_from_live_reads()
+    {
+        var authed = await RegisterAsync();
+
+        var note = await (await authed.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, null, "Doomed", "bye", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+        var noteId = note!.Id;
+
+        var deleteResp = await authed.Client.DeleteAsync($"/api/v1/notes/{noteId}");
+        deleteResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        // Gone from live list and get-by-id.
+        var list = await authed.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
+        list.Should().NotContain(n => n.Id == noteId);
+        var getResp = await authed.Client.GetAsync($"/api/v1/notes/{noteId}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        // Tombstoned, not hard-deleted.
+        await using var assertDb = NewElevatedDbContext();
+        var tombstoned = await assertDb.Notes
+            .IgnoreQueryFilters(["SoftDelete"])
+            .SingleAsync(n => n.Id == noteId);
+        tombstoned.DeletedAt.Should().NotBeNull();
+    }
 }
