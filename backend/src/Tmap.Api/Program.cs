@@ -6,6 +6,7 @@ using Tmap.Api.Common.Errors;
 using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
 using Tmap.Api.Features.NoteGroups;
+using Tmap.Api.Features.Recurrence;
 using Tmap.Api.Features.FocusSessions;
 using Tmap.Api.Features.DailyPlans;
 using Tmap.Api.Features.Notes;
@@ -107,6 +108,7 @@ app.MapFocusSessionsEndpoints();
 app.MapDailyPlansEndpoints();
 app.MapSettingsEndpoints();
 app.MapReportsEndpoints();
+app.MapRecurrenceEndpoints();
 
 app.Run();
 
