@@ -6,6 +6,7 @@ using Tmap.Api.Common.Errors;
 using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
 using Tmap.Api.Features.NoteGroups;
+using Tmap.Api.Features.Notes;
 using Tmap.Api.Features.Projects;
 using Tmap.Api.Features.Subtasks;
 using Tmap.Api.Features.Tasks;
@@ -97,6 +98,7 @@ app.MapTasks();
 app.MapSubtasks();
 app.MapProjects();
 app.MapNoteGroups();
+app.MapNotes();
 
 app.Run();
 
