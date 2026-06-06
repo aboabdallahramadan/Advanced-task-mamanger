@@ -13,12 +13,14 @@ public enum TaskStatus
     Archived
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum RecurrenceFrequency
 {
     Daily,
     Weekly
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter))]
 public enum RecurrenceEndType
 {
     Never,

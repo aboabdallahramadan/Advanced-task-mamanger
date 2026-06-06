@@ -12,7 +12,8 @@ public sealed record RecurringTaskInput(
     DateOnly? PlannedDate,
     int DurationMinutes,
     int? Priority,
-    int? ReminderMinutes);
+    int? ReminderMinutes,
+    Guid? Id = null);
 
 public sealed record RecurrenceRuleInput(
     RecurrenceFrequency Frequency,

@@ -84,4 +84,137 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
         var resp = await b.Client.GetAsync($"/api/v1/recurrence/rules/{created!.RecurrenceRuleId}");
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound); // tenant filter hides it
     }
+
+    [Fact]
+    public async Task Create_PersistsTemplateAndRule_NoInstancesYet()
+    {
+        var user = await RegisterAsync();
+        var resp = await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri());
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var dto = await resp.Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        dto!.IsRecurrenceTemplate.Should().BeTrue();
+        dto.RecurrenceRuleId.Should().NotBe(Guid.Empty);
+
+        await using var db = NewElevatedDbContext();
+        var template = await db.Set<TaskItem>().SingleAsync(t => t.Id == dto.Id);
+        template.IsRecurrenceTemplate.Should().BeTrue();
+        template.RecurrenceOriginalDate.Should().Be(new DateOnly(2026, 6, 1));
+        template.UserId.Should().Be(user.UserId);
+
+        var instanceCount = await db.Set<TaskItem>()
+            .CountAsync(t => t.RecurrenceRuleId == dto.RecurrenceRuleId && !t.IsRecurrenceTemplate);
+        instanceCount.Should().Be(0); // generation is deferred to ensure-instances
+    }
+
+    [Fact]
+    public async Task UpdateSeries_PropagatesToTemplateAndFutureLiveInstances()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+        await user.Client.PostAsync("/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30", null);
+
+        var patch = await user.Client.PatchAsJsonAsync($"/api/v1/recurrence/rules/{ruleId}/series",
+            new UpdateSeriesRequest(Title: "Renamed Standup", Notes: null, ProjectId: null,
+                Labels: null, DurationMinutes: 45, Priority: null, ReminderMinutes: null));
+        patch.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db = NewElevatedDbContext();
+        var template = await db.Set<TaskItem>()
+            .SingleAsync(t => t.RecurrenceRuleId == ruleId && t.IsRecurrenceTemplate);
+        template.Title.Should().Be("Renamed Standup");
+        template.DurationMinutes.Should().Be(45);
+
+        var future = await db.Set<TaskItem>()
+            .Where(t => t.RecurrenceRuleId == ruleId && !t.IsRecurrenceTemplate && t.DeletedAt == null)
+            .ToListAsync();
+        future.Should().OnlyContain(t => t.Title == "Renamed Standup" && t.DurationMinutes == 45);
+    }
+
+    [Fact]
+    public async Task DeleteSeries_SoftDeletesRuleTasksAndExceptions()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+        await user.Client.PostAsync("/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30", null);
+
+        var del = await user.Client.DeleteAsync($"/api/v1/recurrence/rules/{ruleId}");
+        del.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db = NewElevatedDbContext();
+        // No live rows remain; but rows still EXIST (tombstoned) when soft-delete filter is ignored.
+        var liveTasks = await db.Set<TaskItem>().CountAsync(t => t.RecurrenceRuleId == ruleId);
+        liveTasks.Should().Be(0);
+        var allTasks = await db.Set<TaskItem>()
+            .IgnoreQueryFilters(["SoftDelete"]).CountAsync(t => t.RecurrenceRuleId == ruleId);
+        allTasks.Should().BeGreaterThan(0);
+
+        var liveRule = await db.Set<RecurrenceRule>().CountAsync(r => r.Id == ruleId);
+        liveRule.Should().Be(0);
+        var tombstonedRule = await db.Set<RecurrenceRule>()
+            .IgnoreQueryFilters(["SoftDelete"]).SingleAsync(r => r.Id == ruleId);
+        tombstonedRule.DeletedAt.Should().NotBeNull();
+
+        // getRule now 404s (soft-delete filter active).
+        var getResp = await user.Client.GetAsync($"/api/v1/recurrence/rules/{ruleId}");
+        getResp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task DeleteSeriesFuture_TombstonesFutureInstances_AndCapsRule()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+        await user.Client.PostAsync("/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30", null);
+
+        var resp = await user.Client.PostAsJsonAsync(
+            $"/api/v1/recurrence/rules/{ruleId}/delete-future",
+            new DeleteSeriesFutureRequest(new DateOnly(2026, 6, 15)));
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db = NewElevatedDbContext();
+        var liveOnOrAfter = await db.Set<TaskItem>()
+            .CountAsync(t => t.RecurrenceRuleId == ruleId && !t.IsRecurrenceTemplate
+                             && t.PlannedDate >= new DateOnly(2026, 6, 15));
+        liveOnOrAfter.Should().Be(0);
+
+        var liveBefore = await db.Set<TaskItem>()
+            .CountAsync(t => t.RecurrenceRuleId == ruleId && !t.IsRecurrenceTemplate
+                             && t.PlannedDate < new DateOnly(2026, 6, 15));
+        liveBefore.Should().BeGreaterThan(0);
+
+        var rule = await db.Set<RecurrenceRule>().SingleAsync(r => r.Id == ruleId);
+        rule.EndType.Should().Be(RecurrenceEndType.Date);
+        rule.EndDate.Should().Be(new DateOnly(2026, 6, 14)); // day before fromDate
+    }
+
+    [Fact]
+    public async Task DetachInstance_MarksInstanceDetached()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+        await user.Client.PostAsync("/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30", null);
+
+        Guid instanceId;
+        await using (var db = NewElevatedDbContext())
+        {
+            instanceId = await db.Set<TaskItem>()
+                .Where(t => t.RecurrenceRuleId == ruleId && !t.IsRecurrenceTemplate)
+                .OrderBy(t => t.PlannedDate).Select(t => t.Id).FirstAsync();
+        }
+
+        var resp = await user.Client.PatchAsync($"/api/v1/recurrence/instances/{instanceId}/detach", null);
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var db2 = NewElevatedDbContext();
+        var inst = await db2.Set<TaskItem>().SingleAsync(t => t.Id == instanceId);
+        inst.RecurrenceDetached.Should().BeTrue();
+    }
 }
