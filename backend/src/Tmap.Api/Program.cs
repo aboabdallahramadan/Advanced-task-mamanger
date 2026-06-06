@@ -2,6 +2,7 @@ using System.Text.Json.Serialization;
 using FluentValidation;
 using Serilog;
 using Tmap.Api.Common;
+using Tmap.Api.Common.Cors;
 using Tmap.Api.Common.Errors;
 using Tmap.Api.Common.OpenApi;
 using Tmap.Api.Features.Auth;
@@ -64,6 +65,10 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTyp
 // Rate limiting: sliding-window policy keyed by IP + email for auth endpoints.
 builder.Services.AddTmapRateLimiting();
 
+// CORS: config-bound per-environment origin allowlist. Credentials are allowed only for
+// explicitly named origins (never combined with AllowAnyOrigin).
+builder.Services.AddTmapCors(builder.Configuration);
+
 // OpenAPI 3.1 document with stable Info and JWT Bearer security scheme.
 builder.Services.AddOpenApi("v1", options =>
 {
@@ -103,6 +108,10 @@ app.Use(async (ctx, next) =>
 });
 
 app.UseRateLimiter();
+
+// CORS runs after routing and before authentication so the OPTIONS preflight is handled
+// for every endpoint without per-endpoint RequireCors.
+app.UseCors(Tmap.Api.Common.Cors.CorsServiceCollectionExtensions.PolicyName);
 
 app.UseAuthentication();
 app.UseAuthorization();

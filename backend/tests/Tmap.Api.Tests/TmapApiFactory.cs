@@ -46,6 +46,7 @@ public sealed class TmapApiFactory(string connectionString) : WebApplicationFact
                         ["Jwt:ActiveKeyId"] = "k1",
                         ["Jwt:SigningKeys:k1"] = "0123456789ABCDEF0123456789ABCDEF",
                         ["Jwt:SigningKeys:k2"] = "FEDCBA9876543210FEDCBA9876543210",
+                        ["Cors:AllowedOrigins:0"] = "https://app.tmap.test",
                     }
                 );
             }
