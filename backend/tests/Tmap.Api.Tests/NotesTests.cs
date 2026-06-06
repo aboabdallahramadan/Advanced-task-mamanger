@@ -111,6 +111,29 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Reorder_updates_only_specified_rows_ranks()
+    {
+        var authed = await RegisterAsync();
+
+        var a = await (await authed.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, null, "A", "x", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+        var b = await (await authed.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, null, "B", "y", "a1")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+
+        var reorderResp = await authed.Client.PatchAsJsonAsync(
+            "/api/v1/notes/reorder",
+            new[] { new ReorderItem(b!.Id, "Zz") });
+        reorderResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var list = await authed.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
+        list!.Single(n => n.Id == b.Id).Rank.Should().Be("Zz");
+        list.Single(n => n.Id == a!.Id).Rank.Should().Be("a0");
+        list.Select(n => n.Rank).Should().BeInAscendingOrder();
+    }
+
+    [Fact]
     public async Task Delete_softdeletes_note_and_removes_from_live_reads()
     {
         var authed = await RegisterAsync();
