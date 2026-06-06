@@ -7,6 +7,7 @@ using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
 using Tmap.Api.Features.NoteGroups;
 using Tmap.Api.Features.FocusSessions;
+using Tmap.Api.Features.DailyPlans;
 using Tmap.Api.Features.Notes;
 using Tmap.Api.Features.Projects;
 using Tmap.Api.Features.Subtasks;
@@ -101,6 +102,7 @@ app.MapProjects();
 app.MapNoteGroups();
 app.MapNotes();
 app.MapFocusSessionsEndpoints();
+app.MapDailyPlansEndpoints();
 
 app.Run();
 
