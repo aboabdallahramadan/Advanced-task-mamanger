@@ -20,7 +20,9 @@ public sealed class TmapApiFactory(string connectionString) : WebApplicationFact
                 evt.RenderMessage(sw);
                 // Include property values so token-leak assertions are meaningful.
                 var props = string.Join(" ", evt.Properties.Select(p => $"{p.Key}={p.Value}"));
-                TestLogSink.Add($"{sw} {props}");
+                // Include exception info when present so test diagnostics can surface root causes.
+                var exInfo = evt.Exception is not null ? $" EX={evt.Exception.GetType().Name}: {evt.Exception.Message}" : "";
+                TestLogSink.Add($"{sw} {props}{exInfo}");
             })));
 
         return base.CreateHost(builder);
