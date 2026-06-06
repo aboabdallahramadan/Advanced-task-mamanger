@@ -11,7 +11,7 @@ public static class DailyPlansEndpoints
 {
     public static IEndpointRouteBuilder MapDailyPlansEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/daily-plans").RequireAuthorization();
+        var group = app.MapGroup("daily-plans").RequireAuthorization();
 
         group.MapGet("/{date}", Get).WithName("GetDailyPlan");
         group.MapPut("/{date}", Upsert)

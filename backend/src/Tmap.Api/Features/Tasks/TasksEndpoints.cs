@@ -13,7 +13,7 @@ public static class TasksEndpoints
 {
     public static RouteGroupBuilder MapTasks(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/tasks").RequireAuthorization();
+        var group = app.MapGroup("tasks").RequireAuthorization();
 
         group.MapPost("/", CreateAsync)
             .AddEndpointFilter<ValidationFilter<CreateTaskRequest>>();

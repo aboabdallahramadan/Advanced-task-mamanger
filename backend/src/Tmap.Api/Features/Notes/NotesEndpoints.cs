@@ -11,7 +11,7 @@ public static class NotesEndpoints
 {
     public static RouteGroupBuilder MapNotes(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/notes").RequireAuthorization();
+        var group = app.MapGroup("notes").RequireAuthorization();
 
         group.MapGet("/", GetAll);
         group.MapGet("/{id:guid}", GetById);

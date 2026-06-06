@@ -12,7 +12,7 @@ public static class RecurrenceEndpoints
 {
     public static IEndpointRouteBuilder MapRecurrenceEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/recurrence").RequireAuthorization();
+        var group = app.MapGroup("recurrence").RequireAuthorization();
 
         group.MapGet("/rules/{ruleId:guid}", GetRule).WithName("GetRecurrenceRule");
         group.MapPatch("/rules/{ruleId:guid}", UpdateRule)

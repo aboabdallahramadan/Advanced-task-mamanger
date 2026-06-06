@@ -11,7 +11,7 @@ public static class ProjectEndpoints
 {
     public static RouteGroupBuilder MapProjects(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/projects").RequireAuthorization();
+        var group = app.MapGroup("projects").RequireAuthorization();
 
         group.MapGet("/", GetAll);
         group.MapPost("/", Create).AddEndpointFilter<ValidationFilter<CreateProjectRequest>>();

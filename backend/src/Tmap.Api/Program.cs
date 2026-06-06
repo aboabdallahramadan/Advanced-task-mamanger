@@ -107,18 +107,23 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Health is an ops endpoint — not under /api/v1 and excluded from the OpenAPI document.
 app.MapHealthEndpoints();
-app.MapAuthEndpoints();
-app.MapTasks();
-app.MapSubtasks();
-app.MapProjects();
-app.MapNoteGroups();
-app.MapNotes();
-app.MapFocusSessionsEndpoints();
-app.MapDailyPlansEndpoints();
-app.MapSettingsEndpoints();
-app.MapReportsEndpoints();
-app.MapRecurrenceEndpoints();
+
+// All data/auth slices hang off a single top-level version group.
+var apiV1 = app.MapGroup("/api/v1");
+
+apiV1.MapAuthEndpoints();
+apiV1.MapTasks();
+apiV1.MapSubtasks();
+apiV1.MapProjects();
+apiV1.MapNoteGroups();
+apiV1.MapNotes();
+apiV1.MapFocusSessionsEndpoints();
+apiV1.MapDailyPlansEndpoints();
+apiV1.MapSettingsEndpoints();
+apiV1.MapReportsEndpoints();
+apiV1.MapRecurrenceEndpoints();
 
 app.Run();
 

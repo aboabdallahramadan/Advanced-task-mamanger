@@ -11,7 +11,7 @@ public static class SettingsEndpoints
 {
     public static IEndpointRouteBuilder MapSettingsEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/settings").RequireAuthorization();
+        var group = app.MapGroup("settings").RequireAuthorization();
 
         group.MapGet("/", Get).WithName("GetSettings");
         group.MapPut("/", Save)

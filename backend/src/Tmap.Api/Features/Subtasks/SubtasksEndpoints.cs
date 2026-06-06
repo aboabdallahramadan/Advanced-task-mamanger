@@ -12,11 +12,11 @@ public static class SubtasksEndpoints
 {
     public static IEndpointRouteBuilder MapSubtasks(this IEndpointRouteBuilder app)
     {
-        var nested = app.MapGroup("/api/v1/tasks/{taskId:guid}/subtasks").RequireAuthorization();
+        var nested = app.MapGroup("tasks/{taskId:guid}/subtasks").RequireAuthorization();
         nested.MapPost("/", CreateAsync)
             .AddEndpointFilter<ValidationFilter<CreateSubtaskRequest>>();
 
-        var flat = app.MapGroup("/api/v1/subtasks").RequireAuthorization();
+        var flat = app.MapGroup("subtasks").RequireAuthorization();
         flat.MapPatch("/{id:guid}", UpdateAsync)
             .AddEndpointFilter<ValidationFilter<UpdateSubtaskRequest>>();
         flat.MapDelete("/{id:guid}", DeleteAsync);

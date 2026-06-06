@@ -10,7 +10,7 @@ public static class FocusSessionsEndpoints
 {
     public static IEndpointRouteBuilder MapFocusSessionsEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/v1/focus-sessions").RequireAuthorization();
+        var group = app.MapGroup("focus-sessions").RequireAuthorization();
 
         group.MapPost("/", Add)
             .AddEndpointFilter<ValidationFilter<CreateFocusSessionRequest>>()

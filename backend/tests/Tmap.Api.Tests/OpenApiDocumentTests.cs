@@ -74,4 +74,15 @@ public sealed class OpenApiDocumentTests : IntegrationTestBase
         security.GetArrayLength().Should().BeGreaterThan(0);
         security[0].TryGetProperty("Bearer", out _).Should().BeTrue();
     }
+
+    [Fact]
+    public async Task All_paths_are_under_api_v1()
+    {
+        using var doc = await GetOpenApiAsync();
+        foreach (var path in doc.RootElement.GetProperty("paths").EnumerateObject())
+        {
+            path.Name.Should().StartWith("/api/v1/",
+                "every API route must be under the /api/v1 version group");
+        }
+    }
 }
