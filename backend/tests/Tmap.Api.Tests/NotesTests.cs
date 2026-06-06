@@ -47,4 +47,66 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
         patched.Rank.Should().Be("a1");
         patched.Id.Should().Be(created.Id);
     }
+
+    [Fact]
+    public async Task GetAll_filters_by_groupId_and_projectId()
+    {
+        var authed = await RegisterAsync();
+        var groupId = Guid.CreateVersion7();
+        var projectId = Guid.CreateVersion7();
+
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project { Id = projectId, UserId = authed.UserId, Name = "P", Color = "#1", Emoji = "📁", Rank = "a0", ActualTimeMinutes = 0 });
+            arrange.NoteGroups.Add(new NoteGroup { Id = groupId, UserId = authed.UserId, Name = "G", Emoji = "📁", ProjectId = null, Rank = "a0" });
+            await arrange.SaveChangesAsync();
+        }
+
+        var inGroup = await (await authed.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(groupId, null, "in-group", "x", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+        var inProject = await (await authed.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, projectId, "in-project", "y", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+        var loose = await (await authed.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, null, "loose", "z", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+
+        var byGroup = await authed.Client.GetFromJsonAsync<List<NoteResponse>>(
+            $"/api/v1/notes?groupId={groupId}");
+        byGroup.Should().ContainSingle(n => n.Id == inGroup!.Id);
+        byGroup.Should().NotContain(n => n.Id == inProject!.Id || n.Id == loose!.Id);
+
+        var byProject = await authed.Client.GetFromJsonAsync<List<NoteResponse>>(
+            $"/api/v1/notes?projectId={projectId}");
+        byProject.Should().ContainSingle(n => n.Id == inProject!.Id);
+        byProject.Should().NotContain(n => n.Id == inGroup!.Id || n.Id == loose!.Id);
+
+        var all = await authed.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
+        all!.Select(n => n.Id).Should().Contain(new[] { inGroup!.Id, inProject!.Id, loose!.Id });
+    }
+
+    [Fact]
+    public async Task Cross_user_cannot_see_get_or_mutate_anothers_note()
+    {
+        var alice = await RegisterAsync();
+        var bob = await RegisterAsync();
+
+        var created = await (await alice.Client.PostAsJsonAsync("/api/v1/notes",
+            new CreateNoteRequest(null, null, "Alice Note", "secret", "a0")))
+            .Content.ReadFromJsonAsync<NoteResponse>();
+
+        var bobList = await bob.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
+        bobList.Should().NotContain(n => n.Id == created!.Id);
+
+        var bobGet = await bob.Client.GetAsync($"/api/v1/notes/{created!.Id}");
+        bobGet.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var bobPatch = await bob.Client.PatchAsJsonAsync($"/api/v1/notes/{created.Id}",
+            new UpdateNoteRequest(null, null, "Hijack", "evil", "z9"));
+        bobPatch.StatusCode.Should().Be(HttpStatusCode.NotFound);
+
+        var bobDelete = await bob.Client.DeleteAsync($"/api/v1/notes/{created.Id}");
+        bobDelete.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
 }
