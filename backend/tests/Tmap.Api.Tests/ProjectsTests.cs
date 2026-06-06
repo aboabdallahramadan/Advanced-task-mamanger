@@ -4,8 +4,8 @@ using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Features.Projects;
 using Tmap.Api.Infrastructure.Entities;
-using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
 using Xunit;
+using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
 
 namespace Tmap.Api.Tests;
 

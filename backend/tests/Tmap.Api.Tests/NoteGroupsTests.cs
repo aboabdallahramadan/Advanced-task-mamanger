@@ -114,13 +114,23 @@ public sealed class NoteGroupsTests(PostgresFixture fixture) : IntegrationTestBa
         {
             arrange.Notes.Add(new Note
             {
-                Id = noteInGroupId, UserId = authed.UserId, GroupId = groupId,
-                ProjectId = null, Title = "in group", Content = "x", Rank = "a0",
+                Id = noteInGroupId,
+                UserId = authed.UserId,
+                GroupId = groupId,
+                ProjectId = null,
+                Title = "in group",
+                Content = "x",
+                Rank = "a0",
             });
             arrange.Notes.Add(new Note
             {
-                Id = looseNoteId, UserId = authed.UserId, GroupId = null,
-                ProjectId = null, Title = "loose", Content = "y", Rank = "a0",
+                Id = looseNoteId,
+                UserId = authed.UserId,
+                GroupId = null,
+                ProjectId = null,
+                Title = "loose",
+                Content = "y",
+                Rank = "a0",
             });
             await arrange.SaveChangesAsync();
         }

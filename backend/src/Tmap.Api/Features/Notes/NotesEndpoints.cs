@@ -37,10 +37,14 @@ public static class NotesEndpoints
         var query = db.Notes.AsQueryable();
 
         if (groupId is { } gid)
+        {
             query = query.Where(n => n.GroupId == gid);
+        }
 
         if (projectId is { } pid)
+        {
             query = query.Where(n => n.ProjectId == pid);
+        }
 
         var notes = await query
             .OrderBy(n => EF.Functions.Collate(n.Rank, "C"))
@@ -57,7 +61,9 @@ public static class NotesEndpoints
     {
         var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == id, ct);
         if (note is null)
+        {
             return TypedResults.NotFound();
+        }
 
         return TypedResults.Ok(ToResponse(note));
     }
@@ -98,22 +104,34 @@ public static class NotesEndpoints
     {
         var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == id, ct);
         if (note is null)
+        {
             return TypedResults.NotFound();
+        }
 
         if (req.Title is not null)
+        {
             note.Title = req.Title;
+        }
 
         if (req.Content is not null)
+        {
             note.Content = req.Content;
+        }
 
         if (req.GroupId is not null)
+        {
             note.GroupId = req.GroupId;
+        }
 
         if (req.ProjectId is not null)
+        {
             note.ProjectId = req.ProjectId;
+        }
 
         if (!string.IsNullOrEmpty(req.Rank))
+        {
             note.Rank = req.Rank;
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -128,7 +146,9 @@ public static class NotesEndpoints
     {
         var note = await db.Notes.FirstOrDefaultAsync(n => n.Id == id, ct);
         if (note is null)
+        {
             return TypedResults.NotFound();
+        }
 
         note.DeletedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);

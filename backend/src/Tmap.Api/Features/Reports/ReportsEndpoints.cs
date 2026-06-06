@@ -87,7 +87,10 @@ public static class ReportsEndpoints
 
     private static TimeZoneInfo ResolveTimeZone(string? tzId)
     {
-        if (string.IsNullOrWhiteSpace(tzId)) return TimeZoneInfo.Utc;
+        if (string.IsNullOrWhiteSpace(tzId))
+        {
+            return TimeZoneInfo.Utc;
+        }
         // .NET on both Linux and Windows resolves IANA ids via ICU; fall back to UTC.
         try { return TimeZoneInfo.FindSystemTimeZoneById(tzId); }
         catch (TimeZoneNotFoundException) { return TimeZoneInfo.Utc; }

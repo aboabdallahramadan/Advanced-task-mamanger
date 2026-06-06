@@ -48,7 +48,10 @@ public static class RecurrenceEndpoints
         CancellationToken ct)
     {
         var rule = await db.Set<RecurrenceRule>().FirstOrDefaultAsync(r => r.Id == ruleId, ct);
-        if (rule is null) return TypedResults.NotFound();
+        if (rule is null)
+        {
+            return TypedResults.NotFound();
+        }
 
         rule.Frequency = req.Frequency;
         rule.IntervalValue = req.Interval;
@@ -158,7 +161,10 @@ public static class RecurrenceEndpoints
         CancellationToken ct)
     {
         var ruleExists = await db.Set<RecurrenceRule>().AnyAsync(r => r.Id == ruleId, ct);
-        if (!ruleExists) return TypedResults.NotFound();
+        if (!ruleExists)
+        {
+            return TypedResults.NotFound();
+        }
 
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -171,13 +177,40 @@ public static class RecurrenceEndpoints
 
         foreach (var t in targets)
         {
-            if (req.Title is not null) t.Title = req.Title;
-            if (req.Notes is not null) t.Notes = req.Notes;
-            if (req.ProjectId is not null) t.ProjectId = req.ProjectId;
-            if (req.Labels is not null) t.Labels = req.Labels;
-            if (req.DurationMinutes is not null) t.DurationMinutes = req.DurationMinutes.Value;
-            if (req.Priority is not null) t.Priority = req.Priority;
-            if (req.ReminderMinutes is not null) t.ReminderMinutes = req.ReminderMinutes;
+            if (req.Title is not null)
+            {
+                t.Title = req.Title;
+            }
+
+            if (req.Notes is not null)
+            {
+                t.Notes = req.Notes;
+            }
+
+            if (req.ProjectId is not null)
+            {
+                t.ProjectId = req.ProjectId;
+            }
+
+            if (req.Labels is not null)
+            {
+                t.Labels = req.Labels;
+            }
+
+            if (req.DurationMinutes is not null)
+            {
+                t.DurationMinutes = req.DurationMinutes.Value;
+            }
+
+            if (req.Priority is not null)
+            {
+                t.Priority = req.Priority;
+            }
+
+            if (req.ReminderMinutes is not null)
+            {
+                t.ReminderMinutes = req.ReminderMinutes;
+            }
         }
 
         await db.SaveChangesAsync(ct);
@@ -191,7 +224,10 @@ public static class RecurrenceEndpoints
         CancellationToken ct)
     {
         var rule = await db.Set<RecurrenceRule>().FirstOrDefaultAsync(r => r.Id == ruleId, ct);
-        if (rule is null) return TypedResults.NotFound();
+        if (rule is null)
+        {
+            return TypedResults.NotFound();
+        }
 
         var now = DateTimeOffset.UtcNow;
 
@@ -220,7 +256,10 @@ public static class RecurrenceEndpoints
         CancellationToken ct)
     {
         var rule = await db.Set<RecurrenceRule>().FirstOrDefaultAsync(r => r.Id == ruleId, ct);
-        if (rule is null) return TypedResults.NotFound();
+        if (rule is null)
+        {
+            return TypedResults.NotFound();
+        }
 
         var now = DateTimeOffset.UtcNow;
 
@@ -249,7 +288,10 @@ public static class RecurrenceEndpoints
     {
         var task = await db.Set<TaskItem>()
             .FirstOrDefaultAsync(t => t.Id == taskId && !t.IsRecurrenceTemplate, ct);
-        if (task is null) return TypedResults.NotFound();
+        if (task is null)
+        {
+            return TypedResults.NotFound();
+        }
 
         task.RecurrenceDetached = true;
         await db.SaveChangesAsync(ct);
@@ -298,11 +340,17 @@ public static class RecurrenceEndpoints
                 $"SELECT pg_advisory_xact_lock({lockKey})", ct);
 
             var rule = await db.Set<RecurrenceRule>().FirstOrDefaultAsync(r => r.Id == ruleId, ct);
-            if (rule is null) continue; // tombstoned between the list query and the lock
+            if (rule is null)
+            {
+                continue; // tombstoned between the list query and the lock
+            }
 
             var template = await db.Set<TaskItem>()
                 .FirstOrDefaultAsync(t => t.RecurrenceRuleId == ruleId && t.IsRecurrenceTemplate, ct);
-            if (template is null) continue;
+            if (template is null)
+            {
+                continue;
+            }
 
             // Live instance dates already present (ignore tombstones so a deleted
             // occurrence is NOT regenerated — it is treated as "exists").

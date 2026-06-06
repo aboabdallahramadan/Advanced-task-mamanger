@@ -74,7 +74,9 @@ public static class ProjectEndpoints
     {
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (project is null)
+        {
             return TypedResults.NotFound();
+        }
 
         project.Name = req.Name;
         project.Color = req.Color;
@@ -94,7 +96,9 @@ public static class ProjectEndpoints
     {
         var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
         if (project is null)
+        {
             return TypedResults.NotFound();
+        }
 
         var now = DateTimeOffset.UtcNow;
 

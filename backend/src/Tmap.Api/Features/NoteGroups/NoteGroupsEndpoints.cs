@@ -29,7 +29,9 @@ public static class NoteGroupsEndpoints
     {
         var query = db.NoteGroups.AsQueryable();
         if (projectId is { } pid)
+        {
             query = query.Where(g => g.ProjectId == pid);
+        }
 
         var groups = await query
             .OrderBy(g => EF.Functions.Collate(g.Rank, "C"))
@@ -73,19 +75,29 @@ public static class NoteGroupsEndpoints
     {
         var group = await db.NoteGroups.FirstOrDefaultAsync(g => g.Id == id, ct);
         if (group is null)
+        {
             return TypedResults.NotFound();
+        }
 
         if (req.Name is not null)
+        {
             group.Name = req.Name;
+        }
 
         if (req.Emoji is not null)
+        {
             group.Emoji = req.Emoji;
+        }
 
         if (req.ProjectId is not null)
+        {
             group.ProjectId = req.ProjectId;
+        }
 
         if (!string.IsNullOrEmpty(req.Rank))
+        {
             group.Rank = req.Rank;
+        }
 
         await db.SaveChangesAsync(ct);
 
@@ -100,7 +112,9 @@ public static class NoteGroupsEndpoints
     {
         var group = await db.NoteGroups.FirstOrDefaultAsync(g => g.Id == id, ct);
         if (group is null)
+        {
             return TypedResults.NotFound();
+        }
 
         var now = DateTimeOffset.UtcNow;
 

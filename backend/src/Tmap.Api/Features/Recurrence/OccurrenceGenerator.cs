@@ -39,8 +39,16 @@ public static class OccurrenceGenerator
         void Emit(DateOnly date)
         {
             totalCount++;
-            if (date < rangeStart) return;
-            if (existingDates.Contains(date) || exceptionDates.Contains(date)) return;
+            if (date < rangeStart)
+            {
+                return;
+            }
+
+            if (existingDates.Contains(date) || exceptionDates.Contains(date))
+            {
+                return;
+            }
+
             results.Add(date);
         }
 
@@ -59,7 +67,10 @@ public static class OccurrenceGenerator
         else // Weekly
         {
             var days = new HashSet<int>(rule.DaysOfWeek);
-            if (days.Count == 0) return results;
+            if (days.Count == 0)
+            {
+                return results;
+            }
 
             // Sunday-anchored week containing templateStart. DayOfWeek.Sunday == 0.
             var weekStart = templateStart.AddDays(-(int)templateStart.DayOfWeek);
@@ -68,15 +79,30 @@ public static class OccurrenceGenerator
             {
                 for (var dow = 0; dow < 7; dow++)
                 {
-                    if (!days.Contains(dow)) continue;
+                    if (!days.Contains(dow))
+                    {
+                        continue;
+                    }
+
                     var date = weekStart.AddDays(dow);
-                    if (date < templateStart) continue;
-                    if (Stop(date)) return results;
+                    if (date < templateStart)
+                    {
+                        continue;
+                    }
+
+                    if (Stop(date))
+                    {
+                        return results;
+                    }
+
                     Emit(date);
                 }
                 weekStart = weekStart.AddDays(7 * interval);
                 // Early exit once we've walked entirely past the window/end.
-                if (weekStart > rangeEnd || (endDate is { } ed && weekStart > ed)) break;
+                if (weekStart > rangeEnd || (endDate is { } ed && weekStart > ed))
+                {
+                    break;
+                }
             }
         }
 

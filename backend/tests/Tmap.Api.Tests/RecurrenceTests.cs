@@ -28,7 +28,11 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         var daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
-        if (daysUntilMonday == 0) daysUntilMonday = 7; // strictly after today
+        if (daysUntilMonday == 0)
+        {
+            daysUntilMonday = 7; // strictly after today
+        }
+
         return today.AddDays(daysUntilMonday);
     }
 
