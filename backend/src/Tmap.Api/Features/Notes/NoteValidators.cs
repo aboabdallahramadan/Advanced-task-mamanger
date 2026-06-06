@@ -21,3 +21,16 @@ public sealed class UpdateNoteValidator : AbstractValidator<UpdateNoteRequest>
         RuleFor(x => x.Rank).NotEmpty().MaximumLength(255).When(x => x.Rank is not null);
     }
 }
+
+public sealed class ReorderItemsValidator : AbstractValidator<IReadOnlyList<ReorderItem>>
+{
+    public ReorderItemsValidator()
+    {
+        RuleFor(x => x).NotEmpty();
+        RuleForEach(x => x).ChildRules(item =>
+        {
+            item.RuleFor(i => i.Id).NotEmpty();
+            item.RuleFor(i => i.Rank).NotEmpty().MaximumLength(64);
+        });
+    }
+}
