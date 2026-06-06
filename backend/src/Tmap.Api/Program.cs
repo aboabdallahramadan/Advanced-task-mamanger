@@ -10,6 +10,7 @@ using Tmap.Api.Features.FocusSessions;
 using Tmap.Api.Features.DailyPlans;
 using Tmap.Api.Features.Notes;
 using Tmap.Api.Features.Projects;
+using Tmap.Api.Features.Reports;
 using Tmap.Api.Features.Settings;
 using Tmap.Api.Features.Subtasks;
 using Tmap.Api.Features.Tasks;
@@ -105,6 +106,7 @@ app.MapNotes();
 app.MapFocusSessionsEndpoints();
 app.MapDailyPlansEndpoints();
 app.MapSettingsEndpoints();
+app.MapReportsEndpoints();
 
 app.Run();
 
