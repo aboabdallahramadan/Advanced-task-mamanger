@@ -22,10 +22,14 @@ public static class CorsServiceCollectionExtensions
                     .GetSection(CorsOptions.SectionName)
                     .Get<CorsOptions>() ?? new CorsOptions();
 
-                if (corsOptions.AllowedOrigins.Length > 0)
+                var origins = corsOptions.AllowedOrigins
+                    .Where(o => !string.IsNullOrWhiteSpace(o))
+                    .ToArray();
+
+                if (origins.Length > 0)
                 {
                     policy
-                        .WithOrigins(corsOptions.AllowedOrigins)
+                        .WithOrigins(origins)
                         .AllowAnyHeader()
                         .AllowAnyMethod()
                         .AllowCredentials();

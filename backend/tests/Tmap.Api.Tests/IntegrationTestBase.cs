@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
@@ -25,6 +27,9 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         _fixture = fixture;
     }
 
+    /// <summary>The underlying <see cref="TmapApiFactory"/> for this test instance.</summary>
+    protected TmapApiFactory Factory => _factory;
+
     /// <summary>Unauthenticated HTTP client against the in-memory test server.</summary>
     protected HttpClient Client { get; private set; } = null!;
 
@@ -46,6 +51,17 @@ public abstract class IntegrationTestBase : IAsyncLifetime
         _factory.Dispose();
         return Task.CompletedTask;
     }
+
+    /// <summary>
+    /// Builds a derived <see cref="WebApplicationFactory{Program}"/> that layers extra in-memory
+    /// config on top of the base test config (same Postgres fixture). Use this to override specific
+    /// config values for a single test without affecting the shared <see cref="Factory"/>.
+    /// </summary>
+    protected WebApplicationFactory<Program> NewFactoryWithConfig(
+        IDictionary<string, string?> overrides) =>
+        Factory.WithWebHostBuilder(builder =>
+            builder.ConfigureAppConfiguration((_, config) =>
+                config.AddInMemoryCollection(overrides)));
 
     /// <summary>
     /// Resolves an <see cref="AppDbContext"/> whose injected <see cref="ICurrentUser"/> reports

@@ -36,4 +36,23 @@ public sealed class CorsTests : IntegrationTestBase
 
         response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Empty_allowlist_grants_no_cross_origin_access()
+    {
+        using var factory = NewFactoryWithConfig(new Dictionary<string, string?>
+        {
+            // Wipe the allowlist seeded by IntegrationTestBase.
+            ["Cors:AllowedOrigins:0"] = null,
+        });
+        using var client = factory.CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/auth/login");
+        request.Headers.Add("Origin", "https://app.tmap.test");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+
+        var response = await client.SendAsync(request);
+
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
 }
