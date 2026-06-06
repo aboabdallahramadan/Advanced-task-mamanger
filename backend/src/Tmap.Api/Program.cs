@@ -3,6 +3,7 @@ using FluentValidation;
 using Serilog;
 using Tmap.Api.Common;
 using Tmap.Api.Common.Errors;
+using Tmap.Api.Common.OpenApi;
 using Tmap.Api.Features.Auth;
 using Tmap.Api.Features.Health;
 using Tmap.Api.Features.NoteGroups;
@@ -63,7 +64,16 @@ builder.Services.AddValidatorsFromAssemblyContaining<Program>(includeInternalTyp
 // Rate limiting: sliding-window policy keyed by IP + email for auth endpoints.
 builder.Services.AddTmapRateLimiting();
 
+// OpenAPI 3.1 document with stable Info and JWT Bearer security scheme.
+builder.Services.AddOpenApi("v1", options =>
+{
+    options.AddDocumentTransformer<DocumentInfoTransformer>();
+    options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+});
+
 var app = builder.Build();
+
+app.MapOpenApi();
 
 app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
