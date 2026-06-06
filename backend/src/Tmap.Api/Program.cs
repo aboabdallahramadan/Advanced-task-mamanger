@@ -76,7 +76,17 @@ builder.Services.AddOpenApi("v1", options =>
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
 });
 
+// HSTS: clear the default localhost exclusion so integration tests (which hit https://localhost
+// via the in-process test server) can assert the header is present in Production.
+builder.Services.AddHsts(options => options.ExcludedHosts.Clear());
+
 var app = builder.Build();
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+    app.UseHttpsRedirection();
+}
 
 app.MapOpenApi();
 
