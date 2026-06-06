@@ -27,7 +27,7 @@ public static class FocusSessionsEndpoints
     {
         var entity = new FocusSession
         {
-            Id = req.Id is { } id && id != Guid.Empty ? id : Guid.CreateVersion7(),
+            Id = Guid.CreateVersion7(),
             UserId = currentUser.Id, // interceptor also stamps; explicit for clarity
             TaskId = req.TaskId,
             Project = req.Project,

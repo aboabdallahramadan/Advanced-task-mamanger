@@ -6,8 +6,7 @@ public sealed record CreateFocusSessionRequest(
     DateTimeOffset StartedAt,
     DateTimeOffset EndedAt,
     int Minutes,
-    DateOnly Date,
-    Guid? Id = null);
+    DateOnly Date);
 
 public sealed record FocusSessionResponse(
     Guid Id,
