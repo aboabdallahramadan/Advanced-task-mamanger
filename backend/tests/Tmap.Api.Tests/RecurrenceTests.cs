@@ -21,6 +21,17 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
                 Frequency: RecurrenceFrequency.Weekly, Interval: 1, DaysOfWeek: new List<int> { 1, 3, 5 },
                 EndType: RecurrenceEndType.Never, EndCount: null, EndDate: null));
 
+    // Next Monday strictly after "today" (server uses DateTime.UtcNow for the today cutoff).
+    // Guarantees every Mon/Wed/Fri occurrence generated from this anchor is a FUTURE instance,
+    // independent of the wall clock the test suite happens to run on.
+    private static DateOnly NextFutureMonday()
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var daysUntilMonday = ((int)DayOfWeek.Monday - (int)today.DayOfWeek + 7) % 7;
+        if (daysUntilMonday == 0) daysUntilMonday = 7; // strictly after today
+        return today.AddDays(daysUntilMonday);
+    }
+
     [Fact]
     public async Task GetRule_ReturnsCreatedRule()
     {
@@ -48,12 +59,20 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
     public async Task UpdateRule_MutatesFields_ResetsGeneratedUntil_AndTombstonesFutureInstances()
     {
         var user = await RegisterAsync();
-        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+        // Anchor the template's start to a date strictly after "today" so every generated
+        // instance is a FUTURE instance — the handler intentionally only tombstones
+        // PlannedDate >= today, so the all-live assertion below must see exclusively future rows.
+        var monday = NextFutureMonday();
+        var created = await (await user.Client.PostAsJsonAsync(
+                "/api/v1/recurrence", WeeklyMonWedFri(monday.ToString("yyyy-MM-dd"))))
             .Content.ReadFromJsonAsync<RecurringTaskResponse>();
         var ruleId = created!.RecurrenceRuleId;
 
         // Ensure some future instances exist.
-        await user.Client.PostAsync("/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30", null);
+        var rangeStart = monday.ToString("yyyy-MM-dd");
+        var rangeEnd = monday.AddDays(29).ToString("yyyy-MM-dd");
+        await user.Client.PostAsync(
+            $"/api/v1/recurrence/ensure-instances?start={rangeStart}&end={rangeEnd}", null);
 
         var patch = await user.Client.PatchAsJsonAsync($"/api/v1/recurrence/rules/{ruleId}",
             new UpdateRuleRequest(Frequency: RecurrenceFrequency.Daily, Interval: 2,
@@ -110,10 +129,17 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
     public async Task UpdateSeries_PropagatesToTemplateAndFutureLiveInstances()
     {
         var user = await RegisterAsync();
-        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+        // Anchor to a future Monday so every generated instance is in the future and the
+        // handler (which propagates only to future live instances) renames all of them.
+        var monday = NextFutureMonday();
+        var created = await (await user.Client.PostAsJsonAsync(
+                "/api/v1/recurrence", WeeklyMonWedFri(monday.ToString("yyyy-MM-dd"))))
             .Content.ReadFromJsonAsync<RecurringTaskResponse>();
         var ruleId = created!.RecurrenceRuleId;
-        await user.Client.PostAsync("/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30", null);
+        var rangeStart = monday.ToString("yyyy-MM-dd");
+        var rangeEnd = monday.AddDays(29).ToString("yyyy-MM-dd");
+        await user.Client.PostAsync(
+            $"/api/v1/recurrence/ensure-instances?start={rangeStart}&end={rangeEnd}", null);
 
         var patch = await user.Client.PatchAsJsonAsync($"/api/v1/recurrence/rules/{ruleId}/series",
             new UpdateSeriesRequest(Title: "Renamed Standup", Notes: null, ProjectId: null,
@@ -216,5 +242,83 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
         await using var db2 = NewElevatedDbContext();
         var inst = await db2.Set<TaskItem>().SingleAsync(t => t.Id == instanceId);
         inst.RecurrenceDetached.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task EnsureInstances_GeneratesExpectedWeeklyDates()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+
+        var resp = await user.Client.PostAsync(
+            "/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-07", null);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var body = await resp.Content.ReadFromJsonAsync<EnsureInstancesResponse>();
+
+        // Mon 06-01, Wed 06-03, Fri 06-05 within the first week.
+        body!.Created.Select(c => c.PlannedDate).Should()
+            .BeEquivalentTo(new[] { new DateOnly(2026, 6, 1), new DateOnly(2026, 6, 3), new DateOnly(2026, 6, 5) });
+
+        await using var db = NewElevatedDbContext();
+        var rule = await db.Set<RecurrenceRule>().SingleAsync(r => r.Id == ruleId);
+        rule.GeneratedUntil.Should().Be(new DateOnly(2026, 6, 7));
+    }
+
+    [Fact]
+    public async Task EnsureInstances_IsIdempotent_NoDuplicatesOnSecondCall()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+
+        var first = await user.Client.PostAsync(
+            "/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-07", null);
+        var firstBody = await first.Content.ReadFromJsonAsync<EnsureInstancesResponse>();
+        firstBody!.Created.Should().HaveCount(3);
+
+        // Second identical call must create NOTHING new.
+        var second = await user.Client.PostAsync(
+            "/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-07", null);
+        var secondBody = await second.Content.ReadFromJsonAsync<EnsureInstancesResponse>();
+        secondBody!.Created.Should().BeEmpty();
+
+        await using var db = NewElevatedDbContext();
+        var total = await db.Set<TaskItem>()
+            .CountAsync(t => t.RecurrenceRuleId == ruleId && !t.IsRecurrenceTemplate);
+        total.Should().Be(3); // exactly the first batch
+    }
+
+    [Fact]
+    public async Task EnsureInstances_ConcurrentCalls_DoNotDoubleCreate()
+    {
+        var user = await RegisterAsync();
+        var created = await (await user.Client.PostAsJsonAsync("/api/v1/recurrence", WeeklyMonWedFri()))
+            .Content.ReadFromJsonAsync<RecurringTaskResponse>();
+        var ruleId = created!.RecurrenceRuleId;
+
+        const string url = "/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-30";
+        // Fire two concurrent calls on the same authed client.
+        var t1 = user.Client.PostAsync(url, null);
+        var t2 = user.Client.PostAsync(url, null);
+        await Task.WhenAll(t1, t2);
+
+        await using var db = NewElevatedDbContext();
+        // One row per unique occurrence date, never two for the same date.
+        var dates = await db.Set<TaskItem>()
+            .Where(t => t.RecurrenceRuleId == ruleId && !t.IsRecurrenceTemplate)
+            .Select(t => t.RecurrenceOriginalDate)
+            .ToListAsync();
+        dates.Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public async Task EnsureInstances_RequiresAuthentication()
+    {
+        var resp = await Client.PostAsync(
+            "/api/v1/recurrence/ensure-instances?start=2026-06-01&end=2026-06-07", null);
+        resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 }

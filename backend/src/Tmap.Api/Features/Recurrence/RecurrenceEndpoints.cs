@@ -22,7 +22,7 @@ public static class RecurrenceEndpoints
         // (create, updateSeries, deleteSeries, deleteSeriesFuture, detachInstance,
         //  ensure-instances are mapped in P5-7 / P5-8 — added to THIS group.)
         MapSeriesOperations(group);
-        MapEnsureInstances(group);
+        MapEnsureInstancesImpl(group);
 
         return app;
     }
@@ -256,6 +256,134 @@ public static class RecurrenceEndpoints
         return TypedResults.NoContent();
     }
 
-    // TEMPORARY STUB — replaced in P5-8 (kept at the bottom of the class):
-    private static void MapEnsureInstances(RouteGroupBuilder group) { }
+    private static void MapEnsureInstancesImpl(RouteGroupBuilder group)
+    {
+        group.MapPost("/ensure-instances", EnsureInstances).WithName("EnsureRecurrenceInstances");
+    }
+
+    private static async Task<Results<Ok<EnsureInstancesResponse>, ValidationProblem>> EnsureInstances(
+        DateOnly start,
+        DateOnly end,
+        AppDbContext db,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        if (end < start)
+        {
+            return TypedResults.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["end"] = ["'end' must be on or after 'start'."],
+            });
+        }
+
+        var userId = currentUser.Id;
+        var created = new List<CreatedInstance>();
+
+        // One transaction for the whole call; advisory locks are xact-scoped.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
+        // Rules needing generation extended (live only; tenant filter scopes to user).
+        var ruleIds = await db.Set<RecurrenceRule>()
+            .Where(r => r.GeneratedUntil == null || r.GeneratedUntil < end)
+            .Select(r => r.Id)
+            .ToListAsync(ct);
+
+        foreach (var ruleId in ruleIds)
+        {
+            // Per-rule advisory lock: two concurrent calls serialize here, so the
+            // "read existing dates -> insert missing" sequence is never interleaved.
+            // Key the lock on the low 63 bits of the rule's GUID for a stable bigint.
+            var lockKey = AdvisoryLockKey(ruleId);
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"SELECT pg_advisory_xact_lock({lockKey})", ct);
+
+            var rule = await db.Set<RecurrenceRule>().FirstOrDefaultAsync(r => r.Id == ruleId, ct);
+            if (rule is null) continue; // tombstoned between the list query and the lock
+
+            var template = await db.Set<TaskItem>()
+                .FirstOrDefaultAsync(t => t.RecurrenceRuleId == ruleId && t.IsRecurrenceTemplate, ct);
+            if (template is null) continue;
+
+            // Live instance dates already present (ignore tombstones so a deleted
+            // occurrence is NOT regenerated — it is treated as "exists").
+            var existingDates = await db.Set<TaskItem>()
+                .IgnoreQueryFilters(["SoftDelete"])
+                .Where(t => t.RecurrenceRuleId == ruleId
+                            && !t.IsRecurrenceTemplate
+                            && t.RecurrenceOriginalDate != null)
+                .Select(t => t.RecurrenceOriginalDate!.Value)
+                .ToListAsync(ct);
+
+            var exceptionDates = await db.Set<RecurrenceException>()
+                .Where(e => e.RecurrenceRuleId == ruleId)
+                .Select(e => e.ExceptionDate)
+                .ToListAsync(ct);
+
+            var ruleData = new OccurrenceRuleData(
+                rule.Frequency, rule.IntervalValue, rule.DaysOfWeek,
+                rule.EndType, rule.EndCount, rule.EndDate);
+
+            var templateStart = template.RecurrenceOriginalDate ?? template.PlannedDate ?? start;
+
+            var dates = OccurrenceGenerator.Generate(
+                ruleData,
+                templateStart: templateStart,
+                rangeStart: start,
+                rangeEnd: end,
+                existingDates: new HashSet<DateOnly>(existingDates),
+                exceptionDates: new HashSet<DateOnly>(exceptionDates));
+
+            foreach (var date in dates)
+            {
+                var instance = new TaskItem
+                {
+                    Id = Guid.CreateVersion7(),
+                    UserId = userId,
+                    Title = template.Title,
+                    Notes = template.Notes,
+                    ProjectId = template.ProjectId,
+                    Labels = new List<string>(template.Labels),
+                    Source = template.Source,
+                    Status = TaskStatus.Planned,
+                    PlannedDate = date,
+                    ScheduledStart = template.ScheduledStart,
+                    ScheduledEnd = template.ScheduledEnd,
+                    DurationMinutes = template.DurationMinutes,
+                    ActualTimeMinutes = 0,
+                    Priority = template.Priority,
+                    ReminderMinutes = template.ReminderMinutes,
+                    Rank = template.Rank,
+                    RecurrenceRuleId = ruleId,
+                    IsRecurrenceTemplate = false,
+                    RecurrenceDetached = false,
+                    RecurrenceOriginalDate = date,
+                };
+                db.Add(instance);
+                created.Add(new CreatedInstance(instance.Id, ruleId, date, instance.Title));
+            }
+
+            // Advance the generation cursor idempotently.
+            if (rule.GeneratedUntil == null || rule.GeneratedUntil < end)
+            {
+                rule.GeneratedUntil = end;
+            }
+
+            await db.SaveChangesAsync(ct);
+        }
+
+        await tx.CommitAsync(ct);
+        return TypedResults.Ok(new EnsureInstancesResponse(created));
+    }
+
+    /// <summary>
+    /// Stable signed 64-bit key for pg_advisory_xact_lock derived from a GUID.
+    /// Uses the first 8 bytes; collisions only cost extra serialization, never
+    /// correctness (idempotency is also guaranteed by the existing-date skip).
+    /// </summary>
+    private static long AdvisoryLockKey(Guid id)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        id.TryWriteBytes(bytes);
+        return BitConverter.ToInt64(bytes[..8]);
+    }
 }
