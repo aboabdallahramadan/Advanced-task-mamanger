@@ -1,0 +1,4 @@
+# Raw MSBuild emit (renamed to openapi.json by scripts/copy-openapi.mjs)
+Tmap.Api_*.json
+Tmap.Api.json
+node_modules/

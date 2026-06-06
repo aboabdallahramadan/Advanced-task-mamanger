@@ -1,11 +1,28 @@
 {
   "name": "@tmap/api-client",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "Generated OpenAPI types + openapi-fetch wrapper for the TMap API (populated in a later phase).",
   "type": "module",
-  "main": "index.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
   "scripts": {
-    "generate": "echo \"openapi-typescript generation wired in a later phase\" && exit 0"
+    "emit:openapi": "dotnet build ../../backend/src/Tmap.Api/Tmap.Api.csproj -p:OpenApiGenerateDocumentsOnBuild=true",
+    "copy:openapi": "node ./scripts/copy-openapi.mjs",
+    "gen:types": "openapi-typescript ./openapi.json -o ./src/schema.d.ts",
+    "gen": "npm run emit:openapi && npm run copy:openapi && npm run gen:types",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.13.0"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.4.0",
+    "typescript": "^5.6.0"
   }
 }

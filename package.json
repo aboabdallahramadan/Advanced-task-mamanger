@@ -5,6 +5,7 @@
   "description": "TMap - Task Map: A daily planning workspace with task management and time blocking",
   "main": "./dist-electron/main.js",
   "workspaces": [
+    "apps/*",
     "packages/*"
   ],
   "scripts": {
@@ -14,7 +15,8 @@
     "package": "npm run build && electron-builder",
     "format": "prettier --write \"**/*.{ts,tsx,css,json}\"",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "gen:api-client": "npm run gen --workspace @tmap/api-client"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
