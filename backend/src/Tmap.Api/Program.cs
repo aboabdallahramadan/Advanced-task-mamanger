@@ -51,8 +51,21 @@ builder.Services.AddPersistence();
 // ASP.NET Core Identity wired onto AppDbContext with SP1 password policy and lockout settings.
 builder.Services.AddTmapIdentity();
 
-// JWT: options, service, and bearer validation.
-builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
+// JWT: options (with startup validation), service, and bearer validation.
+builder.Services
+    .AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .Validate(
+        o =>
+            !string.IsNullOrWhiteSpace(o.Issuer)
+            && !string.IsNullOrWhiteSpace(o.Audience)
+            && !string.IsNullOrWhiteSpace(o.ActiveKeyId)
+            && o.SigningKeys.ContainsKey(o.ActiveKeyId)
+            && o.SigningKeys.Values.All(v => v.Length >= 32),
+        "Jwt config is invalid. Issuer and Audience must be non-empty; "
+        + "ActiveKeyId must be present and exist in SigningKeys; "
+        + "every signing key must be at least 32 characters.")
+    .ValidateOnStart();
 builder.Services.AddScoped<IJwtService, JwtService>();
 
 // JWT bearer authentication + authorization middleware services. Without this the
