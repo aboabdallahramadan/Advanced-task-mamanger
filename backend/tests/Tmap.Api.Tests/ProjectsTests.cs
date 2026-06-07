@@ -55,6 +55,37 @@ public sealed class ProjectsTests(PostgresFixture fixture) : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Partial_patch_only_name_leaves_color_emoji_rank_unchanged()
+    {
+        var authed = await RegisterAsync();
+
+        // Create a project with known color/emoji/rank values.
+        var createResp = await authed.Client.PostAsJsonAsync(
+            "/api/v1/projects",
+            new CreateProjectRequest("Original Name", "#ff0000", "🔥", "a0"));
+        createResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResp.Content.ReadFromJsonAsync<ProjectResponse>();
+        created.Should().NotBeNull();
+
+        // PATCH with only Name provided; all other fields are omitted (null).
+        var partialPatch = new UpdateProjectRequest(Name: "Updated Name");
+        var patchResp = await authed.Client.PatchAsJsonAsync(
+            $"/api/v1/projects/{created!.Id}", partialPatch);
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var patched = await patchResp.Content.ReadFromJsonAsync<ProjectResponse>();
+        patched.Should().NotBeNull();
+        // Name must be updated.
+        patched!.Name.Should().Be("Updated Name");
+        // Color, emoji, and rank must remain unchanged.
+        patched.Color.Should().Be("#ff0000");
+        patched.Emoji.Should().Be("🔥");
+        patched.Rank.Should().Be("a0");
+        patched.ActualTimeMinutes.Should().Be(0);
+        patched.Id.Should().Be(created.Id);
+    }
+
+    [Fact]
     public async Task Cross_user_cannot_see_or_mutate_anothers_project()
     {
         var alice = await RegisterAsync();

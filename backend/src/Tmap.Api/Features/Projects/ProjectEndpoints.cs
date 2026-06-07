@@ -78,10 +78,30 @@ public static class ProjectEndpoints
             return TypedResults.NotFound();
         }
 
-        project.Name = req.Name;
-        project.Color = req.Color;
-        project.Emoji = req.Emoji;
-        project.Rank = req.Rank;
+        if (req.Name is not null)
+        {
+            project.Name = req.Name;
+        }
+
+        if (req.Color is not null)
+        {
+            project.Color = req.Color;
+        }
+
+        if (req.Emoji is not null)
+        {
+            project.Emoji = req.Emoji;
+        }
+
+        if (req.Rank is not null)
+        {
+            project.Rank = req.Rank;
+        }
+
+        if (req.ActualTimeMinutes is { } am)
+        {
+            project.ActualTimeMinutes = am;
+        }
 
         await db.SaveChangesAsync(ct);
 

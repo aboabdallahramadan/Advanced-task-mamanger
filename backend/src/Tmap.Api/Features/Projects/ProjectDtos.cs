@@ -8,10 +8,11 @@ public sealed record CreateProjectRequest(
     Guid? Id = null);
 
 public sealed record UpdateProjectRequest(
-    string Name,
-    string Color,
-    string Emoji,
-    string Rank);
+    string? Name = null,
+    string? Color = null,
+    string? Emoji = null,
+    string? Rank = null,
+    int? ActualTimeMinutes = null);
 
 public sealed record ProjectResponse(
     Guid Id,

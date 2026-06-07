@@ -17,10 +17,11 @@ public sealed class UpdateProjectValidator : AbstractValidator<UpdateProjectRequ
 {
     public UpdateProjectValidator()
     {
-        RuleFor(x => x.Name).NotEmpty().MaximumLength(200);
-        RuleFor(x => x.Color).NotEmpty().MaximumLength(32);
-        RuleFor(x => x.Emoji).MaximumLength(16);
-        RuleFor(x => x.Rank).NotEmpty().MaximumLength(255);
+        RuleFor(x => x.Name).NotEmpty().MaximumLength(200).When(x => x.Name is not null);
+        RuleFor(x => x.Color).NotEmpty().MaximumLength(32).When(x => x.Color is not null);
+        RuleFor(x => x.Emoji).MaximumLength(16).When(x => x.Emoji is not null);
+        RuleFor(x => x.Rank).NotEmpty().MaximumLength(255).When(x => x.Rank is not null);
+        RuleFor(x => x.ActualTimeMinutes).GreaterThanOrEqualTo(0).When(x => x.ActualTimeMinutes.HasValue);
     }
 }
 
