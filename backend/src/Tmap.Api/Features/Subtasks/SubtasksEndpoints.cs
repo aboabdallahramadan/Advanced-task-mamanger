@@ -45,7 +45,7 @@ public static class SubtasksEndpoints
 
         var entity = new Subtask
         {
-            Id = Guid.CreateVersion7(),
+            Id = req.Id is { } id && id != Guid.Empty ? id : Guid.CreateVersion7(),
             UserId = user.Id,
             TaskId = taskId,
             Title = req.Title,

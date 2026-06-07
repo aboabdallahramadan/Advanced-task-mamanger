@@ -81,6 +81,27 @@ public sealed class SubtasksTests(PostgresFixture fixture) : IntegrationTestBase
     }
 
     [Fact]
+    public async Task Create_subtask_with_client_supplied_id_keeps_that_id()
+    {
+        var auth = await RegisterAsync();
+        var task = await CreateTaskAsync(auth);
+
+        var clientId = Guid.CreateVersion7();
+        var resp = await auth.Client.PostAsJsonAsync(
+            $"/api/v1/tasks/{task.Id}/subtasks", new { id = clientId, title = "idempotent step" });
+
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var sub = await resp.Content.ReadFromJsonAsync<SubtaskResponse>();
+        sub!.Id.Should().Be(clientId);
+        sub.Title.Should().Be("idempotent step");
+
+        await using var db = NewElevatedDbContext();
+        var row = await db.Subtasks.SingleAsync(s => s.Id == clientId);
+        row.TaskId.Should().Be(task.Id);
+        row.UserId.Should().Be(auth.UserId);
+    }
+
+    [Fact]
     public async Task Cross_user_cannot_delete_anothers_subtask_returns_404()
     {
         var owner = await RegisterAsync("sub-owner@example.com");

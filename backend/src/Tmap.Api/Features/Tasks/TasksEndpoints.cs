@@ -52,7 +52,7 @@ public static class TasksEndpoints
             Notes = req.Notes ?? string.Empty,
             ProjectId = req.ProjectId,
             Labels = req.Labels ?? [],
-            Source = req.Source ?? string.Empty,
+            Source = req.Source ?? "local",
             Status = req.Status ?? TaskStatus.Inbox,
             PlannedDate = req.PlannedDate,
             ScheduledStart = req.ScheduledStart,

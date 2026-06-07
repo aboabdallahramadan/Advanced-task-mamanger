@@ -25,6 +25,8 @@ public static class FocusSessionsEndpoints
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        // FocusSessions are append-only telemetry; the client never needs to replay a specific Id,
+        // so Id is always server-generated and client-supplied Id is intentionally not supported.
         var entity = new FocusSession
         {
             Id = Guid.CreateVersion7(),

@@ -1,6 +1,6 @@
 namespace Tmap.Api.Features.Subtasks;
 
-public sealed record CreateSubtaskRequest(string Title);
+public sealed record CreateSubtaskRequest(Guid? Id, string Title);
 
 public sealed record UpdateSubtaskRequest(string? Title, bool? Completed, int? SortOrder);
 
