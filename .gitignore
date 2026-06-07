@@ -1,7 +1,16 @@
 node_modules/
+
+# desktop (Electron + Vite) build artifacts — now under apps/desktop
 dist/
 dist-electron/
 out/
+**/dist/
+**/dist-electron/
+**/out/
+
+# generated TS client output (if emitted into the repo)
+packages/api-client/dist/
+
 *.db
 *.db-journal
 *.tsbuildinfo
