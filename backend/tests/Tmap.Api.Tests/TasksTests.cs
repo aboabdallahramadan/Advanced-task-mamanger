@@ -68,6 +68,31 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Create_stamps_created_at_to_now_via_trigger()
+    {
+        var auth = await RegisterAsync();
+
+        var before = DateTimeOffset.UtcNow.AddSeconds(-5);
+        var resp = await auth.Client.PostAsJsonAsync("/api/v1/tasks", new
+        {
+            title = "Stamp me",
+            status = "Inbox",
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var body = await resp.Content.ReadFromJsonAsync<TaskResponse>();
+        body.Should().NotBeNull();
+        var after = DateTimeOffset.UtcNow.AddSeconds(5);
+
+        // The bump_change_seq trigger must populate created_at on INSERT — not leave the
+        // 0001-01-01 CLR default. Read it back via an elevated context (not the API response).
+        await using var db = NewElevatedDbContext();
+        var row = await db.Tasks.SingleAsync(t => t.Id == body!.Id);
+        row.CreatedAt.Should().BeAfter(DateTimeOffset.UnixEpoch);
+        row.CreatedAt.Should().BeOnOrAfter(before).And.BeOnOrBefore(after);
+        row.CreatedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromMinutes(1));
+    }
+
+    [Fact]
     public async Task GetAll_returns_only_callers_live_tasks()
     {
         var auth = await RegisterAsync();
