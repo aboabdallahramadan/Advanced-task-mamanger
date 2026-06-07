@@ -64,7 +64,10 @@ public static class SettingsEndpoints
         if (incoming.Count > 0)
         {
             var keys = incoming.Select(kv => kv.Key).ToList();
+            // Bypass ONLY the soft-delete filter so a tombstoned row with the same composite PK
+            // (UserId, Key) is found and revived in place — keep the Tenant filter for isolation.
             var existing = await db.Set<UserSetting>()
+                .IgnoreQueryFilters([AppDbContext.SoftDeleteFilter])
                 .Where(s => keys.Contains(s.Key))
                 .ToDictionaryAsync(s => s.Key, ct);
 
@@ -72,6 +75,8 @@ public static class SettingsEndpoints
             {
                 if (existing.TryGetValue(key, out var row))
                 {
+                    // Clear DeletedAt to revive the row if it was a tombstone.
+                    row.DeletedAt = null;
                     row.Value = value;
                 }
                 else

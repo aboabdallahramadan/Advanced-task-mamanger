@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Features.Settings;
+using Tmap.Api.Infrastructure;
 using Tmap.Api.Infrastructure.Entities;
 using Xunit;
 
@@ -64,6 +65,43 @@ public class SettingsTests(PostgresFixture fixture) : IntegrationTestBase(fixtur
         var count = await db.Set<UserSetting>()
             .CountAsync(s => s.UserId == user.UserId && s.Key == "timeIncrement");
         count.Should().Be(1); // upsert, not duplicate
+    }
+
+    [Fact]
+    public async Task Put_RevivesSoftDeletedKey_NoDuplicateKey()
+    {
+        var user = await RegisterAsync();
+        await user.Client.PutAsJsonAsync("/api/v1/settings",
+            new SaveSettingsRequest(new Dictionary<string, string> { ["timeIncrement"] = "30" }));
+
+        // Soft-delete the setting row out-of-band (tombstone the same composite PK).
+        await using (var db = NewElevatedDbContext(user.UserId))
+        {
+            var row = await db.Set<UserSetting>()
+                .SingleAsync(s => s.UserId == user.UserId && s.Key == "timeIncrement");
+            row.DeletedAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+
+        // PUT again: must revive the tombstone in place, not Add a duplicate-PK row.
+        var put = await user.Client.PutAsJsonAsync("/api/v1/settings",
+            new SaveSettingsRequest(new Dictionary<string, string> { ["timeIncrement"] = "5" }));
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var dto = await user.Client.GetFromJsonAsync<SettingsResponse>("/api/v1/settings");
+        dto!.Settings["timeIncrement"].Should().Be("5");
+
+        // The row is revived (DeletedAt null) and there is exactly one row for that key.
+        await using (var db = NewElevatedDbContext(user.UserId))
+        {
+            var rows = await db.Set<UserSetting>()
+                .IgnoreQueryFilters([AppDbContext.SoftDeleteFilter])
+                .Where(s => s.UserId == user.UserId && s.Key == "timeIncrement")
+                .ToListAsync();
+            rows.Should().HaveCount(1);
+            rows[0].DeletedAt.Should().BeNull();
+            rows[0].Value.Should().Be("5");
+        }
     }
 
     [Fact]

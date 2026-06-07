@@ -43,7 +43,10 @@ public static class DailyPlansEndpoints
         CancellationToken ct)
     {
         var userId = currentUser.Id;
+        // Bypass ONLY the soft-delete filter so a tombstoned row with the same composite PK
+        // (UserId, Date) is found and revived in place — keep the Tenant filter for isolation.
         var plan = await db.Set<DailyPlan>()
+            .IgnoreQueryFilters([AppDbContext.SoftDeleteFilter])
             .FirstOrDefaultAsync(p => p.Date == date, ct);
 
         if (plan is null)
@@ -61,6 +64,8 @@ public static class DailyPlansEndpoints
         else
         {
             // whole-day last-writer-wins: replace the array, do not merge.
+            // Clear DeletedAt to revive the row if it was a tombstone.
+            plan.DeletedAt = null;
             plan.CommittedAt = DateTimeOffset.UtcNow;
             plan.PlannedTaskIds = req.PlannedTaskIds;
             plan.PlannedMinutes = req.PlannedMinutes;
