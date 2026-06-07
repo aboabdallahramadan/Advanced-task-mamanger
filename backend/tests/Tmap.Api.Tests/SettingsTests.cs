@@ -122,4 +122,34 @@ public class SettingsTests(PostgresFixture fixture) : IntegrationTestBase(fixtur
         var resp = await Client.GetAsync("/api/v1/settings");
         resp.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
+
+    [Fact]
+    public async Task Put_ValidTimeZoneId_PersistsAndIsReflectedInGet()
+    {
+        var user = await RegisterAsync();
+
+        var put = await user.Client.PutAsJsonAsync("/api/v1/settings",
+            new { settings = new Dictionary<string, string>(), timeZoneId = "Asia/Tokyo" });
+        put.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var dto = await put.Content.ReadFromJsonAsync<SettingsResponse>();
+        dto!.TimeZoneId.Should().Be("Asia/Tokyo");
+
+        // Confirm GET also reflects the new value.
+        var get = await user.Client.GetFromJsonAsync<SettingsResponse>("/api/v1/settings");
+        get!.TimeZoneId.Should().Be("Asia/Tokyo");
+    }
+
+    [Fact]
+    public async Task Put_InvalidTimeZoneId_Returns400ValidationProblem()
+    {
+        var user = await RegisterAsync();
+
+        var put = await user.Client.PutAsJsonAsync("/api/v1/settings",
+            new { settings = new Dictionary<string, string>(), timeZoneId = "Not/A/Real/TimeZone" });
+        put.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+        var body = await put.Content.ReadAsStringAsync();
+        body.Should().Contain("timeZoneId");
+    }
 }

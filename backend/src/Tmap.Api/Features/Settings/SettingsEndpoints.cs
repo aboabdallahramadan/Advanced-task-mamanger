@@ -93,6 +93,15 @@ public static class SettingsEndpoints
             await db.SaveChangesAsync(ct);
         }
 
+        // Persist TimeZoneId to ApplicationUser when the caller provides it.
+        // Validation (FindSystemTimeZoneById) has already run in the ValidationFilter.
+        if (!string.IsNullOrEmpty(req.TimeZoneId))
+        {
+            var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
+            user.TimeZoneId = req.TimeZoneId;
+            await db.SaveChangesAsync(ct);
+        }
+
         // Return the full current synced view (mirrors settings.get).
         return await Get(db, currentUser, ct);
     }

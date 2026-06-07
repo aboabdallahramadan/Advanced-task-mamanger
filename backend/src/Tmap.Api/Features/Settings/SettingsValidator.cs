@@ -12,5 +12,24 @@ public sealed class SaveSettingsValidator : AbstractValidator<SaveSettingsReques
         RuleForEach(x => x.Settings)
             .Must(kv => kv.Value is null || kv.Value.Length <= 4000)
             .WithMessage("Setting value exceeds maximum length.");
+
+        // When TimeZoneId is provided it must be a valid IANA / Windows tz recognised by the runtime.
+        RuleFor(x => x.TimeZoneId)
+            .Must(tz => tz is null || IsValidTimeZone(tz))
+            .WithName("timeZoneId")
+            .WithMessage("'{PropertyName}' is not a recognised time-zone identifier.");
+    }
+
+    private static bool IsValidTimeZone(string id)
+    {
+        try
+        {
+            TimeZoneInfo.FindSystemTimeZoneById(id);
+            return true;
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return false;
+        }
     }
 }
