@@ -11,7 +11,8 @@ namespace Tmap.Api.Tests;
 [Collection("db")]
 public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
 {
-    private sealed record TokenPair(string accessToken, string refreshToken, DateTimeOffset accessTokenExpiresAt);
+    // accessTokenExpiresAt removed from response in Q0-1; use expiresIn (seconds) instead.
+    private sealed record TokenPair(string accessToken, string refreshToken, int expiresIn = 0);
 
     [Fact]
     public async Task RefreshTokens_table_exists_with_owner_and_hash_columns()
@@ -54,7 +55,7 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         var body = await res.Content.ReadFromJsonAsync<TokenPair>();
         body!.accessToken.Should().NotBeNullOrWhiteSpace();
         body.refreshToken.Should().NotBeNullOrWhiteSpace();
-        body.accessTokenExpiresAt.Should().BeAfter(DateTimeOffset.UtcNow);
+        body.expiresIn.Should().BeGreaterThan(0);
     }
 
     [Fact]
@@ -270,4 +271,63 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         // Never log raw/hashed tokens or passwords.
         log.Should().NotContain(m => m.Contains(reg.refreshToken) || m.Contains(r2!.refreshToken) || m.Contains("Password123!x"));
     }
+
+    [Fact]
+    public async Task Register_response_body_contains_typed_AuthTokenResponse()
+    {
+        var email = $"atr-{Guid.NewGuid():N}@x.io";
+        var res = await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" });
+
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var body = await res.Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+        body!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        body.ExpiresIn.Should().BeGreaterThan(0);
+        body.User.Should().NotBeNull();
+        body.User.Email.Should().Be(email);
+        body.User.Id.Should().NotBe(Guid.Empty);
+        body.User.TimeZoneId.Should().Be("UTC");
+    }
+
+    [Fact]
+    public async Task Login_response_body_contains_typed_AuthTokenResponse()
+    {
+        var email = $"atr2-{Guid.NewGuid():N}@x.io";
+        await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+        var res = await Client.PostAsJsonAsync("/api/v1/auth/login",
+            new { email, password = "Password123!x" });
+
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var body = await res.Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+        body!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        body.ExpiresIn.Should().BeGreaterThan(0);
+        body.User.Email.Should().Be(email);
+    }
+
+    [Fact]
+    public async Task Refresh_response_body_contains_typed_AuthTokenResponse()
+    {
+        var email = $"atr3-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" }))
+            .Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+
+        var res = await Client.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = reg!.RefreshToken });
+
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+        var body = await res.Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+        body!.AccessToken.Should().NotBeNullOrWhiteSpace();
+        body.ExpiresIn.Should().BeGreaterThan(0);
+        body.User.Email.Should().Be(email);
+    }
+
+    // Local DTO for the new contract; placed at bottom of AuthTests.cs
+    private sealed record AuthTokenResponseDto(
+        string AccessToken,
+        string RefreshToken,
+        int ExpiresIn,
+        AuthTokenUserDto User);
+
+    private sealed record AuthTokenUserDto(Guid Id, string Email, string TimeZoneId);
 }

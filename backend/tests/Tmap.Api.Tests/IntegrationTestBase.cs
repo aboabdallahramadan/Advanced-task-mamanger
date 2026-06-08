@@ -112,7 +112,8 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     }
 
     // Local DTOs for the harness (kept private so they don't leak into slice tests).
-    private sealed record TokenPairDto(string AccessToken, string RefreshToken, DateTimeOffset AccessTokenExpiresAt);
+    // AccessTokenExpiresAt removed in Q0-1; response now carries ExpiresIn (seconds) + User.
+    private sealed record TokenPairDto(string AccessToken, string RefreshToken, int ExpiresIn = 0);
     private sealed record MeDto(Guid Id, string Email, string TimeZoneId);
 
     /// <summary>

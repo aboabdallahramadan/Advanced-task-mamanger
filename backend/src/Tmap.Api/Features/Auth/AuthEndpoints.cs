@@ -65,7 +65,7 @@ public static class AuthEndpoints
         var pair = await AuthTokenIssuer.IssueAsync(user.Id, db, jwt, jwtOptions.Value, http);
         Log.ForContext("UserId", user.Id).ForContext("Ip", http.Connection.RemoteIpAddress?.ToString())
             .Information("auth.register.success");
-        return Results.Ok(pair);
+        return Results.Ok(AuthTokenIssuer.ToPublic(pair, jwtOptions.Value, user));
     }
 
     private static async Task<IResult> Login(
@@ -118,7 +118,7 @@ public static class AuthEndpoints
         await users.ResetAccessFailedCountAsync(user);
         var pair = await AuthTokenIssuer.IssueAsync(user.Id, db, jwt, jwtOptions.Value, http);
         Log.ForContext("UserId", user.Id).ForContext("Ip", sourceIp).Information("auth.login.success");
-        return Results.Ok(pair);
+        return Results.Ok(AuthTokenIssuer.ToPublic(pair, jwtOptions.Value, user));
     }
 
     private static async Task<IResult> Refresh(
@@ -126,7 +126,8 @@ public static class AuthEndpoints
         HttpContext http,
         AppDbContext db,
         IJwtService jwt,
-        IOptions<JwtOptions> jwtOptions)
+        IOptions<JwtOptions> jwtOptions,
+        UserManager<ApplicationUser> users)
     {
         var raw = RefreshCookie.Resolve(http.Request, body.RefreshToken);
         if (string.IsNullOrEmpty(raw))
@@ -181,7 +182,8 @@ public static class AuthEndpoints
 
         RefreshCookie.Write(http.Response, newRaw, now.AddDays(jwtOptions.Value.RefreshTokenDays));
         Log.ForContext("UserId", token.UserId).Information("auth.refresh.success");
-        return Results.Ok(new TokenPairResponse(access, newRaw, accessExp));
+        var refreshUser = await users.FindByIdAsync(token.UserId.ToString());
+        return Results.Ok(AuthTokenIssuer.ToPublic(new TokenPairResponse(access, newRaw, accessExp), jwtOptions.Value, refreshUser!));
     }
 
     private static async Task<IResult> Me(ICurrentUser currentUser, UserManager<ApplicationUser> users)
@@ -250,6 +252,19 @@ public static class AuthEndpoints
 
 internal static class AuthTokenIssuer
 {
+    public static AuthTokenResponse ToPublic(
+        TokenPairResponse pair,
+        JwtOptions opts,
+        ApplicationUser user)
+    {
+        var expiresIn = (int)(pair.AccessTokenExpiresAt - DateTimeOffset.UtcNow).TotalSeconds;
+        return new AuthTokenResponse(
+            pair.AccessToken,
+            pair.RefreshToken,
+            expiresIn > 0 ? expiresIn : 0,
+            new AuthTokenUser(user.Id, user.Email ?? "", user.TimeZoneId));
+    }
+
     public static async Task<TokenPairResponse> IssueAsync(
         Guid userId, AppDbContext db, IJwtService jwt, JwtOptions jwtOptions, HttpContext http)
     {
