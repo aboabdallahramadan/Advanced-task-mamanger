@@ -152,4 +152,14 @@ public class SettingsTests(PostgresFixture fixture) : IntegrationTestBase(fixtur
         var body = await put.Content.ReadAsStringAsync();
         body.Should().Contain("timeZoneId");
     }
+
+    [Fact]
+    public async Task OpenApi_SaveSettingsRequest_schema_includes_timeZoneId_field()
+    {
+        var doc = await Client.GetFromJsonAsync<System.Text.Json.JsonElement>("/openapi/v1.json");
+        var schemas = doc.GetProperty("components").GetProperty("schemas");
+        var saveSchema = schemas.GetProperty("SaveSettingsRequest");
+        saveSchema.GetProperty("properties").TryGetProperty("timeZoneId", out _)
+            .Should().BeTrue("timeZoneId must appear in the SaveSettingsRequest OpenAPI schema");
+    }
 }
