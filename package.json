@@ -1,5 +1,12 @@
 {
   "name": "tmap-monorepo",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"]
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build:desktop": "npm run build --workspace tmap",
+    "build:web": "npm run build --workspace @tmap/web",
+    "build:apps": "npm run build:desktop && npm run build:web",
+    "test:app": "npm run test --workspace @tmap/app",
+    "gen:api-client": "npm run gen --workspace @tmap/api-client"
+  }
 }

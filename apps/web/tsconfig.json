@@ -2,7 +2,6 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "outDir": "./dist",
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "module": "ESNext",
@@ -19,8 +18,5 @@
     }
   },
   "include": ["src/**/*"],
-  "references": [
-    { "path": "../../packages/app/tsconfig.json" },
-    { "path": "./tsconfig.electron.json" }
-  ]
+  "references": [{ "path": "../../packages/app/tsconfig.json" }]
 }

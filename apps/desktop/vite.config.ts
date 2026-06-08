@@ -4,6 +4,7 @@ import electronSimple from 'vite-plugin-electron/simple';
 import path from 'path';
 
 export default defineConfig({
+  base: './',
   plugins: [
     react(),
     electronSimple({
@@ -39,8 +40,12 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      // The @/ alias now points into the shared package (where the renderer lives).
+      '@': path.resolve(__dirname, '../../packages/app/src'),
     },
+  },
+  optimizeDeps: {
+    include: ['@tmap/app', '@tmap/api-client'],
   },
   build: {
     outDir: 'dist',

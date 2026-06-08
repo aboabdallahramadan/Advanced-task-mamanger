@@ -11,6 +11,9 @@ out/
 # generated TS client output (if emitted into the repo)
 packages/api-client/dist/
 
+# @tmap/app emitted declaration output
+packages/app/dist-types/
+
 *.db
 *.db-journal
 *.tsbuildinfo
