@@ -129,6 +129,14 @@ public static class AuthEndpoints
         IOptions<JwtOptions> jwtOptions,
         UserManager<ApplicationUser> users)
     {
+        // Web path (no body token): require the CSRF sentinel header.
+        // Native path (body token present): header not required.
+        var isWebPath = string.IsNullOrEmpty(body.RefreshToken);
+        if (isWebPath && !http.Request.Headers.ContainsKey("X-Tmap-Refresh"))
+        {
+            return GenericUnauthorized();
+        }
+
         var raw = RefreshCookie.Resolve(http.Request, body.RefreshToken);
         if (string.IsNullOrEmpty(raw))
         {

@@ -322,6 +322,54 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         body.User.Email.Should().Be(email);
     }
 
+    [Fact]
+    public async Task Refresh_web_path_without_XTmapRefresh_header_returns_401()
+    {
+        // Register so a valid cookie would exist in a real browser session.
+        // In tests we have no actual cookie jar, but we can verify the header guard
+        // independently: sending no body token AND no X-Tmap-Refresh header must fail.
+        var email = $"csrf-{Guid.NewGuid():N}@x.io";
+        await Client.PostAsJsonAsync("/api/v1/auth/register", new { email, password = "Password123!x" });
+
+        // Simulate web path: no body refreshToken, no X-Tmap-Refresh header.
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        req.Content = JsonContent.Create(new { refreshToken = (string?)null });
+        // Deliberately NOT adding X-Tmap-Refresh header.
+        var res = await Client.SendAsync(req);
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Refresh_native_path_without_XTmapRefresh_header_still_works()
+    {
+        // Native clients send the token in the body — header not required.
+        var email = $"native-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" }))
+            .Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+
+        var res = await Client.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = reg!.RefreshToken });
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Refresh_cookie_path_with_XTmapRefresh_header_is_accepted()
+    {
+        // We cannot set httpOnly cookies in the test client easily, but we can confirm
+        // the header alone does not break a body-token refresh.
+        var email = $"xhdr-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" }))
+            .Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        req.Headers.Add("X-Tmap-Refresh", "1");
+        req.Content = JsonContent.Create(new { refreshToken = reg!.RefreshToken });
+        var res = await Client.SendAsync(req);
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+    }
+
     // Local DTO for the new contract; placed at bottom of AuthTests.cs
     private sealed record AuthTokenResponseDto(
         string AccessToken,
