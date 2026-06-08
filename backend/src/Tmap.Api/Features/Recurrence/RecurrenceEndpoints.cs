@@ -2,6 +2,8 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
 using Tmap.Api.Common;
 using Tmap.Api.Common.Validation;
+using Tmap.Api.Features.Subtasks;
+using Tmap.Api.Features.Tasks;
 using Tmap.Api.Infrastructure;
 using Tmap.Api.Infrastructure.Entities;
 using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
@@ -101,7 +103,7 @@ public static class RecurrenceEndpoints
             .WithName("DetachRecurrenceInstance");
     }
 
-    private static async Task<Results<Created<RecurringTaskResponse>, ValidationProblem>> Create(
+    private static async Task<Results<Created<List<TaskResponse>>, ValidationProblem>> Create(
         CreateRecurringTaskRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
@@ -160,8 +162,8 @@ public static class RecurrenceEndpoints
 
         await db.SaveChangesAsync(ct);
 
-        var dto = new RecurringTaskResponse(template.Id, template.Title, rule.Id, true, template.PlannedDate);
-        return TypedResults.Created($"/api/v1/tasks/{template.Id}", dto);
+        var taskResponse = TasksEndpoints.ToResponse(template, new List<SubtaskResponse>());
+        return TypedResults.Created($"/api/v1/tasks/{template.Id}", new List<TaskResponse> { taskResponse });
     }
 
     private static async Task<Results<NoContent, NotFound>> UpdateSeries(
@@ -314,7 +316,7 @@ public static class RecurrenceEndpoints
         group.MapPost("/ensure-instances", EnsureInstances).WithName("EnsureRecurrenceInstances");
     }
 
-    private static async Task<Results<Ok<EnsureInstancesResponse>, ValidationProblem>> EnsureInstances(
+    private static async Task<Results<Ok<List<TaskResponse>>, ValidationProblem>> EnsureInstances(
         DateOnly start,
         DateOnly end,
         AppDbContext db,
@@ -330,7 +332,7 @@ public static class RecurrenceEndpoints
         }
 
         var userId = currentUser.Id;
-        var created = new List<CreatedInstance>();
+        var created = new List<TaskItem>();
 
         // One transaction for the whole call; advisory locks are xact-scoped.
         await using var tx = await db.Database.BeginTransactionAsync(ct);
@@ -418,7 +420,7 @@ public static class RecurrenceEndpoints
                     RecurrenceOriginalDate = date,
                 };
                 db.Add(instance);
-                created.Add(new CreatedInstance(instance.Id, ruleId, date, instance.Title));
+                created.Add(instance);
             }
 
             // Advance the generation cursor idempotently.
@@ -431,7 +433,18 @@ public static class RecurrenceEndpoints
         }
 
         await tx.CommitAsync(ct);
-        return TypedResults.Ok(new EnsureInstancesResponse(created));
+
+        // Load subtasks for all created instances in one query.
+        var createdIds = created.Select(t => t.Id).ToList();
+        var subtasksMap = await db.Set<Subtask>()
+            .Where(s => createdIds.Contains(s.TaskId))
+            .ToListAsync(ct);
+        var subByTask = subtasksMap.GroupBy(s => s.TaskId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        return TypedResults.Ok(created.Select(t =>
+            TasksEndpoints.ToResponse(t, subByTask.GetValueOrDefault(t.Id, new())
+                .Select(TasksEndpoints.ToSubtaskResponse).ToList())).ToList());
     }
 
     /// <summary>

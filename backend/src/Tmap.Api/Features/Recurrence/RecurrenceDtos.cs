@@ -27,13 +27,6 @@ public sealed record CreateRecurringTaskRequest(
     RecurringTaskInput Task,
     RecurrenceRuleInput Rule);
 
-// Response after create: the template task plus its rule id.
-public sealed record RecurringTaskResponse(
-    Guid Id,
-    string Title,
-    Guid RecurrenceRuleId,
-    bool IsRecurrenceTemplate,
-    DateOnly? PlannedDate);
 
 // ---- rule read ----
 public sealed record RecurrenceRuleResponse(
@@ -70,11 +63,3 @@ public sealed record UpdateSeriesRequest(
 // ---- deleteSeriesFuture(ruleId, fromDate) ----
 public sealed record DeleteSeriesFutureRequest(DateOnly FromDate);
 
-// ---- ensure-instances result: the created instance tasks ----
-public sealed record EnsureInstancesResponse(List<CreatedInstance> Created);
-
-public sealed record CreatedInstance(
-    Guid Id,
-    Guid RecurrenceRuleId,
-    DateOnly PlannedDate,
-    string Title);
