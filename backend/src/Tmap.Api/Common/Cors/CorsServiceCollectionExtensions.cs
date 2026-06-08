@@ -1,3 +1,7 @@
+// Desktop (Electron) clients fetch from a file:// context; the browser/renderer
+// sends no Origin header (or "null"), so they never hit CORS and are unaffected
+// by this allowlist. Only browser-based web app origins need to be listed here.
+
 namespace Tmap.Api.Common.Cors;
 
 public static class CorsServiceCollectionExtensions

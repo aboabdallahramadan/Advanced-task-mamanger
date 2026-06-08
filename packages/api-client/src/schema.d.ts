@@ -779,12 +779,58 @@ export interface paths {
                         "application/json": components["schemas"]["NoteGroupResponse"];
                     };
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
             };
         };
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/v1/note-groups/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReorderItem"][];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         trace?: never;
     };
     "/api/v1/note-groups/{id}": {
@@ -850,6 +896,15 @@ export interface paths {
                         "application/json": components["schemas"]["NoteGroupResponse"];
                     };
                 };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                    };
+                };
                 /** @description Not Found */
                 404: {
                     headers: {
@@ -912,6 +967,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["NoteResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                     };
                 };
             };
@@ -1011,6 +1075,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["NoteResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                     };
                 };
                 /** @description Not Found */
@@ -1232,15 +1305,6 @@ export interface components {
             /** Format: date */
             date: string;
         };
-        CreatedInstance: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            recurrenceRuleId: string;
-            /** Format: date */
-            plannedDate: string;
-            title: string;
-        };
         CreateFocusSessionRequest: {
             /** Format: uuid */
             taskId: null | string;
@@ -1287,6 +1351,8 @@ export interface components {
             rule: components["schemas"]["RecurrenceRuleInput"];
         };
         CreateSubtaskRequest: {
+            /** Format: uuid */
+            id: null | string;
             title: string;
         };
         CreateTaskRequest: {
@@ -1340,9 +1406,6 @@ export interface components {
         DeleteSeriesFutureRequest: {
             /** Format: date */
             fromDate: string;
-        };
-        EnsureInstancesResponse: {
-            created: components["schemas"]["CreatedInstance"][];
         };
         FocusSessionResponse: {
             /** Format: uuid */
@@ -1475,16 +1538,6 @@ export interface components {
             /** Format: uuid */
             id?: null | string;
         };
-        RecurringTaskResponse: {
-            /** Format: uuid */
-            id: string;
-            title: string;
-            /** Format: uuid */
-            recurrenceRuleId: string;
-            isRecurrenceTemplate: boolean;
-            /** Format: date */
-            plannedDate: null | string;
-        };
         RefreshRequest: {
             refreshToken: null | string;
         };
@@ -1506,6 +1559,7 @@ export interface components {
             settings: {
                 [key: string]: string;
             };
+            timeZoneId?: null | string;
         };
         SessionReportItem: {
             project: string;
@@ -1578,7 +1632,7 @@ export interface components {
             subtasks: components["schemas"]["SubtaskResponse"][];
         };
         /** @enum {unknown} */
-        TaskStatus: "Inbox" | "Backlog" | "Planned" | "Scheduled" | "Done" | "Archived" | null;
+        TaskStatus: "Inbox" | "Backlog" | "Planned" | "Scheduled" | "Done" | "Archived";
         UpdateNoteGroupRequest: {
             name: null | string;
             emoji: null | string;
@@ -1596,10 +1650,12 @@ export interface components {
             rank: null | string;
         };
         UpdateProjectRequest: {
-            name: string;
-            color: string;
-            emoji: string;
-            rank: string;
+            name?: null | string;
+            color?: null | string;
+            emoji?: null | string;
+            rank?: null | string;
+            /** Format: int32 */
+            actualTimeMinutes?: null | number | string;
         };
         UpdateRuleRequest: {
             frequency: components["schemas"]["RecurrenceFrequency"];
@@ -1936,7 +1992,16 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecurringTaskResponse"];
+                    "application/json": components["schemas"]["TaskResponse"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
                 };
             };
         };
@@ -2048,7 +2113,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["EnsureInstancesResponse"];
+                    "application/json": components["schemas"]["TaskResponse"][];
                 };
             };
             /** @description Bad Request */

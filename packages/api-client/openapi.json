@@ -739,6 +739,46 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/note-groups/reorder": {
+      "patch": {
+        "tags": [
+          "NoteGroupsEndpoints"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ReorderItem"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
           }
         },
         "security": [
@@ -787,6 +827,16 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -893,6 +943,16 @@
                 }
               }
             }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -977,6 +1037,16 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1414,7 +1484,20 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RecurringTaskResponse"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskResponse"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpValidationProblemDetails"
                 }
               }
             }
@@ -1575,7 +1658,10 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/EnsureInstancesResponse"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskResponse"
+                  }
                 }
               }
             }
@@ -1619,32 +1705,6 @@
           "date": {
             "type": "string",
             "format": "date"
-          }
-        }
-      },
-      "CreatedInstance": {
-        "required": [
-          "id",
-          "recurrenceRuleId",
-          "plannedDate",
-          "title"
-        ],
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "recurrenceRuleId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "plannedDate": {
-            "type": "string",
-            "format": "date"
-          },
-          "title": {
-            "type": "string"
           }
         }
       },
@@ -1826,10 +1886,18 @@
       },
       "CreateSubtaskRequest": {
         "required": [
+          "id",
           "title"
         ],
         "type": "object",
         "properties": {
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
           "title": {
             "type": "string"
           }
@@ -2053,20 +2121,6 @@
           "fromDate": {
             "type": "string",
             "format": "date"
-          }
-        }
-      },
-      "EnsureInstancesResponse": {
-        "required": [
-          "created"
-        ],
-        "type": "object",
-        "properties": {
-          "created": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/CreatedInstance"
-            }
           }
         }
       },
@@ -2565,39 +2619,6 @@
           }
         }
       },
-      "RecurringTaskResponse": {
-        "required": [
-          "id",
-          "title",
-          "recurrenceRuleId",
-          "isRecurrenceTemplate",
-          "plannedDate"
-        ],
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "title": {
-            "type": "string"
-          },
-          "recurrenceRuleId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "isRecurrenceTemplate": {
-            "type": "boolean"
-          },
-          "plannedDate": {
-            "type": [
-              "null",
-              "string"
-            ],
-            "format": "date"
-          }
-        }
-      },
       "RefreshRequest": {
         "required": [
           "refreshToken"
@@ -2682,6 +2703,12 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "timeZoneId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -2954,8 +2981,7 @@
           "Planned",
           "Scheduled",
           "Done",
-          "Archived",
-          null
+          "Archived"
         ]
       },
       "UpdateNoteGroupRequest": {
@@ -3039,25 +3065,40 @@
         }
       },
       "UpdateProjectRequest": {
-        "required": [
-          "name",
-          "color",
-          "emoji",
-          "rank"
-        ],
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "color": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "emoji": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
           },
           "rank": {
-            "type": "string"
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "actualTimeMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

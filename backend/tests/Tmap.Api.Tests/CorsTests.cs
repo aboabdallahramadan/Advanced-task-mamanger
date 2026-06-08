@@ -55,4 +55,38 @@ public sealed class CorsTests : IntegrationTestBase
 
         response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Preflight_from_web_dev_origin_5174_is_allowed()
+    {
+        using var factory = NewFactoryWithConfig(new Dictionary<string, string?>
+        {
+            ["Cors:AllowedOrigins:1"] = "http://localhost:5174",
+        });
+        using var client = factory.CreateClient();
+
+        var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/auth/login");
+        request.Headers.Add("Origin", "http://localhost:5174");
+        request.Headers.Add("Access-Control-Request-Method", "POST");
+        request.Headers.Add("Access-Control-Request-Headers", "content-type,authorization");
+
+        var response = await client.SendAsync(request);
+
+        response.Headers.GetValues("Access-Control-Allow-Origin")
+            .Should().ContainSingle().Which.Should().Be("http://localhost:5174");
+        response.Headers.GetValues("Access-Control-Allow-Credentials")
+            .Should().ContainSingle().Which.Should().Be("true");
+    }
+
+    [Fact]
+    public async Task Preflight_from_web_dev_origin_5174_without_allowlist_entry_is_blocked()
+    {
+        // Factory default (TmapApiFactory) only seeds "https://app.tmap.test".
+        var request = new HttpRequestMessage(HttpMethod.Options, "/api/v1/tasks");
+        request.Headers.Add("Origin", "http://localhost:5174");
+        request.Headers.Add("Access-Control-Request-Method", "GET");
+
+        var response = await Client.SendAsync(request);
+        response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
+    }
 }
