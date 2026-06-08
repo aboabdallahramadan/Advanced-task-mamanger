@@ -31,7 +31,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AuthTokenResponse"];
+                    };
                 };
             };
         };
@@ -68,7 +70,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AuthTokenResponse"];
+                    };
                 };
             };
         };
@@ -105,7 +109,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["AuthTokenResponse"];
+                    };
                 };
             };
         };
@@ -1298,6 +1304,26 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @description Public OpenAPI-visible response for register / login / refresh. */
+        AuthTokenResponse: {
+            /** @description The access token. */
+            accessToken: string;
+            /** @description Refresh token — absent on web (httpOnly cookie); present for native clients. */
+            refreshToken: string;
+            /**
+             * Format: int32
+             * @description Seconds until the access token expires.
+             */
+            expiresIn: number | string;
+            /** @description The authenticated user's public profile. */
+            user: components["schemas"]["AuthTokenUser"];
+        };
+        AuthTokenUser: {
+            /** Format: uuid */
+            id: string;
+            email: string;
+            timeZoneId: string;
+        };
         CompletedTaskReportItem: {
             /** Format: uuid */
             id: string;

@@ -23,7 +23,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -50,7 +57,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -77,7 +91,14 @@
         },
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthTokenResponse"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1687,6 +1708,59 @@
   },
   "components": {
     "schemas": {
+      "AuthTokenResponse": {
+        "required": [
+          "accessToken",
+          "refreshToken",
+          "expiresIn",
+          "user"
+        ],
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "The access token."
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "Refresh token — absent on web (httpOnly cookie); present for native clients."
+          },
+          "expiresIn": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "Seconds until the access token expires.",
+            "format": "int32"
+          },
+          "user": {
+            "description": "The authenticated user's public profile.",
+            "$ref": "#/components/schemas/AuthTokenUser"
+          }
+        },
+        "description": "Public OpenAPI-visible response for register / login / refresh."
+      },
+      "AuthTokenUser": {
+        "required": [
+          "id",
+          "email",
+          "timeZoneId"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string"
+          },
+          "timeZoneId": {
+            "type": "string"
+          }
+        }
+      },
       "CompletedTaskReportItem": {
         "required": [
           "id",

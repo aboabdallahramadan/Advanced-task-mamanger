@@ -20,16 +20,19 @@ public static class AuthEndpoints
         group.MapPost("/register", Register)
             .AddEndpointFilter<ValidationFilter<RegisterRequest>>()
             .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .Produces<AuthTokenResponse>(StatusCodes.Status200OK);
 
         group.MapPost("/login", Login)
             .AddEndpointFilter<ValidationFilter<LoginRequest>>()
             .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .Produces<AuthTokenResponse>(StatusCodes.Status200OK);
 
         group.MapPost("/refresh", Refresh)
             .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
-            .AllowAnonymous();
+            .AllowAnonymous()
+            .Produces<AuthTokenResponse>(StatusCodes.Status200OK);
 
         group.MapGet("/me", Me).RequireAuthorization();
 
