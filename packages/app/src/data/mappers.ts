@@ -28,7 +28,6 @@ type FocusSessionResponse = components['schemas']['FocusSessionResponse'];
 type DailyPlanResponse = components['schemas']['DailyPlanResponse'];
 type RecurrenceRuleResponse = components['schemas']['RecurrenceRuleResponse'];
 type ReportDataResponse = components['schemas']['ReportDataResponse'];
-type SettingsResponse = components['schemas']['SettingsResponse'];
 type TaskStatus = components['schemas']['TaskStatus'];
 type RecurrenceFrequency = components['schemas']['RecurrenceFrequency'];
 type RecurrenceEndType = components['schemas']['RecurrenceEndType'];
@@ -192,7 +191,7 @@ export function fromTask(
 // Project
 // ---------------------------------------------------------------------------
 
-export function toProject(r: ProjectResponse): Project {
+export function toProject(r: ProjectResponse): Project & { _rank: string } {
   return {
     id: r.id,
     name: r.name,
@@ -202,6 +201,7 @@ export function toProject(r: ProjectResponse): Project {
     actualTimeMinutes: toNum(r.actualTimeMinutes, 0),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    _rank: r.rank,
   };
 }
 
@@ -209,7 +209,7 @@ export function toProject(r: ProjectResponse): Project {
 // NoteGroup
 // ---------------------------------------------------------------------------
 
-export function toNoteGroup(r: NoteGroupResponse, order = 0): NoteGroup {
+export function toNoteGroup(r: NoteGroupResponse, order = 0): NoteGroup & { _rank: string } {
   return {
     id: r.id,
     name: r.name,
@@ -218,6 +218,7 @@ export function toNoteGroup(r: NoteGroupResponse, order = 0): NoteGroup {
     order,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    _rank: r.rank,
   };
 }
 
@@ -225,7 +226,7 @@ export function toNoteGroup(r: NoteGroupResponse, order = 0): NoteGroup {
 // Note
 // ---------------------------------------------------------------------------
 
-export function toNote(r: NoteResponse, order = 0): Note {
+export function toNote(r: NoteResponse, order = 0): Note & { _rank: string } {
   return {
     id: r.id,
     groupId: r.groupId ?? null,
@@ -235,6 +236,7 @@ export function toNote(r: NoteResponse, order = 0): Note {
     order,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
+    _rank: r.rank,
   };
 }
 
@@ -316,37 +318,38 @@ export function toReportData(r: ReportDataResponse): ReportData {
 // Settings
 // ---------------------------------------------------------------------------
 
+const SYNCED_NUMERIC_KEYS = ['workStartHour', 'workEndHour', 'timeIncrement'] as const;
+
 /**
- * Converts the server SettingsResponse (flat string map) back to the
- * richer in-app settings Record used by the store.
- * We JSON-parse any values that look like JSON, leave others as strings.
+ * Parse a SettingsResponse.settings map (Record<string,string>) into the
+ * store-friendly object: the three synced values become numbers; any other key
+ * is left as its string value. `timeZoneId` is handled separately (top-level).
  */
-export function parseSettings(r: SettingsResponse): Record<string, unknown> {
+export function parseSettings(map: Record<string, string>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(r.settings)) {
-    try {
-      out[k] = JSON.parse(v);
-    } catch {
+  for (const [k, v] of Object.entries(map)) {
+    if ((SYNCED_NUMERIC_KEYS as readonly string[]).includes(k)) {
+      const n = Number(v);
+      out[k] = Number.isFinite(n) ? n : v;
+    } else {
       out[k] = v;
     }
-  }
-  if (r.timeZoneId) {
-    out['timeZoneId'] = r.timeZoneId;
   }
   return out;
 }
 
 /**
- * Converts the in-app settings map to the flat string map the server expects.
- * Non-string values are JSON-stringified.
+ * Stringify a store settings object into SaveSettingsRequest.settings
+ * (Record<string,string>). Only the three synced numeric keys are persisted to
+ * the server in SP2 (local-only keys like sidebarCollapsed live in localStorage,
+ * handled by the store).
  */
-export function stringifySettings(
-  settings: Record<string, unknown>,
-): Record<string, string> {
+export function stringifySettings(s: Record<string, unknown>): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(settings)) {
-    if (k === 'timeZoneId') continue; // sent separately on the SaveSettingsRequest
-    out[k] = typeof v === 'string' ? v : JSON.stringify(v);
+  for (const k of SYNCED_NUMERIC_KEYS) {
+    if (s[k] !== undefined && s[k] !== null) {
+      out[k] = String(s[k]);
+    }
   }
   return out;
 }
