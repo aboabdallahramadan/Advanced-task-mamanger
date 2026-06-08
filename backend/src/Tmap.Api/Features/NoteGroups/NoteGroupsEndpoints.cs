@@ -15,6 +15,11 @@ public static class NoteGroupsEndpoints
 
         group.MapGet("/", GetAll);
         group.MapPost("/", Create).AddEndpointFilter<ValidationFilter<CreateNoteGroupRequest>>();
+
+        // reorder must be registered BEFORE /{id:guid} so the literal segment wins.
+        group.MapPatch("/reorder", Reorder)
+            .AddEndpointFilter<ValidationFilter<IReadOnlyList<ReorderItem>>>();
+
         group.MapPatch("/{id:guid}", Update).AddEndpointFilter<ValidationFilter<UpdateNoteGroupRequest>>();
         group.MapDelete("/{id:guid}", Delete);
 
@@ -137,6 +142,23 @@ public static class NoteGroupsEndpoints
         await db.Notes
             .Where(n => n.GroupId == id)
             .ExecuteUpdateAsync(s => s.SetProperty(n => n.DeletedAt, now), ct);
+
+        return TypedResults.NoContent();
+    }
+
+    private static async Task<NoContent> Reorder(
+        IReadOnlyList<ReorderItem> items,
+        AppDbContext db,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        foreach (var item in items)
+        {
+            // Tenant filter on NoteGroups ensures only the current user's rows are matched.
+            await db.NoteGroups
+                .Where(g => g.Id == item.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(g => g.Rank, item.Rank), ct);
+        }
 
         return TypedResults.NoContent();
     }

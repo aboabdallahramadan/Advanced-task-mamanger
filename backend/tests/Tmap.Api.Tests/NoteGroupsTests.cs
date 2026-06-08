@@ -173,6 +173,61 @@ public sealed class NoteGroupsTests(PostgresFixture fixture) : IntegrationTestBa
     }
 
     [Fact]
+    public async Task Reorder_updates_ranks_for_all_supplied_ids()
+    {
+        var authed = await RegisterAsync();
+
+        // Create three groups.
+        var a = await (await authed.Client.PostAsJsonAsync("/api/v1/note-groups",
+            new CreateNoteGroupRequest("A", "📁", null, "a0")))
+            .Content.ReadFromJsonAsync<NoteGroupResponse>();
+        var b = await (await authed.Client.PostAsJsonAsync("/api/v1/note-groups",
+            new CreateNoteGroupRequest("B", "📁", null, "b0")))
+            .Content.ReadFromJsonAsync<NoteGroupResponse>();
+        var c = await (await authed.Client.PostAsJsonAsync("/api/v1/note-groups",
+            new CreateNoteGroupRequest("C", "📁", null, "c0")))
+            .Content.ReadFromJsonAsync<NoteGroupResponse>();
+
+        // Reorder: move A to end by giving it rank "z0".
+        var items = new[]
+        {
+            new { id = a!.Id, rank = "z0" },
+            new { id = b!.Id, rank = "a0" },
+            new { id = c!.Id, rank = "m0" },
+        };
+
+        var resp = await authed.Client.PatchAsJsonAsync("/api/v1/note-groups/reorder", items);
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        var list = await authed.Client.GetFromJsonAsync<List<NoteGroupResponse>>("/api/v1/note-groups");
+        list!.First(g => g.Id == b.Id).Rank.Should().Be("a0");
+        list.First(g => g.Id == c.Id).Rank.Should().Be("m0");
+        list.First(g => g.Id == a.Id).Rank.Should().Be("z0");
+        // Verify list is returned sorted by new ranks.
+        list.Select(g => g.Rank).Should().BeInAscendingOrder(StringComparer.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reorder_ignores_ids_belonging_to_other_users()
+    {
+        var alice = await RegisterAsync();
+        var bob = await RegisterAsync();
+
+        var aliceGroup = await (await alice.Client.PostAsJsonAsync("/api/v1/note-groups",
+            new CreateNoteGroupRequest("AliceG", "📁", null, "a0")))
+            .Content.ReadFromJsonAsync<NoteGroupResponse>();
+
+        // Bob tries to reorder Alice's group.
+        var resp = await bob.Client.PatchAsJsonAsync("/api/v1/note-groups/reorder",
+            new[] { new { id = aliceGroup!.Id, rank = "z9" } });
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent); // no error, but nothing changed
+
+        // Alice's group rank is unchanged.
+        var aliceList = await alice.Client.GetFromJsonAsync<List<NoteGroupResponse>>("/api/v1/note-groups");
+        aliceList!.Single(g => g.Id == aliceGroup.Id).Rank.Should().Be("a0");
+    }
+
+    [Fact]
     public async Task Delete_softdeletes_group_and_tombstones_its_notes()
     {
         var authed = await RegisterAsync();
