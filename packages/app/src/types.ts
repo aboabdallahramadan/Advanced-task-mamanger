@@ -27,7 +27,7 @@ export interface Task {
   id: string;
   title: string;
   notes: string;
-  project: string;
+  projectId: string | null;
   labels: string[];
   source: string;
   status: 'inbox' | 'backlog' | 'planned' | 'scheduled' | 'done' | 'archived';
@@ -46,6 +46,7 @@ export interface Task {
   recurrenceOriginalDate: string | null;
   createdAt: string;
   updatedAt: string;
+  changeSeq: number;
   completedAt?: string | null;
 }
 
