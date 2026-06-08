@@ -10,7 +10,7 @@ public static class RefreshCookie
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Strict,
-            Path = "/api/v1/auth", // scoped to auth routes only
+            Path = "/api/v1/auth/refresh",
             Expires = expiresAt,
         });
 
@@ -20,7 +20,7 @@ public static class RefreshCookie
             HttpOnly = true,
             Secure = true,
             SameSite = SameSiteMode.Strict,
-            Path = "/api/v1/auth",
+            Path = "/api/v1/auth/refresh",
             Expires = DateTimeOffset.UnixEpoch,
         });
 

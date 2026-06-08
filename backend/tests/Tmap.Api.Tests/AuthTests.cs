@@ -370,6 +370,29 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
     }
 
+    [Fact]
+    public async Task Refresh_response_sets_cookie_scoped_to_refresh_path_only()
+    {
+        var email = $"cookiepath-{Guid.NewGuid():N}@x.io";
+        var reg = await (await Client.PostAsJsonAsync("/api/v1/auth/register",
+            new { email, password = "Password123!x" }))
+            .Content.ReadFromJsonAsync<AuthTokenResponseDto>();
+
+        // Use a raw client that captures Set-Cookie headers (no cookie jar folding).
+        using var rawClient = Factory.CreateClient();
+
+        var res = await rawClient.PostAsJsonAsync("/api/v1/auth/refresh",
+            new { refreshToken = reg!.RefreshToken });
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+
+        var setCookie = res.Headers.GetValues("Set-Cookie").FirstOrDefault();
+        setCookie.Should().NotBeNull();
+        // Path must be exactly /api/v1/auth/refresh (not /api/v1/auth).
+        var cookieLower = setCookie!.ToLowerInvariant();
+        cookieLower.Should().Contain("path=/api/v1/auth/refresh");
+        cookieLower.Should().NotContain("path=/api/v1/auth;");
+    }
+
     // Local DTO for the new contract; placed at bottom of AuthTests.cs
     private sealed record AuthTokenResponseDto(
         string AccessToken,
