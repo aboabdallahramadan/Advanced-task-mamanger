@@ -223,4 +223,39 @@ public sealed class ProjectsTests(PostgresFixture fixture) : IntegrationTestBase
         // so B sorts first. Verify ordering by rank.
         list.Select(p => p.Rank).Should().BeInAscendingOrder();
     }
+
+    [Fact]
+    public async Task Reorder_bumps_change_seq_via_db_trigger_on_reordered_row_only()
+    {
+        // The reorder endpoint uses ExecuteUpdate, which bypasses the SaveChanges interceptor,
+        // so only the BEFORE UPDATE DB trigger can advance change_seq. Prove the HTTP path fires it.
+        var authed = await RegisterAsync();
+
+        var a = await (await authed.Client.PostAsJsonAsync(
+            "/api/v1/projects", new CreateProjectRequest("A", "#1", "🅰️", "a0")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+        var b = await (await authed.Client.PostAsJsonAsync(
+            "/api/v1/projects", new CreateProjectRequest("B", "#2", "🅱️", "a1")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+
+        long aSeqBefore, bSeqBefore;
+        await using (var db = NewElevatedDbContext())
+        {
+            aSeqBefore = await db.Projects.Where(p => p.Id == a!.Id).Select(p => p.ChangeSeq).SingleAsync();
+            bSeqBefore = await db.Projects.Where(p => p.Id == b!.Id).Select(p => p.ChangeSeq).SingleAsync();
+        }
+
+        var reorderResp = await authed.Client.PatchAsJsonAsync(
+            "/api/v1/projects/reorder",
+            new[] { new ReorderItem(b!.Id, "Zz") });
+        reorderResp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var assertDb = NewElevatedDbContext();
+        var aSeqAfter = await assertDb.Projects.Where(p => p.Id == a!.Id).Select(p => p.ChangeSeq).SingleAsync();
+        var bSeqAfter = await assertDb.Projects.Where(p => p.Id == b.Id).Select(p => p.ChangeSeq).SingleAsync();
+
+        bSeqAfter.Should().BeGreaterThan(bSeqBefore,
+            "the reorder ExecuteUpdate must trigger the DB change_seq bump on the reordered row");
+        aSeqAfter.Should().Be(aSeqBefore, "an untouched row's change_seq must not move");
+    }
 }

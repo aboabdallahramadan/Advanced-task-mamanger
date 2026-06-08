@@ -179,6 +179,37 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Reorder_bumps_change_seq_via_db_trigger_on_reordered_row_only()
+    {
+        // The reorder endpoint uses ExecuteUpdate, which bypasses the SaveChanges interceptor,
+        // so only the BEFORE UPDATE DB trigger can advance change_seq. Prove the HTTP path fires it.
+        var auth = await RegisterAsync();
+        var a = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "A", status = "Inbox" })).Content.ReadFromJsonAsync<TaskResponse>();
+        var b = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "B", status = "Inbox" })).Content.ReadFromJsonAsync<TaskResponse>();
+
+        long aSeqBefore, bSeqBefore;
+        await using (var db = NewElevatedDbContext())
+        {
+            aSeqBefore = await db.Tasks.Where(t => t.Id == a!.Id).Select(t => t.ChangeSeq).SingleAsync();
+            bSeqBefore = await db.Tasks.Where(t => t.Id == b!.Id).Select(t => t.ChangeSeq).SingleAsync();
+        }
+
+        var resp = await auth.Client.PatchAsJsonAsync("/api/v1/tasks/reorder",
+            new[] { new { id = a!.Id, rank = "zzz" } });
+        resp.StatusCode.Should().Be(HttpStatusCode.NoContent);
+
+        await using var assertDb = NewElevatedDbContext();
+        var aSeqAfter = await assertDb.Tasks.Where(t => t.Id == a.Id).Select(t => t.ChangeSeq).SingleAsync();
+        var bSeqAfter = await assertDb.Tasks.Where(t => t.Id == b!.Id).Select(t => t.ChangeSeq).SingleAsync();
+
+        aSeqAfter.Should().BeGreaterThan(aSeqBefore,
+            "the reorder ExecuteUpdate must trigger the DB change_seq bump on the reordered row");
+        bSeqAfter.Should().Be(bSeqBefore, "an untouched row's change_seq must not move");
+    }
+
+    [Fact]
     public async Task Delete_soft_deletes_task_and_tombstones_subtasks()
     {
         var auth = await RegisterAsync();

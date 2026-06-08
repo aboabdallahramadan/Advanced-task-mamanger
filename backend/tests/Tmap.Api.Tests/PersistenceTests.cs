@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Tmap.Api.Common;
 using Tmap.Api.Infrastructure;
 using Tmap.Api.Infrastructure.Entities;
@@ -440,5 +441,54 @@ public class RlsCrossTenantTests(PostgresFixture fixture) : IntegrationTestBase(
             .SqlQuery<int>($"SELECT COUNT(*)::int AS \"Value\" FROM projects WHERE id = {userBProjectId}")
             .SingleAsync();
         rawCount.Should().Be(0, "RLS must block userB's row even for raw SQL");
+    }
+
+    [Fact]
+    public async Task UserA_Connection_Cannot_Write_UserB_Rows_RLS_WithCheck_Blocks_Insert_And_Update()
+    {
+        var userA = await RegisterAsync();
+        var userB = await RegisterAsync();
+
+        // Arrange a project that userA actually owns (used by the UPDATE leg below). Created via the
+        // elevated/system context so it isn't blocked by RLS during arrange.
+        var userAProjectId = Guid.NewGuid();
+        await using (var elevated = NewElevatedDbContext())
+        {
+            elevated.Projects.Add(new Project
+            {
+                Id = userAProjectId,
+                UserId = userA.UserId,
+                Name = "A-owned-" + Guid.NewGuid().ToString("N"),
+                Color = "#000000",
+                Emoji = "📁",
+                Rank = "a0",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
+            await elevated.SaveChangesAsync();
+        }
+
+        // Probe as userA: the connection interceptor sets app.user_id = userA, so the RLS
+        // WITH CHECK clause (user_id = app.user_id OR app.user_id = system) must reject any row
+        // whose user_id is userB.
+        await using var asUserA = NewScopedDbContextFor(userA);
+
+        // (a) INSERT another tenant's row -> RLS WITH CHECK violation (SQLSTATE 42501).
+        var insert = async () => await asUserA.Database.ExecuteSqlRawAsync(
+            @"INSERT INTO projects (id, user_id, name, color, emoji, rank, actual_time_minutes, created_at)
+              VALUES ({0}, {1}, {2}, '#111111', '🚫', 'a0', 0, now())",
+            Guid.NewGuid(), userB.UserId, "B-injected-" + Guid.NewGuid().ToString("N"));
+
+        (await insert.Should().ThrowAsync<PostgresException>(
+                "RLS WITH CHECK must reject inserting another tenant's row"))
+            .Which.SqlState.Should().Be("42501", "row-security policy violation SQLSTATE");
+
+        // (b) UPDATE a row userA owns, flipping user_id to userB -> RLS WITH CHECK violation.
+        var update = async () => await asUserA.Database.ExecuteSqlRawAsync(
+            "UPDATE projects SET user_id = {0} WHERE id = {1}",
+            userB.UserId, userAProjectId);
+
+        (await update.Should().ThrowAsync<PostgresException>(
+                "RLS WITH CHECK must reject reassigning an owned row to another tenant"))
+            .Which.SqlState.Should().Be("42501", "row-security policy violation SQLSTATE");
     }
 }
