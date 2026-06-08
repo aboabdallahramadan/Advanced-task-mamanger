@@ -45,14 +45,13 @@ export function rankBetween(prev: string | null, next: string | null): string {
     }
   }
 
-  // No gap found at any position — extend to a new char level.
-  // rankAfter(prev) could equal `next` (e.g., prev='b', next='c'), so we
-  // append the seed instead to guarantee strict ordering: prev < prev+SEED < next.
+  // No gap found at any position — start a new char level after prev.
+  // rankAfter(prev) can equal `next` for tight neighbors (e.g. prev='b',
+  // next='c'), so prefer appending the seed to guarantee prev < key < next
+  // ('b' < 'bn' < 'c'); only use rankAfter when it stays strictly below next.
   const after = rankAfter(prev);
   if (after < next) {
     return after;
   }
-  // prev+'n' is strictly between prev and next when they are adjacent single-char
-  // distance apart (e.g., 'b' < 'bn' < 'c').
   return (prev ?? '') + SEED;
 }
