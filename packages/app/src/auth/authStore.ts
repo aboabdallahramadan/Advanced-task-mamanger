@@ -50,6 +50,18 @@ function isNetworkError(e: unknown): boolean {
   return name === 'TypeError' || name === 'AbortError' || name === 'NetworkError';
 }
 
+/**
+ * Reads the optional raw `refreshToken` from a login/register response body.
+ * Desktop (native) login/register returns the refresh token in the body so the
+ * renderer can hand it to the main process (safeStorage) via platform.auth.setRefreshToken.
+ * Web sets the refresh token as an httpOnly cookie instead, so the body omits it
+ * and this returns null. `AuthTokenResponse` (the canonical type) does not carry it.
+ */
+function readRefreshToken(body: unknown): string | null {
+  const rt = (body as { refreshToken?: unknown } | null | undefined)?.refreshToken;
+  return typeof rt === 'string' && rt.length > 0 ? rt : null;
+}
+
 export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
   const { client, platform, onAuthed, onLoggedOut } = deps;
   let refreshPromise: Promise<AuthTokenResponse | null> | null = null;
@@ -74,7 +86,23 @@ export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
         throw new Error(msg);
       }
       const auth = unwrapAuth(res.data);
-      set({ status: 'authed', user: auth.user, accessToken: auth.accessToken, error: null, networkError: false });
+      // Desktop: persist the body's refresh token in main (safeStorage). Web: body
+      // omits it (httpOnly cookie) and/or platform has no setRefreshToken — no-op.
+      const rt = readRefreshToken(res.data);
+      if (rt && platform.auth.setRefreshToken) {
+        try {
+          await platform.auth.setRefreshToken(rt);
+        } catch {
+          /* ignore — sign-in proceeds; next launch falls back to anonymous */
+        }
+      }
+      set({
+        status: 'authed',
+        user: auth.user,
+        accessToken: auth.accessToken,
+        error: null,
+        networkError: false,
+      });
       onAuthed(auth);
     },
 
@@ -89,7 +117,23 @@ export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
         throw new Error(msg);
       }
       const auth = unwrapAuth(res.data);
-      set({ status: 'authed', user: auth.user, accessToken: auth.accessToken, error: null, networkError: false });
+      // Desktop: persist the body's refresh token in main (safeStorage). Web: body
+      // omits it (httpOnly cookie) and/or platform has no setRefreshToken — no-op.
+      const rt = readRefreshToken(res.data);
+      if (rt && platform.auth.setRefreshToken) {
+        try {
+          await platform.auth.setRefreshToken(rt);
+        } catch {
+          /* ignore — sign-in proceeds; next launch falls back to anonymous */
+        }
+      }
+      set({
+        status: 'authed',
+        user: auth.user,
+        accessToken: auth.accessToken,
+        error: null,
+        networkError: false,
+      });
       onAuthed(auth);
     },
 
@@ -131,7 +175,12 @@ export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
       try {
         const auth = await get().refresh();
         if (auth) {
-          set({ status: 'authed', user: auth.user, accessToken: auth.accessToken, networkError: false });
+          set({
+            status: 'authed',
+            user: auth.user,
+            accessToken: auth.accessToken,
+            networkError: false,
+          });
           onAuthed(auth);
         } else {
           // refresh returned null === a real 401: stored token is dead, clear it.

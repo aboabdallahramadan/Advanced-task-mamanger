@@ -13,10 +13,26 @@ import type { AuthTokenResponse } from './types';
 
 // Minimal shape of an openapi-fetch client we need.
 export interface MinimalClient {
-  GET: (path: string, init: unknown) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
-  POST: (path: string, init: unknown) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
-  PATCH: (path: string, init: unknown) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
-  DELETE: (path: string, init: unknown) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
+  GET: (
+    path: string,
+    init: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
+  POST: (
+    path: string,
+    init: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
+  PATCH: (
+    path: string,
+    init: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
+  PUT: (
+    path: string,
+    init: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
+  DELETE: (
+    path: string,
+    init: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response: { status: number } }>;
 }
 
 export interface RefreshClientOptions {
@@ -34,9 +50,13 @@ export interface RefreshClient extends MinimalClient {
   setAbortController: (ac: AbortController) => void;
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 
-export function createRefreshClient({ client, refresh, onLogout }: RefreshClientOptions): RefreshClient {
+export function createRefreshClient({
+  client,
+  refresh,
+  onLogout,
+}: RefreshClientOptions): RefreshClient {
   // When truthy, a refresh is already in-flight; all 401-waiting calls queue on this.
   let refreshPromise: Promise<AuthTokenResponse | null> | null = null;
   // Set to true after signOut() or a terminal refresh failure.
@@ -122,6 +142,7 @@ export function createRefreshClient({ client, refresh, onLogout }: RefreshClient
     GET: (path, init) => call('GET', path, init, false),
     POST: (path, init) => call('POST', path, init, false),
     PATCH: (path, init) => call('PATCH', path, init, false),
+    PUT: (path, init) => call('PUT', path, init, false),
     DELETE: (path, init) => call('DELETE', path, init, false),
     signOut() {
       signedOut = true;

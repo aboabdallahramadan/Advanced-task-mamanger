@@ -14,7 +14,11 @@ function unauthorized(): FetchResult {
 }
 
 function makeAuth(token: string): AuthTokenResponse {
-  return { accessToken: token, expiresIn: 900, user: { id: 'u1', email: 'a@b.c', timeZoneId: 'UTC' } };
+  return {
+    accessToken: token,
+    expiresIn: 900,
+    user: { id: 'u1', email: 'a@b.c', timeZoneId: 'UTC' },
+  };
 }
 
 describe('createRefreshClient', () => {
@@ -127,5 +131,27 @@ describe('createRefreshClient', () => {
     rc.signOut();
     await expect(rc.GET('/api/v1/tasks', {})).rejects.toThrow();
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it('PUT also gets refresh-on-401 + retry (data layer uses PUT for settings/daily-plans)', async () => {
+    let calls = 0;
+    const client = {
+      GET: vi.fn(async () => ok({})),
+      POST: vi.fn(async () => ok({})),
+      PATCH: vi.fn(async () => ok({})),
+      DELETE: vi.fn(async () => ok({})),
+      PUT: vi.fn(async () => {
+        calls += 1;
+        return calls === 1 ? unauthorized() : ok({ attempt: calls });
+      }),
+    };
+    refresh = vi.fn(async () => makeAuth('new-token'));
+    onLogout = vi.fn();
+    const rc = createRefreshClient({ client, refresh, onLogout });
+
+    const res = await rc.PUT('/api/v1/settings', { body: {} });
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect((res as FetchResult).response.status).toBe(200);
+    expect(client.PUT).toHaveBeenCalledTimes(2); // original + retry
   });
 });

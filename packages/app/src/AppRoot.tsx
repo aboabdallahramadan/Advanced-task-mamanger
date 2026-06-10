@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import App from './App';
 import { useStore } from './store';
-import type { DataClient } from './data/DataClient';
+import { HttpDataClient } from './data/HttpDataClient';
 import type { Platform } from './platform/Platform';
 import type { TmapClient } from '@tmap/api-client';
 import {
@@ -16,11 +16,15 @@ import {
 } from './auth';
 
 export interface AppRootProps {
-  /** Data seam the store calls; built by the host entry over the (refresh-wrapped) TmapClient. */
-  dataClient: DataClient;
   /** Host capabilities + token storage + events. */
   platform: Platform;
-  /** Raw typed client for auth POSTs (register/login/logout) and 401-retry wrapping. */
+  /**
+   * Raw typed client (no refresh wrapping). AppRoot wraps it ONCE with the 401→refresh
+   * layer and routes BOTH auth POSTs (register/login/logout) AND the data layer
+   * (HttpDataClient) through that single wrapped client — one shared refresh path.
+   * The access token is injected by the host's `getAccessToken` middleware reading the
+   * authStore; web additionally passes `credentials:'include'` for the refresh cookie.
+   */
   tmapClient: TmapClient;
 }
 
@@ -39,16 +43,27 @@ export { PlatformContext };
 
 type AnonScreen = 'login' | 'register';
 
-export function AppRoot({ dataClient, platform, tmapClient }: AppRootProps) {
+export function AppRoot({ platform, tmapClient }: AppRootProps) {
   const initialized = useRef(false);
   const [anonScreen, setAnonScreen] = useState<AnonScreen>('login');
 
-  // Build the auth singleton + refresh wrapper exactly once.
+  // Build the auth singleton + ONE refresh wrapper exactly once.
+  //
+  // The 401→refresh→retry layer wraps the DATA path only (HttpDataClient). Auth POSTs
+  // (login/register/logout) deliberately use the RAW client: a 401 there means "wrong
+  // credentials / no session", which must surface as an error — NOT trigger a token
+  // refresh + retry + logout.
+  //
+  // Crucially, the data path's refresh is the authStore's own `refresh()` (NOT
+  // platform.auth.refreshAndGetAccess directly): authStore.refresh() is single-flight
+  // AND writes the new access token into the store, so the retried request — whose
+  // Bearer header is injected from the store via getAccessToken — picks up the fresh
+  // token. There is therefore exactly one 401→refresh path, funneled through the store.
   if (!initialized.current) {
     initialized.current = true;
     const refreshClient = createRefreshClient({
       client: tmapClient as any,
-      refresh: () => platform.auth.refreshAndGetAccess(),
+      refresh: () => getAuthStore().getState().refresh(),
       onLogout: () => {
         // refresh path gave up: drive a full logout through the store.
         void getAuthStore().getState().logout();
@@ -56,8 +71,11 @@ export function AppRoot({ dataClient, platform, tmapClient }: AppRootProps) {
     });
     refreshClient.setAbortController(new AbortController());
 
+    // The store's data seam talks to the refresh-wrapped client (401→refresh→retry).
+    const dataClient = new HttpDataClient(refreshClient as unknown as TmapClient);
+
     initAuthStore({
-      client: tmapClient as any,
+      client: tmapClient as any, // raw: auth 401s are real errors, not refresh triggers
       platform,
       onAuthed: () => {
         useStore.getState().setDataClient(dataClient);
@@ -75,6 +93,19 @@ export function AppRoot({ dataClient, platform, tmapClient }: AppRootProps) {
 
   useEffect(() => {
     void getAuthStore().getState().bootstrap();
+  }, []);
+
+  // Web: request Notification permission once so client-side reminders can fire.
+  // Host-agnostic — on desktop, Electron's Notification is not window.Notification,
+  // so the `'Notification' in window` guard prevents a (harmless) double request.
+  useEffect(() => {
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      window.Notification.permission === 'default'
+    ) {
+      void window.Notification.requestPermission().catch(() => {});
+    }
   }, []);
 
   const content = useMemo(() => {
