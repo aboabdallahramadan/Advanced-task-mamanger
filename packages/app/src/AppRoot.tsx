@@ -78,6 +78,10 @@ export function AppRoot({ platform, tmapClient }: AppRootProps) {
       client: tmapClient as any, // raw: auth 401s are real errors, not refresh triggers
       platform,
       onAuthed: () => {
+        // Re-arm the single refresh wrapper in case a prior session signed it out
+        // (logout → re-login within one app session). Without this, the SAME dead
+        // client is re-injected and every data call throws "Session ended".
+        refreshClient.reactivate();
         useStore.getState().setDataClient(dataClient);
         // Initial load over HTTP (tasks/projects/noteGroups/settings, etc.).
         void useStore.getState().initialLoad?.();

@@ -133,6 +133,28 @@ describe('createRefreshClient', () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it('reactivate() re-arms a signed-out client: GET succeeds again with a fresh signal', async () => {
+    // Re-login within one app session: signOut() ends the session, reactivate() revives it.
+    fakeClient = buildClient(0); // never 401 — a healthy GET
+    refresh = vi.fn(async () => makeAuth('new-token'));
+    onLogout = vi.fn();
+    const rc = createRefreshClient({ client: fakeClient, refresh, onLogout });
+    rc.setAbortController(new AbortController());
+
+    // After signOut(), every call is refused with "Session ended".
+    rc.signOut();
+    await expect(rc.GET('/api/v1/tasks', {})).rejects.toThrow(/Session ended/);
+
+    // reactivate() clears the terminal flag and installs a fresh (non-aborted) controller.
+    rc.reactivate();
+    const res = await rc.GET('/api/v1/tasks', {});
+    expect((res as FetchResult).response.status).toBe(200);
+
+    // The signal carried on the revived request must NOT be the aborted one.
+    const lastInit = getCalls[getCalls.length - 1].init;
+    expect(lastInit.signal?.aborted).not.toBe(true);
+  });
+
   it('PUT also gets refresh-on-401 + retry (data layer uses PUT for settings/daily-plans)', async () => {
     let calls = 0;
     const client = {

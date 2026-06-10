@@ -46,6 +46,12 @@ export interface RefreshClientOptions {
 export interface RefreshClient extends MinimalClient {
   /** Mark the session as ended — abort in-flight requests, reject future calls, no more refresh. */
   signOut: () => void;
+  /**
+   * Re-arm a signed-out client for a fresh session (e.g. logout → re-login within one app
+   * session): clears the terminal `signedOut` flag AND installs a fresh AbortController,
+   * replacing the aborted one so revived requests carry a live (non-aborted) signal.
+   */
+  reactivate: () => void;
   /** Sets the AbortController whose signal is attached to every wrapped request. */
   setAbortController: (ac: AbortController) => void;
 }
@@ -147,6 +153,12 @@ export function createRefreshClient({
     signOut() {
       signedOut = true;
       abortController?.abort();
+    },
+    reactivate() {
+      // Revive a signed-out client: lift the terminal flag and swap in a fresh,
+      // non-aborted controller so subsequent requests don't carry the dead signal.
+      signedOut = false;
+      abortController = new AbortController();
     },
     setAbortController(ac: AbortController) {
       abortController = ac;
