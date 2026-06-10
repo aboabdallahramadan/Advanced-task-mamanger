@@ -53,6 +53,8 @@ export interface Platform {
   auth: {
     refreshAndGetAccess(): Promise<AuthTokenResponse | null>;
     clear(): Promise<void>;
+    /** Desktop-only: persist a freshly-issued refresh token (web uses the cookie). */
+    setRefreshToken?(token: string): Promise<void>;
   };
 
   /** OS notification on desktop; permission-gated Web Notifications on web. */

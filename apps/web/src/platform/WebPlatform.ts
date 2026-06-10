@@ -40,6 +40,9 @@ export class WebPlatform implements Platform {
       // The httpOnly cookie is cleared server-side by /auth/logout (called by
       // authStore.logout). Nothing JS-accessible to clear here.
     },
+    setRefreshToken: async (): Promise<void> => {
+      // Web: refresh token is set as an httpOnly cookie by the server response.
+    },
   };
 
   notify(title: string, body: string): void {
