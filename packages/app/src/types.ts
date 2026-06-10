@@ -225,9 +225,23 @@ export interface ElectronAPI {
   };
   app: {
     getVersion: () => Promise<string>;
-    showNotification: (title: string, body: string) => Promise<void>;
+    showNotification: (title: string, body: string) => void;
     getAutoLaunch: () => Promise<boolean>;
     setAutoLaunch: (enabled: boolean) => Promise<boolean>;
+  };
+  /**
+   * Secure refresh-token store. The refresh token lives ONLY in the Electron main
+   * process (safeStorage); the renderer asks main to perform /auth/refresh and
+   * receives just the access token back. (Desktop preload only.)
+   */
+  secureStore: {
+    setRefreshToken: (token: string) => Promise<void>;
+    clear: () => Promise<void>;
+    refreshAndGetAccess: () => Promise<{
+      accessToken: string;
+      expiresIn: number;
+      user: { id: string; email: string; timeZoneId: string };
+    } | null>;
   };
   data: {
     exportAll: (

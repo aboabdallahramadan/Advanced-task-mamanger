@@ -1,16 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import {
-  X,
-  Save,
-  Clock,
-  Download,
-  Upload,
-  CheckCircle,
-  AlertCircle,
-  Loader2,
-  Power,
-} from 'lucide-react';
+import { usePlatform } from '../AppRoot';
+import { X, Save, Clock, Power } from 'lucide-react';
 import { clsx } from 'clsx';
 
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
@@ -19,6 +10,7 @@ const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 }));
 
 export function SettingsDialog() {
+  const platform = usePlatform();
   const {
     settingsOpen,
     setSettingsOpen,
@@ -27,42 +19,28 @@ export function SettingsDialog() {
     timeIncrement,
     setWorkHours,
     setTimeIncrement,
-    loadTasks,
-    loadProjects,
-    loadSettings,
   } = useStore();
+
+  const supportsAutoLaunch = platform.capabilities.autoLaunch;
 
   const [start, setStart] = useState(workStartHour);
   const [end, setEnd] = useState(workEndHour);
   const [increment, setIncrement] = useState(timeIncrement);
   const [autoLaunch, setAutoLaunch] = useState(false);
 
-  // Import/Export state
-  const [dataStatus, setDataStatus] = useState<{
-    type: 'success' | 'error' | 'loading';
-    message: string;
-  } | null>(null);
-
   useEffect(() => {
     if (settingsOpen) {
       setStart(workStartHour);
       setEnd(workEndHour);
       setIncrement(timeIncrement);
-      setDataStatus(null);
-      window.api.app
-        .getAutoLaunch()
-        .then(setAutoLaunch)
-        .catch(() => {});
+      if (supportsAutoLaunch) {
+        platform.autoLaunch
+          ?.get()
+          .then(setAutoLaunch)
+          .catch(() => {});
+      }
     }
-  }, [settingsOpen, workStartHour, workEndHour, timeIncrement]);
-
-  // Auto-clear status
-  useEffect(() => {
-    if (dataStatus && dataStatus.type !== 'loading') {
-      const timer = setTimeout(() => setDataStatus(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [dataStatus]);
+  }, [settingsOpen, workStartHour, workEndHour, timeIncrement, supportsAutoLaunch, platform]);
 
   if (!settingsOpen) return null;
 
@@ -72,59 +50,6 @@ export function SettingsDialog() {
       setTimeIncrement(increment);
     }
     setSettingsOpen(false);
-  };
-
-  const handleExport = async () => {
-    setDataStatus({ type: 'loading', message: 'Exporting…' });
-    try {
-      const settings = {
-        workStartHour: start,
-        workEndHour: end,
-        timeIncrement: increment,
-      };
-      const result = await window.api.data.exportAll(settings);
-      if (result.canceled) {
-        setDataStatus(null);
-      } else if (result.success) {
-        setDataStatus({ type: 'success', message: `Data exported successfully!` });
-      } else {
-        setDataStatus({ type: 'error', message: result.error || 'Export failed.' });
-      }
-    } catch (err: any) {
-      setDataStatus({ type: 'error', message: err.message || 'Export failed.' });
-    }
-  };
-
-  const handleImport = async () => {
-    setDataStatus({ type: 'loading', message: 'Importing…' });
-    try {
-      const result = await window.api.data.importAll();
-      if (result.canceled) {
-        setDataStatus(null);
-      } else if (result.success && result.data) {
-        // The import handler already persisted the imported settings to disk;
-        // pull the full set (incl. UI collapse states) back into the store
-        // rather than re-saving stale in-memory values.
-        await loadSettings();
-        const s = result.data.settings;
-        if (s) {
-          if (typeof s.workStartHour === 'number') setStart(s.workStartHour);
-          if (typeof s.workEndHour === 'number') setEnd(s.workEndHour);
-          if (typeof s.timeIncrement === 'number') setIncrement(s.timeIncrement);
-        }
-        // Reload data
-        await loadTasks();
-        await loadProjects();
-        setDataStatus({
-          type: 'success',
-          message: `Imported ${result.data.taskCount} tasks and ${result.data.projectCount} projects.`,
-        });
-      } else {
-        setDataStatus({ type: 'error', message: result.error || 'Import failed.' });
-      }
-    } catch (err: any) {
-      setDataStatus({ type: 'error', message: err.message || 'Import failed.' });
-    }
   };
 
   return (
@@ -154,36 +79,38 @@ export function SettingsDialog() {
 
         {/* Body */}
         <div className="p-6 space-y-6 overflow-y-auto">
-          {/* Startup */}
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
-              Startup
-            </h3>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Power className="w-4 h-4 text-surface-400" />
-                <span className="text-sm text-surface-200">Launch on system startup</span>
-              </div>
-              <button
-                onClick={() => {
-                  const next = !autoLaunch;
-                  setAutoLaunch(next);
-                  window.api.app.setAutoLaunch(next);
-                }}
-                className={clsx(
-                  'relative w-10 h-5 rounded-full transition-colors',
-                  autoLaunch ? 'bg-accent-600' : 'bg-surface-700',
-                )}
-              >
-                <span
+          {/* Startup (desktop only) */}
+          {supportsAutoLaunch && (
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
+                Startup
+              </h3>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Power className="w-4 h-4 text-surface-400" />
+                  <span className="text-sm text-surface-200">Launch on system startup</span>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = !autoLaunch;
+                    setAutoLaunch(next);
+                    void platform.autoLaunch?.set(next);
+                  }}
                   className={clsx(
-                    'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform',
-                    autoLaunch && 'translate-x-5',
+                    'relative w-10 h-5 rounded-full transition-colors',
+                    autoLaunch ? 'bg-accent-600' : 'bg-surface-700',
                   )}
-                />
-              </button>
+                >
+                  <span
+                    className={clsx(
+                      'absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform',
+                      autoLaunch && 'translate-x-5',
+                    )}
+                  />
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Work Hours */}
           <div>
@@ -258,60 +185,6 @@ export function SettingsDialog() {
                 </button>
               ))}
             </div>
-          </div>
-
-          {/* Data Import / Export */}
-          <div>
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
-              Data
-            </h3>
-            <p className="text-xs text-surface-500 mb-3">
-              Export all your tasks, projects, and settings as a JSON backup, or import from a
-              previous backup.
-            </p>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={handleExport}
-                disabled={dataStatus?.type === 'loading'}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all border bg-surface-950 border-surface-700/60 text-surface-200 hover:text-surface-50 hover:border-accent-500/40 hover:bg-accent-600/10 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <Download className="w-4 h-4" />
-                Export
-              </button>
-              <button
-                onClick={handleImport}
-                disabled={dataStatus?.type === 'loading'}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-xl transition-all border bg-surface-950 border-surface-700/60 text-surface-200 hover:text-surface-50 hover:border-amber-500/40 hover:bg-amber-600/10 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                <Upload className="w-4 h-4" />
-                Import
-              </button>
-            </div>
-
-            {/* Status message */}
-            {dataStatus && (
-              <div
-                className={clsx(
-                  'mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs border animate-fade-in',
-                  dataStatus.type === 'success' &&
-                    'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-                  dataStatus.type === 'error' && 'bg-red-500/10 border-red-500/30 text-red-400',
-                  dataStatus.type === 'loading' &&
-                    'bg-accent-500/10 border-accent-500/30 text-accent-400',
-                )}
-              >
-                {dataStatus.type === 'success' && (
-                  <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                )}
-                {dataStatus.type === 'error' && (
-                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
-                )}
-                {dataStatus.type === 'loading' && (
-                  <Loader2 className="w-3.5 h-3.5 flex-shrink-0 animate-spin" />
-                )}
-                <span>{dataStatus.message}</span>
-              </div>
-            )}
           </div>
         </div>
 

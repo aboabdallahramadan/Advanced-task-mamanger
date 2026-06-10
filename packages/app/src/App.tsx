@@ -26,6 +26,7 @@ import { AllNotesView } from './components/AllNotesView';
 import { ReportsView } from './components/ReportsView';
 import { NoteGroupDialog } from './components/NoteGroupDialog';
 import { useStore } from './store';
+import { usePlatform } from './AppRoot';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock, Plus } from 'lucide-react';
@@ -41,6 +42,7 @@ export default function App() {
     loadSettings,
     openTaskDialog,
   } = useStore();
+  const platform = usePlatform();
   const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
   const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -59,16 +61,17 @@ export default function App() {
       // These are handled in individual components
     };
     window.addEventListener('keydown', handleKeyDown);
-
-    // Listen for IPC navigation events
-    window.api.on('navigate', (route) => {
-      if (route === 'plan-today') {
-        startPlanningFlow();
-      }
-    });
-
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [startPlanningFlow]);
+  }, []);
+
+  // Navigation events from the host (desktop tray); web no-ops.
+  useEffect(() => {
+    const onNavigate = (route: string) => {
+      if (route === 'plan-today') startPlanningFlow();
+    };
+    platform.on('navigate', onNavigate);
+    return () => platform.off('navigate', onNavigate);
+  }, [platform, startPlanningFlow]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current;

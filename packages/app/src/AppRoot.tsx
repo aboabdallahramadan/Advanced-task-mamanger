@@ -1,5 +1,5 @@
 // packages/app/src/AppRoot.tsx
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import App from './App';
 import { useStore } from './store';
 import type { DataClient } from './data/DataClient';
@@ -23,6 +23,19 @@ export interface AppRootProps {
   /** Raw typed client for auth POSTs (register/login/logout) and 401-retry wrapping. */
   tmapClient: TmapClient;
 }
+
+// ─── Platform context ───────────────────────────────────────
+// Exposes the host adapter to the shared app (FocusModeOverlay / App / SettingsDialog)
+// without prop-drilling. Provided by AppRoot's authed branch.
+const PlatformContext = createContext<Platform | null>(null);
+
+export function usePlatform(): Platform {
+  const p = useContext(PlatformContext);
+  if (!p) throw new Error('usePlatform must be used within <AppRoot>');
+  return p;
+}
+
+export { PlatformContext };
 
 type AnonScreen = 'login' | 'register';
 
@@ -81,8 +94,12 @@ export function AppRoot({ dataClient, platform, tmapClient }: AppRootProps) {
         <RegisterView onSwitchToLogin={() => setAnonScreen('login')} />
       );
     }
-    return <App />;
-  }, [status, anonScreen]);
+    return (
+      <PlatformContext.Provider value={platform}>
+        <App />
+      </PlatformContext.Provider>
+    );
+  }, [status, anonScreen, platform]);
 
   return content;
 }

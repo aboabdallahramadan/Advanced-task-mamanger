@@ -13,8 +13,10 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { getTextDirection, getDirectionStyle } from '../../useTextDirection';
+import { usePlatform } from '../../AppRoot';
 
 export const FocusModeOverlay: React.FC = () => {
+  const platform = usePlatform();
   const {
     tasks,
     projects,
@@ -135,26 +137,27 @@ export const FocusModeOverlay: React.FC = () => {
   const progressPercent =
     plannedMinutes > 0 ? Math.min(100, (elapsedMins / plannedMinutes) * 100) : 0;
 
-  // ─── Always-on-top Widget Window ──────────────────────────
-  // Show/hide the external focus widget when a session starts/ends
+  // ─── Always-on-top Widget Window (desktop only) ───────────
+  // Show/hide the external focus widget when a session starts/ends.
+  // On web there is no focusWidget, so these calls are skipped.
   useEffect(() => {
+    if (!platform.focusWidget) return;
     if (target) {
-      window.api?.focus?.showWidget();
+      platform.focusWidget.show();
     } else {
-      window.api?.focus?.hideWidget();
+      platform.focusWidget.hide();
     }
-
     return () => {
-      window.api?.focus?.hideWidget();
+      platform.focusWidget?.hide();
     };
-  }, [!!target]);
+  }, [!!target, platform]);
 
-  // Push timing state to the external widget (only on state changes, not every tick)
-  // The widget runs its own local timer using these raw values
+  // Push timing state to the external widget (only on state changes, not every tick).
+  // The widget runs its own local timer using these raw values; on desktop pushState
+  // also reflects play/pause + title in the tray tooltip.
   useEffect(() => {
-    if (!target) return;
-
-    window.api?.focus?.sendWidgetState({
+    if (!platform.focusWidget || !target) return;
+    platform.focusWidget.pushState({
       taskTitle: target.title,
       isPlaying: focusMode.isPlaying,
       sessionStartTime: focusMode.sessionStartTime,
@@ -170,61 +173,33 @@ export const FocusModeOverlay: React.FC = () => {
     target?.kind,
     focusMode.isPlaying,
     focusMode.sessionStartTime,
+    platform,
   ]);
 
-  // ─── Tray Communication ───────────────────────────────────
+  // Listen for commands from the tray and external widget (desktop only).
+  // onAction/onResyncRequest register-only; the overlay mounts once for the app
+  // lifetime, so no teardown is needed. Live state is read via useStore.getState().
   useEffect(() => {
-    if (!target) {
-      window.api?.focus?.updateTray({ taskTitle: null, elapsed: null, isPlaying: false });
-      return;
-    }
+    if (!platform.focusWidget) return;
 
-    const elapsed = formatTime(elapsedSeconds);
-    window.api?.focus?.updateTray({
-      taskTitle: target.title,
-      elapsed,
-      isPlaying: focusMode.isPlaying,
-    });
-  }, [target?.title, target?.kind, elapsedSeconds, focusMode.isPlaying]);
-
-  // Listen for commands from tray and external widget
-  useEffect(() => {
-    // Clear any previously accumulated listeners first
-    window.api?.removeAllListeners?.('focus:togglePlayPause');
-    window.api?.removeAllListeners?.('focus:stop');
-    window.api?.removeAllListeners?.('focus:done');
-
-    const handleToggle = () => {
+    const handleAction = (action: 'togglePlayPause' | 'stop' | 'done') => {
       const state = useStore.getState();
       const fm = state.focusMode;
       if (!fm.targetId) return;
-      if (fm.isPlaying) {
-        state.pauseFocusSession();
-      } else if (fm.targetType === 'task') {
-        state.startFocusSession(fm.targetId);
-      } else if (fm.targetType === 'project') {
-        state.startProjectFocus(fm.targetId);
+      if (action === 'togglePlayPause') {
+        if (fm.isPlaying) state.pauseFocusSession();
+        else if (fm.targetType === 'task') state.startFocusSession(fm.targetId);
+        else if (fm.targetType === 'project') state.startProjectFocus(fm.targetId);
+      } else if (action === 'stop') {
+        void state.stopFocusSession();
+      } else if (action === 'done') {
+        // "Done" only marks tasks complete; projects are never "done".
+        void (async () => {
+          await state.stopFocusSession();
+          if (fm.targetType === 'task') await state.markDone(fm.targetId!);
+        })();
       }
     };
-
-    const handleStop = () => {
-      useStore.getState().stopFocusSession();
-    };
-
-    const handleDone = async () => {
-      const state = useStore.getState();
-      const fm = state.focusMode;
-      if (!fm.targetId) return;
-      await state.stopFocusSession();
-      // "Done" only marks tasks complete; projects are never "done".
-      if (fm.targetType === 'task') {
-        await state.markDone(fm.targetId);
-      }
-    };
-
-    window.api?.on('focus:togglePlayPause', handleToggle);
-    window.api?.on('focus:stop', handleStop);
-    window.api?.on('focus:done', handleDone);
 
     const handleResync = () => {
       const s = useStore.getState();
@@ -233,7 +208,7 @@ export const FocusModeOverlay: React.FC = () => {
       const p =
         fm.targetType === 'project' ? s.projects.find((x) => x.id === fm.targetId) : undefined;
       if (t) {
-        window.api?.focus?.sendWidgetState({
+        platform.focusWidget?.pushState({
           taskTitle: t.title,
           isPlaying: fm.isPlaying,
           sessionStartTime: fm.sessionStartTime,
@@ -242,7 +217,7 @@ export const FocusModeOverlay: React.FC = () => {
           canComplete: true,
         });
       } else if (p) {
-        window.api?.focus?.sendWidgetState({
+        platform.focusWidget?.pushState({
           taskTitle: `${p.emoji} ${p.name}`,
           isPlaying: fm.isPlaying,
           sessionStartTime: fm.sessionStartTime,
@@ -252,15 +227,10 @@ export const FocusModeOverlay: React.FC = () => {
         });
       }
     };
-    window.api?.on('focus:resyncWidget', handleResync);
 
-    return () => {
-      window.api?.removeAllListeners?.('focus:togglePlayPause');
-      window.api?.removeAllListeners?.('focus:stop');
-      window.api?.removeAllListeners?.('focus:done');
-      window.api?.removeAllListeners?.('focus:resyncWidget');
-    };
-  }, []);
+    platform.focusWidget.onAction(handleAction);
+    platform.focusWidget.onResyncRequest(handleResync);
+  }, [platform]);
 
   if (!target) return null;
 
