@@ -493,6 +493,7 @@ function BoardTaskCard({
 }: BoardTaskCardProps) {
   const isDone = task.status === 'done';
   const isFocused = focusActiveId === task.id;
+  const pName = useStore((s) => s.projectName(task.projectId));
   const timeLabel = task.scheduledStart ? format(parseISO(task.scheduledStart), 'h:mm a') : null;
 
   return (
@@ -613,13 +614,13 @@ function BoardTaskCard({
           )}
         </div>
 
-        {task.project && (
+        {task.projectId && (
           <span
-            dir={getTextDirection(task.project)}
-            style={getDirectionStyle(task.project)}
+            dir={getTextDirection(pName)}
+            style={getDirectionStyle(pName)}
             className="text-2xs text-accent-500 font-medium"
           >
-            #{task.project}
+            #{pName}
           </span>
         )}
       </div>
