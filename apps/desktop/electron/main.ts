@@ -8,53 +8,54 @@ import {
   Notification,
   screen,
   globalShortcut,
-  dialog,
+  safeStorage,
 } from 'electron';
 import path from 'path';
 import fs from 'fs';
-
-function getSettingsPath() {
-  return path.join(app.getPath('userData'), 'settings.json');
-}
-
-function loadSettings(): Record<string, any> {
-  try {
-    const p = getSettingsPath();
-    if (fs.existsSync(p)) {
-      return JSON.parse(fs.readFileSync(p, 'utf-8'));
-    }
-  } catch (e) {
-    console.error('Failed to load settings:', e);
-  }
-  return {};
-}
-
-function persistSettings(settings: Record<string, any>): void {
-  try {
-    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('Failed to save settings:', e);
-  }
-}
-import { initDatabase, getDatabase, saveDatabase } from './database';
-import { TaskService } from './taskService';
-import { ProjectService } from './projectService';
-import { NoteService } from './noteService';
-import { seedDemoData } from './seed';
-import { FocusSessionService } from './focusSessionService';
-import { DailyPlanService } from './dailyPlanService';
-import { ReportService } from './reportService';
+import { API_BASE_URL } from './config';
 
 let mainWindow: BrowserWindow | null = null;
 let focusWidget: BrowserWindow | null = null;
 let tray: Tray | null = null;
-let taskService: TaskService;
-let projectService: ProjectService;
-let noteService: NoteService;
-let focusSessionService: FocusSessionService;
-let dailyPlanService: DailyPlanService;
-let reportService: ReportService;
-const notifiedTaskIds = new Set<string>();
+
+// ─── Secure refresh-token store (main-process only) ────────────
+function refreshTokenPath(): string {
+  return path.join(app.getPath('userData'), 'refresh.bin');
+}
+
+function persistRefreshToken(token: string): void {
+  try {
+    const buf = safeStorage.isEncryptionAvailable()
+      ? safeStorage.encryptString(token)
+      : Buffer.from(token, 'utf-8');
+    fs.writeFileSync(refreshTokenPath(), buf);
+  } catch (e) {
+    console.error('Failed to persist refresh token:', e);
+  }
+}
+
+function readRefreshToken(): string | null {
+  try {
+    const p = refreshTokenPath();
+    if (!fs.existsSync(p)) return null;
+    const buf = fs.readFileSync(p);
+    return safeStorage.isEncryptionAvailable()
+      ? safeStorage.decryptString(buf)
+      : buf.toString('utf-8');
+  } catch (e) {
+    console.error('Failed to read refresh token:', e);
+    return null;
+  }
+}
+
+function clearRefreshToken(): void {
+  try {
+    const p = refreshTokenPath();
+    if (fs.existsSync(p)) fs.unlinkSync(p);
+  } catch (e) {
+    console.error('Failed to clear refresh token:', e);
+  }
+}
 
 function createFocusWidget() {
   if (focusWidget && !focusWidget.isDestroyed()) {
@@ -83,7 +84,6 @@ function createFocusWidget() {
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
-    // In dev, load from Vite's public directory
     focusWidget.loadFile(path.join(__dirname, '../public/focus-widget.html'));
   } else {
     focusWidget.loadFile(path.join(__dirname, '../dist/focus-widget.html'));
@@ -110,84 +110,19 @@ if (!gotTheLock) {
 
   app.setAppUserModelId('com.tmap.app');
 
-  app.whenReady().then(async () => {
-    const dbPath = path.join(app.getPath('userData'), 'tmap.db');
-    await initDatabase(dbPath);
-    taskService = new TaskService(getDatabase());
-    projectService = new ProjectService(getDatabase());
-    noteService = new NoteService(getDatabase());
-    focusSessionService = new FocusSessionService(getDatabase());
-    dailyPlanService = new DailyPlanService(getDatabase());
-    reportService = new ReportService(getDatabase());
-
-    // Seed demo data if empty
-    const tasks = taskService.getAll();
-    if (tasks.length === 0) {
-      seedDemoData(taskService);
-    }
-
+  app.whenReady().then(() => {
     createWindow();
     createTray();
     registerIpcHandlers();
 
-    // ─── Notification Scheduler ──────────────────────────────
-    setInterval(() => {
-      try {
-        const tasks = taskService.getUpcomingWithReminders();
-        const now = Date.now();
-
-        for (const task of tasks) {
-          if (notifiedTaskIds.has(task.id)) continue;
-          if (!task.scheduledStart) continue;
-
-          const startTime = new Date(task.scheduledStart).getTime();
-          const reminderMs = (task.reminderMinutes ?? 0) * 60000;
-          const notifyAt = startTime - reminderMs;
-
-          // Notify if time has come but task start is not more than 5 min in the past
-          if (notifyAt <= now && startTime > now - 5 * 60000) {
-            const body =
-              task.reminderMinutes === 0
-                ? 'Starting now'
-                : `Starting in ${task.reminderMinutes} minutes`;
-
-            const notification = new Notification({
-              title: task.title,
-              body,
-              icon: path.join(__dirname, '../build/icon.png'),
-            });
-            notification.on('click', () => {
-              mainWindow?.show();
-              mainWindow?.focus();
-            });
-            notification.show();
-            notifiedTaskIds.add(task.id);
-          }
-        }
-
-        // Cleanup: remove entries for tasks started more than 1 hour ago
-        for (const id of notifiedTaskIds) {
-          const task = tasks.find((t) => t.id === id);
-          if (task?.scheduledStart) {
-            const startTime = new Date(task.scheduledStart).getTime();
-            if (startTime < now - 3600000) {
-              notifiedTaskIds.delete(id);
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Notification scheduler error:', e);
-      }
-    }, 30000);
-
-    // Global shortcut: Ctrl+Shift+F to toggle the focus timer widget
+    // Global shortcut: Ctrl+Shift+Q to toggle the focus timer widget
     globalShortcut.register('Ctrl+Shift+Q', () => {
       if (focusWidget && !focusWidget.isDestroyed()) {
         focusWidget.close();
         focusWidget = null;
       } else {
         createFocusWidget();
-        // Send current focus state to the new widget
+        // Ask the renderer to resync the new widget with current focus state
         mainWindow?.webContents.send('focus:resyncWidget');
       }
     });
@@ -287,227 +222,97 @@ function createTray() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('tasks:getAll', () => {
-    return taskService.getAll();
+  // ─── App metadata / notifications ──────────────────────────
+  ipcMain.handle('app:getVersion', () => app.getVersion());
+
+  ipcMain.on('app:showNotification', (_e, title: string, body: string) => {
+    const n = new Notification({
+      title,
+      body,
+      icon: path.join(__dirname, '../build/icon.png'),
+    });
+    n.on('click', () => {
+      mainWindow?.show();
+      mainWindow?.focus();
+    });
+    n.show();
   });
 
-  ipcMain.handle('tasks:getByDate', (_e: any, date: string) => {
-    return taskService.getByDate(date);
-  });
+  // ─── Auto-Launch ───────────────────────────────────────────
+  ipcMain.handle('app:getAutoLaunch', () => app.getLoginItemSettings().openAtLogin);
 
-  ipcMain.handle('tasks:getByStatus', (_e: any, status: string) => {
-    return taskService.getByStatus(status);
-  });
-
-  ipcMain.handle('tasks:create', (_e: any, task: any) => {
-    return taskService.create(task);
-  });
-
-  ipcMain.handle('tasks:update', (_e: any, id: string, updates: any) => {
-    if (updates.scheduledStart !== undefined || updates.reminderMinutes !== undefined) {
-      notifiedTaskIds.delete(id);
-    }
-    return taskService.update(id, updates);
-  });
-
-  ipcMain.handle('tasks:delete', (_e: any, id: string) => {
-    return taskService.delete(id);
-  });
-
-  ipcMain.handle('tasks:reorder', (_e: any, tasks: { id: string; order: number }[]) => {
-    return taskService.reorder(tasks);
-  });
-
-  ipcMain.handle('tasks:search', (_e: any, query: string) => {
-    return taskService.search(query);
-  });
-
-  // ─── Subtask IPC Handlers ───────────────────────────────
-  ipcMain.handle('subtasks:create', (_e: any, taskId: string, title: string) => {
-    return taskService.createSubtask(taskId, title);
-  });
-
-  ipcMain.handle('subtasks:update', (_e: any, id: string, updates: any) => {
-    return taskService.updateSubtask(id, updates);
-  });
-
-  ipcMain.handle('subtasks:delete', (_e: any, id: string) => {
-    return taskService.deleteSubtask(id);
-  });
-
-  ipcMain.handle('app:getVersion', () => {
-    return app.getVersion();
-  });
-
-  ipcMain.handle('app:showNotification', (_e: any, title: string, body: string) => {
-    new Notification({ title, body, icon: path.join(__dirname, '../build/icon.png') }).show();
-  });
-
-  // ─── Auto-Launch ─────────────────────────────────────────
-  ipcMain.handle('app:getAutoLaunch', () => {
-    return app.getLoginItemSettings().openAtLogin;
-  });
-
-  ipcMain.handle('app:setAutoLaunch', (_e: any, enabled: boolean) => {
+  ipcMain.handle('app:setAutoLaunch', (_e, enabled: boolean) => {
     app.setLoginItemSettings({ openAtLogin: enabled });
     return true;
   });
 
-  // ─── Project IPC Handlers ────────────────────────────────
-  ipcMain.handle('projects:getAll', () => {
-    return projectService.getAll();
+  // ─── Secure refresh-token store + refresh ──────────────────
+  ipcMain.handle('secureStore:setRefreshToken', (_e, token: string) => {
+    persistRefreshToken(token);
   });
 
-  ipcMain.handle('projects:create', (_e: any, input: any) => {
-    return projectService.create(input);
+  ipcMain.handle('secureStore:clear', () => {
+    clearRefreshToken();
   });
 
-  ipcMain.handle('projects:update', (_e: any, id: string, updates: any) => {
-    return projectService.update(id, updates);
+  ipcMain.handle('secureStore:refreshAndGetAccess', async () => {
+    const refreshToken = readRefreshToken();
+    if (!refreshToken) return null;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        // Native path: refresh token in the body (SP1 §3.4).
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (res.status === 401) {
+        // Refresh token rejected/rotated-away → forget it; renderer logs out.
+        clearRefreshToken();
+        return null;
+      }
+      if (!res.ok) {
+        // Network/5xx — do NOT destroy a possibly-valid token; signal "couldn't refresh".
+        return null;
+      }
+      const data = (await res.json()) as {
+        accessToken: string;
+        expiresIn: number;
+        refreshToken?: string;
+        user: { id: string; email: string; timeZoneId: string };
+      };
+      // Rotation: store the new refresh token if one was returned.
+      if (data.refreshToken) persistRefreshToken(data.refreshToken);
+      return {
+        accessToken: data.accessToken,
+        expiresIn: data.expiresIn,
+        user: data.user,
+      };
+    } catch (e) {
+      console.error('refreshAndGetAccess failed:', e);
+      return null;
+    }
   });
 
-  ipcMain.handle('projects:delete', (_e: any, id: string) => {
-    return projectService.delete(id);
-  });
-
-  ipcMain.handle('projects:reorder', (_e: any, items: { id: string; order: number }[]) => {
-    return projectService.reorder(items);
-  });
-
-  // ─── Note Group IPC Handlers ─────────────────────────────
-  ipcMain.handle('noteGroups:getAll', () => {
-    return noteService.getAllGroups();
-  });
-
-  ipcMain.handle('noteGroups:getByProject', (_e: any, projectId: string) => {
-    return noteService.getGroupsByProject(projectId);
-  });
-
-  ipcMain.handle('noteGroups:create', (_e: any, input: any) => {
-    return noteService.createGroup(input);
-  });
-
-  ipcMain.handle('noteGroups:update', (_e: any, id: string, updates: any) => {
-    return noteService.updateGroup(id, updates);
-  });
-
-  ipcMain.handle('noteGroups:delete', (_e: any, id: string) => {
-    return noteService.deleteGroup(id);
-  });
-
-  ipcMain.handle('noteGroups:reorder', (_e: any, items: { id: string; order: number }[]) => {
-    return noteService.reorderGroups(items);
-  });
-
-  // ─── Note IPC Handlers ───────────────────────────────────
-  ipcMain.handle('notes:getAll', () => {
-    return noteService.getAllNotes();
-  });
-
-  ipcMain.handle('notes:getByGroup', (_e: any, groupId: string) => {
-    return noteService.getNotesByGroup(groupId);
-  });
-
-  ipcMain.handle('notes:getByProject', (_e: any, projectId: string) => {
-    return noteService.getNotesByProject(projectId);
-  });
-
-  ipcMain.handle('notes:getById', (_e: any, id: string) => {
-    return noteService.getNoteById(id);
-  });
-
-  ipcMain.handle('notes:create', (_e: any, input: any) => {
-    return noteService.createNote(input);
-  });
-
-  ipcMain.handle('notes:update', (_e: any, id: string, updates: any) => {
-    return noteService.updateNote(id, updates);
-  });
-
-  ipcMain.handle('notes:delete', (_e: any, id: string) => {
-    return noteService.deleteNote(id);
-  });
-
-  ipcMain.handle('notes:reorder', (_e: any, items: { id: string; order: number }[]) => {
-    return noteService.reorderNotes(items);
-  });
-
-  // ─── Settings IPC Handlers ───────────────────────────────
-  ipcMain.handle('settings:get', () => {
-    return loadSettings();
-  });
-
-  ipcMain.handle('settings:save', (_e: any, settings: Record<string, any>) => {
-    persistSettings(settings);
-    return true;
-  });
-
-  // ─── Recurrence IPC Handlers ─────────────────────────────
-  ipcMain.handle('recurrence:create', (_e: any, task: any, rule: any) => {
-    return taskService.createRecurringTask(task, rule);
-  });
-
-  ipcMain.handle('recurrence:updateSeries', (_e: any, ruleId: string, updates: any) => {
-    return taskService.updateSeries(ruleId, updates);
-  });
-
-  ipcMain.handle('recurrence:deleteSeries', (_e: any, ruleId: string) => {
-    return taskService.deleteSeries(ruleId);
-  });
-
-  ipcMain.handle('recurrence:deleteSeriesFuture', (_e: any, ruleId: string, fromDate: string) => {
-    return taskService.deleteSeriesFuture(ruleId, fromDate);
-  });
-
-  ipcMain.handle('recurrence:detachInstance', (_e: any, taskId: string) => {
-    return taskService.detachInstance(taskId);
-  });
-
-  ipcMain.handle('recurrence:ensureInstances', (_e: any, startDate: string, endDate: string) => {
-    return taskService.ensureInstancesForDateRange(startDate, endDate);
-  });
-
-  ipcMain.handle('recurrence:updateRule', (_e: any, ruleId: string, ruleUpdates: any) => {
-    return taskService.updateRecurrenceRule(ruleId, ruleUpdates);
-  });
-
-  ipcMain.handle('recurrence:getRule', (_e: any, ruleId: string) => {
-    return taskService.getRecurrenceRule(ruleId);
-  });
-
-  // ─── Focus Timer Tray Widget ────────────────────────────
+  // ─── Focus Timer Tray Widget ───────────────────────────────
   ipcMain.on(
     'focus:updateTray',
-    (_e: any, data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) => {
+    (_e, data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) => {
       if (!tray) return;
 
       if (data.taskTitle && data.elapsed) {
-        // Focus session active — update tray tooltip
         const state = data.isPlaying ? '▶' : '⏸';
         tray.setToolTip(`${state} ${data.taskTitle}\n⏱ ${data.elapsed}`);
-
-        // Rebuild context menu with focus controls
         const contextMenu = Menu.buildFromTemplate([
-          {
-            label: `${state} ${data.taskTitle}`,
-            enabled: false,
-          },
-          {
-            label: `⏱ ${data.elapsed}`,
-            enabled: false,
-          },
+          { label: `${state} ${data.taskTitle}`, enabled: false },
+          { label: `⏱ ${data.elapsed}`, enabled: false },
           { type: 'separator' },
           {
             label: data.isPlaying ? '⏸ Pause' : '▶ Resume',
-            click: () => {
-              mainWindow?.webContents.send('focus:togglePlayPause');
-            },
+            click: () => mainWindow?.webContents.send('focus:togglePlayPause'),
           },
           {
             label: '⏹ Stop Timer',
-            click: () => {
-              mainWindow?.webContents.send('focus:stop');
-            },
+            click: () => mainWindow?.webContents.send('focus:stop'),
           },
           { type: 'separator' },
           {
@@ -527,7 +332,6 @@ function registerIpcHandlers() {
         ]);
         tray.setContextMenu(contextMenu);
       } else {
-        // No focus session — reset to default
         tray.setToolTip('TMap');
         const contextMenu = Menu.buildFromTemplate([
           {
@@ -551,7 +355,7 @@ function registerIpcHandlers() {
     },
   );
 
-  // ─── Focus Widget Window (Always-on-Top) ────────────────
+  // ─── Focus Widget Window (Always-on-Top) ───────────────────
   ipcMain.on('focus:showWidget', () => {
     createFocusWidget();
   });
@@ -563,14 +367,14 @@ function registerIpcHandlers() {
     }
   });
 
-  ipcMain.on('focus:widgetState', (_e: any, data: any) => {
+  ipcMain.on('focus:widgetState', (_e, data: unknown) => {
     if (focusWidget && !focusWidget.isDestroyed()) {
       focusWidget.webContents.send('focus:state', data);
     }
   });
 
   // Widget button actions → forward to main renderer
-  ipcMain.on('focus:widgetAction', (_e: any, action: string) => {
+  ipcMain.on('focus:widgetAction', (_e, action: string) => {
     if (!mainWindow) return;
     switch (action) {
       case 'togglePlayPause':
@@ -582,452 +386,6 @@ function registerIpcHandlers() {
       case 'done':
         mainWindow.webContents.send('focus:done');
         break;
-    }
-  });
-
-  // ─── Data Import / Export ────────────────────────────────
-  ipcMain.handle('data:export', async (_e: any, settings: any) => {
-    try {
-      const db = getDatabase();
-
-      // Query all tasks
-      const tasksResult = db.exec('SELECT * FROM tasks');
-      const tasks: any[] = [];
-      if (tasksResult.length > 0) {
-        const cols = tasksResult[0].columns;
-        for (const row of tasksResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          // Parse labels JSON string
-          if (typeof obj.labels === 'string') {
-            try {
-              obj.labels = JSON.parse(obj.labels);
-            } catch {
-              obj.labels = [];
-            }
-          }
-          tasks.push(obj);
-        }
-      }
-
-      // Query all projects
-      const projectsResult = db.exec('SELECT * FROM projects');
-      const projects: any[] = [];
-      if (projectsResult.length > 0) {
-        const cols = projectsResult[0].columns;
-        for (const row of projectsResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          projects.push(obj);
-        }
-      }
-
-      // Query recurrence rules
-      const rulesResult = db.exec('SELECT * FROM recurrence_rules');
-      const recurrenceRules: any[] = [];
-      if (rulesResult.length > 0) {
-        const cols = rulesResult[0].columns;
-        for (const row of rulesResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          recurrenceRules.push(obj);
-        }
-      }
-
-      // Query recurrence exceptions
-      const excResult = db.exec('SELECT * FROM recurrence_exceptions');
-      const recurrenceExceptions: any[] = [];
-      if (excResult.length > 0) {
-        const cols = excResult[0].columns;
-        for (const row of excResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          recurrenceExceptions.push(obj);
-        }
-      }
-
-      // Query note groups
-      const noteGroupsResult = db.exec('SELECT * FROM note_groups');
-      const noteGroupsData: any[] = [];
-      if (noteGroupsResult.length > 0) {
-        const cols = noteGroupsResult[0].columns;
-        for (const row of noteGroupsResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          noteGroupsData.push(obj);
-        }
-      }
-
-      // Query notes
-      const notesResult = db.exec('SELECT * FROM notes');
-      const notesData: any[] = [];
-      if (notesResult.length > 0) {
-        const cols = notesResult[0].columns;
-        for (const row of notesResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          notesData.push(obj);
-        }
-      }
-
-      // Query focus sessions
-      const focusSessionsResult = db.exec('SELECT * FROM focus_sessions');
-      const focusSessionsData: any[] = [];
-      if (focusSessionsResult.length > 0) {
-        const cols = focusSessionsResult[0].columns;
-        for (const row of focusSessionsResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          focusSessionsData.push(obj);
-        }
-      }
-
-      // Query daily plans
-      const dailyPlansResult = db.exec('SELECT * FROM daily_plans');
-      const dailyPlansData: any[] = [];
-      if (dailyPlansResult.length > 0) {
-        const cols = dailyPlansResult[0].columns;
-        for (const row of dailyPlansResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          dailyPlansData.push(obj);
-        }
-      }
-
-      // Query subtasks
-      const subtasksResult = db.exec('SELECT * FROM subtasks');
-      const subtasksData: any[] = [];
-      if (subtasksResult.length > 0) {
-        const cols = subtasksResult[0].columns;
-        for (const row of subtasksResult[0].values) {
-          const obj: any = {};
-          cols.forEach((col: string, i: number) => {
-            obj[col] = row[i];
-          });
-          subtasksData.push(obj);
-        }
-      }
-
-      const exportData = {
-        meta: {
-          appName: 'TMap',
-          version: app.getVersion(),
-          exportedAt: new Date().toISOString(),
-        },
-        // Merge full persisted settings with the values passed from the renderer
-        // (renderer only forwards a subset; loadSettings covers UI collapse states etc.)
-        settings: { ...loadSettings(), ...(settings || {}) },
-        tasks,
-        projects,
-        subtasks: subtasksData,
-        recurrenceRules,
-        recurrenceExceptions,
-        noteGroups: noteGroupsData,
-        notes: notesData,
-        focusSessions: focusSessionsData,
-        dailyPlans: dailyPlansData,
-      };
-
-      const { canceled, filePath } = await dialog.showSaveDialog(mainWindow!, {
-        title: 'Export TMap Data',
-        defaultPath: `tmap-backup-${new Date().toISOString().slice(0, 10)}.json`,
-        filters: [{ name: 'JSON Files', extensions: ['json'] }],
-      });
-
-      if (canceled || !filePath) {
-        return { success: false, canceled: true };
-      }
-
-      fs.writeFileSync(filePath, JSON.stringify(exportData, null, 2), 'utf-8');
-      return { success: true, filePath };
-    } catch (err: any) {
-      console.error('Export failed:', err);
-      return { success: false, error: err.message };
-    }
-  });
-
-  // ─── Planning & Reports IPC Handlers ─────────────────────
-  ipcMain.handle('focusSessions:add', (_e: any, input: any) => {
-    return focusSessionService.add(input);
-  });
-
-  ipcMain.handle('dailyPlans:upsert', (_e: any, input: any) => {
-    return dailyPlanService.upsert(input);
-  });
-
-  ipcMain.handle('dailyPlans:get', (_e: any, date: string) => {
-    return dailyPlanService.get(date);
-  });
-
-  ipcMain.handle('reports:getData', (_e: any, start: string, end: string) => {
-    return reportService.getData(start, end);
-  });
-
-  ipcMain.handle('data:import', async () => {
-    try {
-      const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow!, {
-        title: 'Import TMap Data',
-        filters: [{ name: 'JSON Files', extensions: ['json'] }],
-        properties: ['openFile'],
-      });
-
-      if (canceled || filePaths.length === 0) {
-        return { success: false, canceled: true };
-      }
-
-      const raw = fs.readFileSync(filePaths[0], 'utf-8');
-      let parsed: any;
-      try {
-        parsed = JSON.parse(raw);
-      } catch {
-        return { success: false, error: 'Invalid JSON file.' };
-      }
-
-      // Validate structure
-      if (!parsed.tasks || !Array.isArray(parsed.tasks)) {
-        return { success: false, error: 'Invalid backup file: missing tasks array.' };
-      }
-      if (!parsed.projects || !Array.isArray(parsed.projects)) {
-        return { success: false, error: 'Invalid backup file: missing projects array.' };
-      }
-
-      const db = getDatabase();
-
-      db.run('BEGIN TRANSACTION;');
-      try {
-        // Clear existing data
-        db.run('DELETE FROM subtasks;');
-        db.run('DELETE FROM notes;');
-        db.run('DELETE FROM note_groups;');
-        db.run('DELETE FROM recurrence_exceptions;');
-        db.run('DELETE FROM focus_sessions;');
-        db.run('DELETE FROM daily_plans;');
-        db.run('DELETE FROM tasks;');
-        db.run('DELETE FROM recurrence_rules;');
-        db.run('DELETE FROM projects;');
-
-        // Insert recurrence rules
-        if (parsed.recurrenceRules && Array.isArray(parsed.recurrenceRules)) {
-          for (const r of parsed.recurrenceRules) {
-            db.run(
-              `INSERT INTO recurrence_rules (id, frequency, interval_value, days_of_week, end_type, end_count, end_date, generated_until, created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                r.id,
-                r.frequency,
-                r.interval_value ?? 1,
-                r.days_of_week || '[]',
-                r.end_type || 'never',
-                r.end_count ?? null,
-                r.end_date ?? null,
-                r.generated_until ?? null,
-                r.created_at || new Date().toISOString(),
-                r.updated_at || new Date().toISOString(),
-              ],
-            );
-          }
-        }
-
-        // Insert tasks
-        for (const t of parsed.tasks) {
-          db.run(
-            `INSERT INTO tasks (id, title, notes, project, labels, source, status, due_date, planned_date, scheduled_start, scheduled_end, duration_minutes, actual_time_minutes, priority, reminder_minutes, sort_order, recurrence_rule_id, is_recurrence_template, recurrence_detached, recurrence_original_date, completed_at, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              t.id,
-              t.title,
-              t.notes || '',
-              t.project || '',
-              Array.isArray(t.labels) ? JSON.stringify(t.labels) : t.labels || '[]',
-              t.source || 'local',
-              t.status || 'inbox',
-              t.due_date || null,
-              t.planned_date || null,
-              t.scheduled_start || null,
-              t.scheduled_end || null,
-              t.duration_minutes ?? 30,
-              t.actual_time_minutes ?? 0,
-              t.priority ?? null,
-              t.reminder_minutes ?? 0,
-              t.sort_order ?? 0,
-              t.recurrence_rule_id ?? null,
-              t.is_recurrence_template ?? 0,
-              t.recurrence_detached ?? 0,
-              t.recurrence_original_date ?? null,
-              t.completed_at ?? null,
-              t.created_at || new Date().toISOString(),
-              t.updated_at || new Date().toISOString(),
-            ],
-          );
-        }
-
-        // Insert subtasks (after tasks — FK references tasks(id))
-        if (parsed.subtasks && Array.isArray(parsed.subtasks)) {
-          for (const s of parsed.subtasks) {
-            db.run(
-              `INSERT INTO subtasks (id, task_id, title, completed, sort_order, created_at)
-                             VALUES (?, ?, ?, ?, ?, ?)`,
-              [
-                s.id,
-                s.task_id,
-                s.title,
-                s.completed ?? 0,
-                s.sort_order ?? 0,
-                s.created_at || new Date().toISOString(),
-              ],
-            );
-          }
-        }
-
-        // Insert recurrence exceptions
-        if (parsed.recurrenceExceptions && Array.isArray(parsed.recurrenceExceptions)) {
-          for (const e of parsed.recurrenceExceptions) {
-            db.run(
-              `INSERT INTO recurrence_exceptions (id, recurrence_rule_id, exception_date, created_at)
-                             VALUES (?, ?, ?, ?)`,
-              [
-                e.id,
-                e.recurrence_rule_id,
-                e.exception_date,
-                e.created_at || new Date().toISOString(),
-              ],
-            );
-          }
-        }
-
-        // Insert projects
-        for (const p of parsed.projects) {
-          db.run(
-            `INSERT INTO projects (id, name, color, emoji, sort_order, actual_time_minutes, created_at, updated_at)
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              p.id,
-              p.name,
-              p.color || '#6366f1',
-              p.emoji || '📁',
-              p.sort_order ?? 0,
-              p.actual_time_minutes ?? 0,
-              p.created_at || new Date().toISOString(),
-              p.updated_at || new Date().toISOString(),
-            ],
-          );
-        }
-
-        // Insert note groups
-        if (parsed.noteGroups && Array.isArray(parsed.noteGroups)) {
-          for (const g of parsed.noteGroups) {
-            db.run(
-              `INSERT INTO note_groups (id, name, emoji, project_id, sort_order, created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-              [
-                g.id,
-                g.name,
-                g.emoji || '📝',
-                g.project_id || null,
-                g.sort_order ?? 0,
-                g.created_at || new Date().toISOString(),
-                g.updated_at || new Date().toISOString(),
-              ],
-            );
-          }
-        }
-
-        // Insert notes
-        if (parsed.notes && Array.isArray(parsed.notes)) {
-          for (const n of parsed.notes) {
-            db.run(
-              `INSERT INTO notes (id, group_id, project_id, title, content, sort_order, created_at, updated_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                n.id,
-                n.group_id || null,
-                n.project_id || null,
-                n.title || 'Untitled',
-                n.content || '',
-                n.sort_order ?? 0,
-                n.created_at || new Date().toISOString(),
-                n.updated_at || new Date().toISOString(),
-              ],
-            );
-          }
-        }
-
-        // Insert focus sessions
-        if (parsed.focusSessions && Array.isArray(parsed.focusSessions)) {
-          for (const s of parsed.focusSessions) {
-            db.run(
-              `INSERT INTO focus_sessions (id, task_id, project, started_at, ended_at, minutes, date, created_at)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              [
-                s.id,
-                s.task_id ?? null,
-                s.project || '',
-                s.started_at,
-                s.ended_at,
-                s.minutes ?? 0,
-                s.date,
-                s.created_at || new Date().toISOString(),
-              ],
-            );
-          }
-        }
-
-        // Insert daily plans
-        if (parsed.dailyPlans && Array.isArray(parsed.dailyPlans)) {
-          for (const d of parsed.dailyPlans) {
-            db.run(
-              `INSERT INTO daily_plans (date, committed_at, planned_task_ids, planned_minutes)
-                             VALUES (?, ?, ?, ?)`,
-              [
-                d.date,
-                d.committed_at || new Date().toISOString(),
-                d.planned_task_ids || '[]',
-                d.planned_minutes ?? 0,
-              ],
-            );
-          }
-        }
-
-        db.run('COMMIT;');
-        saveDatabase();
-
-        // Persist imported settings so all fields (incl. UI collapse states)
-        // round-trip; merge over existing to keep any field the backup omits.
-        const mergedSettings = { ...loadSettings(), ...(parsed.settings || {}) };
-        persistSettings(mergedSettings);
-
-        return {
-          success: true,
-          data: {
-            settings: mergedSettings,
-            taskCount: parsed.tasks.length,
-            projectCount: parsed.projects.length,
-          },
-        };
-      } catch (err: any) {
-        db.run('ROLLBACK;');
-        console.error('Import transaction failed:', err);
-        return { success: false, error: 'Import failed: ' + err.message };
-      }
-    } catch (err: any) {
-      console.error('Import failed:', err);
-      return { success: false, error: err.message };
     }
   });
 }
