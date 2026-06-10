@@ -379,9 +379,11 @@ function TimeBlock({
     setCurrentHeight(height);
   }, [top, height]);
 
-  const { projects } = useStore();
-  const projectObj = projects.find((p) => p.name === task.project);
+  const projects = useStore((s) => s.projects);
+  const projectName = useStore((s) => s.projectName);
+  const projectObj = projects.find((p) => p.id === task.projectId);
   const projectColor = projectObj?.color || '#6366f1';
+  const pName = projectName(task.projectId);
 
   const snapToGrid = (y: number) => {
     const minuteHeight = HOUR_HEIGHT / 60;
@@ -503,13 +505,13 @@ function TimeBlock({
               {startTime} – {endTime}
             </p>
           )}
-          {currentHeight > 60 && task.project && (
+          {currentHeight > 60 && task.projectId && (
             <p
-              dir={getTextDirection(task.project!)}
+              dir={getTextDirection(pName)}
               className="text-2xs mt-0.5"
-              style={{ ...getDirectionStyle(task.project!), color: projectColor + '99' }}
+              style={{ ...getDirectionStyle(pName), color: projectColor + '99' }}
             >
-              {task.project}
+              {pName}
             </p>
           )}
         </div>
