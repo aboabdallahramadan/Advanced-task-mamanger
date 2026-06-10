@@ -3,22 +3,33 @@ import ReactDOM from 'react-dom/client';
 import { AppRoot } from '@tmap/app';
 import '@tmap/app/index.css';
 import { createTmapClient } from '@tmap/api-client';
-import type { DataClient } from '@/data/DataClient';
+import { getAuthStore } from '@/auth/authStore';
 import { DesktopPlatform } from './platform/DesktopPlatform';
-
-const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://localhost:3000';
-
-const tmapClient = createTmapClient({ baseUrl: API_BASE });
+import { API_BASE_URL } from './config';
 
 // Desktop host adapter — talks to the Electron preload (`window.api`): secure
-// refresh-token store, OS notifications, focus widget window + tray, auto-launch.
+// refresh-token store (in main), OS notifications, focus widget window + tray, auto-launch.
 const platform = new DesktopPlatform();
 
-// DataClient is wired in a later phase (HttpDataClient over the refresh-wrapped client).
-const dataClient = {} as DataClient;
+// Raw typed client. The access token is injected per-request from the in-memory
+// authStore; the refresh token lives in the main process (safeStorage) and never
+// enters the renderer, so no `credentials:'include'` is needed on desktop.
+// AppRoot wraps this once with the 401→refresh layer and builds the HttpDataClient
+// over that wrapped client — one shared refresh path for all data calls.
+const tmapClient = createTmapClient({
+  baseUrl: API_BASE_URL,
+  getAccessToken: () => {
+    try {
+      return getAuthStore().getState().accessToken;
+    } catch {
+      // authStore not yet initialized (first paint before AppRoot init) — no token.
+      return null;
+    }
+  },
+});
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AppRoot dataClient={dataClient} platform={platform} tmapClient={tmapClient} />
+    <AppRoot platform={platform} tmapClient={tmapClient} />
   </React.StrictMode>,
 );
