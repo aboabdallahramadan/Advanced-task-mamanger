@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { ResizableImage } from './ResizableImage';
-import { useStore } from '../store';
+import { useStore, getDataClient } from '../store';
 import { Note } from '../types';
 import {
   ArrowLeft,
@@ -84,13 +84,15 @@ export function NoteEditorView() {
     if (!selectedNoteId || !editor) return;
 
     setNoteLoaded(false);
-    window.api.notes.getById(selectedNoteId).then((note) => {
-      if (!note || !isMountedRef.current) return;
-      setTitle(note.title || '');
-      setLoadedNote(note);
-      editor.commands.setContent(note.content || '');
-      setNoteLoaded(true);
-    });
+    getDataClient()
+      .notes.getById(selectedNoteId)
+      .then((note) => {
+        if (!note || !isMountedRef.current) return;
+        setTitle(note.title || '');
+        setLoadedNote(note);
+        editor.commands.setContent(note.content || '');
+        setNoteLoaded(true);
+      });
   }, [selectedNoteId, editor]);
 
   // Cleanup: save on unmount

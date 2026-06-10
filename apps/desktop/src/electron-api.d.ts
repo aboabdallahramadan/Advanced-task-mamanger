@@ -41,13 +41,13 @@ export interface DesktopApi {
   removeAllListeners(channel: string): void;
 }
 
-// Q5-9 enables this once `ElectronAPI`/`Window.api` is removed from
-// `packages/app/src/types.ts` (one declaration of `Window.api`, desktop-only):
-//
-// declare global {
-//   interface Window {
-//     api: DesktopApi;
-//   }
-// }
+// Q5-9: the old `ElectronAPI`/`Window.api` block has been removed from
+// `packages/app/src/types.ts`, so this is now the SOLE `Window.api` declaration
+// (desktop-only; the web build has no `window.api`).
+declare global {
+  interface Window {
+    api: DesktopApi;
+  }
+}
 
 export {};

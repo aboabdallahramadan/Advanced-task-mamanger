@@ -3,7 +3,7 @@ import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { ResizableImage } from './ResizableImage';
-import { useStore } from '../store';
+import { useStore, getDataClient } from '../store';
 import { Task, Subtask, RecurrenceFrequency, RecurrenceEndType } from '../types';
 import {
   X,
@@ -150,16 +150,18 @@ export function TaskDetailDialog() {
 
         // Load recurrence rule if exists
         if (task.recurrenceRuleId) {
-          window.api.recurrence.getRule(task.recurrenceRuleId).then((rule) => {
-            if (rule) {
-              setRecurrenceFrequency(rule.frequency);
-              setRecurrenceInterval(rule.interval);
-              setRecurrenceDaysOfWeek(rule.daysOfWeek.length > 0 ? rule.daysOfWeek : [0]);
-              setRecurrenceEndType(rule.endType);
-              setRecurrenceEndCount(rule.endCount ?? 10);
-              setRecurrenceEndDate(rule.endDate ?? '');
-            }
-          });
+          getDataClient()
+            .recurrence.getRule(task.recurrenceRuleId)
+            .then((rule) => {
+              if (rule) {
+                setRecurrenceFrequency(rule.frequency);
+                setRecurrenceInterval(rule.interval);
+                setRecurrenceDaysOfWeek(rule.daysOfWeek.length > 0 ? rule.daysOfWeek : [0]);
+                setRecurrenceEndType(rule.endType);
+                setRecurrenceEndCount(rule.endCount ?? 10);
+                setRecurrenceEndDate(rule.endDate ?? '');
+              }
+            });
         }
       }
     } else {

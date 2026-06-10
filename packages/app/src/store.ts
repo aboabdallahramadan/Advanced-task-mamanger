@@ -19,7 +19,51 @@ import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 import { sessionMinutes } from './lib/focusSession';
 import { getRange, getPreviousRange, daysInRange } from './lib/dateRange';
 import { summarize, throughputByDay, timeByProject as timeByProjectFn } from './lib/reports';
+import { loadLocalPrefs, saveLocalPref } from './lib/localPrefs';
 import type { DataClient } from './data/DataClient';
+
+// ─── Settings split helpers (synced via dataClient.settings; local via localPrefs) ───
+
+export interface SyncedSettings {
+  workStartHour: number;
+  workEndHour: number;
+  timeIncrement: number;
+  timeZoneId: string;
+}
+
+/** Domain (numbers) → wire (string map + top-level timeZoneId). */
+export function splitSyncedSettings(s: SyncedSettings): {
+  settings: Record<string, string>;
+  timeZoneId: string;
+} {
+  return {
+    settings: {
+      workStartHour: String(s.workStartHour),
+      workEndHour: String(s.workEndHour),
+      timeIncrement: String(s.timeIncrement),
+    },
+    timeZoneId: s.timeZoneId,
+  };
+}
+
+/** Wire (string map + timeZoneId) → partial domain (numbers); skips non-numeric. */
+export function applyLoadedSettings(
+  settings: Record<string, unknown>,
+  timeZoneId: string,
+): Partial<SyncedSettings> {
+  const out: Partial<SyncedSettings> = { timeZoneId };
+  const num = (v: unknown): number | undefined => {
+    const n = Number(v);
+    return v != null && v !== '' && !Number.isNaN(n) ? n : undefined;
+  };
+  const ws = num(settings.workStartHour);
+  const we = num(settings.workEndHour);
+  const ti = num(settings.timeIncrement);
+  if (ws !== undefined) out.workStartHour = ws;
+  if (we !== undefined) out.workEndHour = we;
+  if (ti !== undefined) out.timeIncrement = ti;
+  return out;
+}
 
 // ── DataClient injection seam ───────────────────────────────
 // The host (AppRoot, built per app entry) injects the concrete HttpDataClient
@@ -39,6 +83,16 @@ function dc(): DataClient {
     throw new Error('DataClient not initialized — call setDataClient() before using the store');
   }
   return _dataClient;
+}
+
+/**
+ * Public accessor for components that need ad-hoc reads outside a store action
+ * (e.g. NoteEditorView loading a note body, TaskDetailDialog loading a recurrence
+ * rule). Data IPC is gone — these reach the same injected HttpDataClient the store
+ * uses, not `window.api`.
+ */
+export function getDataClient(): DataClient {
+  return dc();
 }
 
 function stripHtml(html: string): string {
@@ -134,6 +188,10 @@ interface AppState {
   workStartHour: number;
   workEndHour: number;
   allowOverlaps: boolean;
+  timeZoneId: string;
+
+  // Online error surface (set by data actions on network failure)
+  onlineError: string | null;
 
   // UI
   sidebarCollapsed: boolean;
@@ -245,7 +303,19 @@ interface AppState {
 
   // Settings Persistence
   loadSettings: () => Promise<void>;
-  saveSettings: () => Promise<void>;
+  persistSyncedSettings: () => Promise<void>;
+
+  // Online error surface
+  setOnlineError: (msg: string | null) => void;
+
+  // Reminder selector — host reminder scheduler reads tasks via this projection.
+  getReminderTasks: () => {
+    id: string;
+    title: string;
+    status: string;
+    scheduledStart: string | null;
+    reminderMinutes: number | null;
+  }[];
 
   // Note Group Actions
   loadNoteGroups: () => Promise<void>;
@@ -356,6 +426,8 @@ export const useStore = create<AppState>((set, get) => ({
   workStartHour: 8,
   workEndHour: 20,
   allowOverlaps: false,
+  timeZoneId: 'UTC',
+  onlineError: null,
   sidebarCollapsed: false,
   quickAddOpen: false,
   settingsOpen: false,
@@ -945,11 +1017,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   setNotesCollapsed: (collapsed: boolean) => {
     set({ notesCollapsed: collapsed });
-    get().saveSettings();
+    saveLocalPref('notesCollapsed', collapsed);
   },
   setProjectsCollapsed: (collapsed: boolean) => {
     set({ projectsCollapsed: collapsed });
-    get().saveSettings();
+    saveLocalPref('projectsCollapsed', collapsed);
   },
 
   setCurrentView: (view: ViewMode) => {
@@ -979,20 +1051,21 @@ export const useStore = create<AppState>((set, get) => ({
 
   setSearchOpen: (open: boolean) => set({ searchOpen: open, searchQuery: '' }),
 
-  setSidebarCollapsed: (collapsed: boolean) => set({ sidebarCollapsed: collapsed }),
+  setSidebarCollapsed: (collapsed: boolean) => {
+    set({ sidebarCollapsed: collapsed });
+    saveLocalPref('sidebarCollapsed', collapsed);
+  },
 
   setTimeIncrement: (inc: number) => {
     set({ timeIncrement: inc });
-    // Persist settings in the background
-    setTimeout(() => get().saveSettings(), 0);
+    void get().persistSyncedSettings();
   },
 
   setQuickAddOpen: (isOpen: boolean) => set({ quickAddOpen: isOpen }),
   setSettingsOpen: (open: boolean) => set({ settingsOpen: open }),
   setWorkHours: (start: number, end: number) => {
     set({ workStartHour: start, workEndHour: end });
-    // Persist settings in the background
-    setTimeout(() => get().saveSettings(), 0);
+    void get().persistSyncedSettings();
   },
   openTaskDialog: (mode: 'create' | 'edit', taskId?: string) =>
     set({ taskDialog: { isOpen: true, mode, taskId: taskId || null } }),
@@ -1045,30 +1118,60 @@ export const useStore = create<AppState>((set, get) => ({
 
   // Settings Persistence
   loadSettings: async () => {
+    // Local-only prefs (no network).
+    const local = loadLocalPrefs();
+    set({
+      sidebarCollapsed: local.sidebarCollapsed,
+      notesCollapsed: local.notesCollapsed,
+      projectsCollapsed: local.projectsCollapsed,
+    });
+    // Synced settings (after auth).
     try {
-      const { settings } = await dc().settings.get();
-      const updates: Partial<AppState> = {};
-      if (typeof settings.workStartHour === 'number')
-        updates.workStartHour = settings.workStartHour;
-      if (typeof settings.workEndHour === 'number') updates.workEndHour = settings.workEndHour;
-      if (typeof settings.timeIncrement === 'number')
-        updates.timeIncrement = settings.timeIncrement;
+      const { settings, timeZoneId } = await dc().settings.get();
+      const applied = applyLoadedSettings(settings, timeZoneId);
+      const updates: Partial<{
+        workStartHour: number;
+        workEndHour: number;
+        timeIncrement: number;
+        timeZoneId: string;
+      }> = {};
+      if (applied.workStartHour !== undefined) updates.workStartHour = applied.workStartHour;
+      if (applied.workEndHour !== undefined) updates.workEndHour = applied.workEndHour;
+      if (applied.timeIncrement !== undefined) updates.timeIncrement = applied.timeIncrement;
+      if (applied.timeZoneId) updates.timeZoneId = applied.timeZoneId;
       set(updates);
     } catch (e) {
-      console.error('Failed to load settings:', e);
+      console.error('Failed to load synced settings:', e);
+      get().setOnlineError?.('Couldn’t load your settings from the server.');
     }
   },
 
-  saveSettings: async () => {
+  persistSyncedSettings: async () => {
+    const { workStartHour, workEndHour, timeIncrement, timeZoneId } = get();
+    const { settings, timeZoneId: tz } = splitSyncedSettings({
+      workStartHour,
+      workEndHour,
+      timeIncrement,
+      timeZoneId: timeZoneId ?? 'UTC',
+    });
     try {
-      const { workStartHour, workEndHour, timeIncrement } = get();
-      // Only the three synced numeric values go to the server; local-only UI
-      // collapse flags persist to localStorage (handled by the host in Q5/Q6).
-      await dc().settings.save({ workStartHour, workEndHour, timeIncrement });
+      await dc().settings.save(settings, tz);
     } catch (e) {
-      console.error('Failed to save settings:', e);
+      console.error('Failed to save synced settings:', e);
+      get().setOnlineError?.('Couldn’t save your settings to the server.');
     }
   },
+
+  setOnlineError: (msg) => set({ onlineError: msg }),
+
+  getReminderTasks: () =>
+    get().tasks.map((t) => ({
+      id: t.id,
+      title: t.title,
+      status: t.status,
+      scheduledStart: t.scheduledStart,
+      reminderMinutes: t.reminderMinutes,
+    })),
 
   // Project Reorder
   reorderProjects: async (items: { id: string; order: number }[]) => {
