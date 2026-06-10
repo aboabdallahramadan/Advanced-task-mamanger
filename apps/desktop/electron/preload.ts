@@ -1,153 +1,57 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-export interface TaskInput {
-  title: string;
-  notes?: string;
-  project?: string;
-  labels?: string[];
-  status?: string;
-  plannedDate?: string;
-  scheduledStart?: string;
-  scheduledEnd?: string;
-  durationMinutes?: number;
-  actualTimeMinutes?: number;
-  priority?: 1 | 2 | 3 | 4 | null;
-  reminderMinutes?: number | null;
-}
-
-export interface TaskUpdate {
-  title?: string;
-  notes?: string;
-  project?: string;
-  labels?: string[];
-  status?: string;
-  plannedDate?: string;
-  scheduledStart?: string;
-  scheduledEnd?: string;
-  durationMinutes?: number;
-  actualTimeMinutes?: number;
-  priority?: 1 | 2 | 3 | 4 | null;
-  reminderMinutes?: number | null;
-  order?: number;
-}
-
+/**
+ * Desktop-only bridge. SP2 moves ALL data CRUD to HTTP (@tmap/api-client),
+ * so this preload exposes ONLY host capabilities: secure refresh-token store,
+ * notifications, auto-launch, tray/navigation events, the focus widget, and
+ * app metadata. No tasks/projects/notes/settings data channels remain.
+ */
 const api = {
-  tasks: {
-    getAll: () => ipcRenderer.invoke('tasks:getAll'),
-    getByDate: (date: string) => ipcRenderer.invoke('tasks:getByDate', date),
-    getByStatus: (status: string) => ipcRenderer.invoke('tasks:getByStatus', status),
-    create: (task: TaskInput) => ipcRenderer.invoke('tasks:create', task),
-    update: (id: string, updates: TaskUpdate) => ipcRenderer.invoke('tasks:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('tasks:delete', id),
-    reorder: (tasks: { id: string; order: number }[]) => ipcRenderer.invoke('tasks:reorder', tasks),
-    search: (query: string) => ipcRenderer.invoke('tasks:search', query),
-  },
-  subtasks: {
-    create: (taskId: string, title: string) => ipcRenderer.invoke('subtasks:create', taskId, title),
-    update: (id: string, updates: { title?: string; completed?: boolean; order?: number }) =>
-      ipcRenderer.invoke('subtasks:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('subtasks:delete', id),
-  },
-  projects: {
-    getAll: () => ipcRenderer.invoke('projects:getAll'),
-    create: (input: { name: string; color?: string; emoji?: string }) =>
-      ipcRenderer.invoke('projects:create', input),
-    update: (
-      id: string,
-      updates: {
-        name?: string;
-        color?: string;
-        emoji?: string;
-        order?: number;
-        actualTimeMinutes?: number;
-      },
-    ) => ipcRenderer.invoke('projects:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('projects:delete', id),
-    reorder: (items: { id: string; order: number }[]) =>
-      ipcRenderer.invoke('projects:reorder', items),
-  },
-  noteGroups: {
-    getAll: () => ipcRenderer.invoke('noteGroups:getAll'),
-    getByProject: (projectId: string) => ipcRenderer.invoke('noteGroups:getByProject', projectId),
-    create: (input: { name: string; emoji?: string; projectId?: string }) =>
-      ipcRenderer.invoke('noteGroups:create', input),
-    update: (id: string, updates: any) => ipcRenderer.invoke('noteGroups:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('noteGroups:delete', id),
-    reorder: (items: { id: string; order: number }[]) =>
-      ipcRenderer.invoke('noteGroups:reorder', items),
-  },
-  notes: {
-    getAll: () => ipcRenderer.invoke('notes:getAll'),
-    getByGroup: (groupId: string) => ipcRenderer.invoke('notes:getByGroup', groupId),
-    getByProject: (projectId: string) => ipcRenderer.invoke('notes:getByProject', projectId),
-    getById: (id: string) => ipcRenderer.invoke('notes:getById', id),
-    create: (input: { groupId?: string; projectId?: string; title?: string; content?: string }) =>
-      ipcRenderer.invoke('notes:create', input),
-    update: (id: string, updates: any) => ipcRenderer.invoke('notes:update', id, updates),
-    delete: (id: string) => ipcRenderer.invoke('notes:delete', id),
-    reorder: (items: { id: string; order: number }[]) => ipcRenderer.invoke('notes:reorder', items),
-  },
-  settings: {
-    get: () => ipcRenderer.invoke('settings:get'),
-    save: (settings: Record<string, any>) => ipcRenderer.invoke('settings:save', settings),
-  },
   app: {
-    getVersion: () => ipcRenderer.invoke('app:getVersion'),
-    showNotification: (title: string, body: string) =>
-      ipcRenderer.invoke('app:showNotification', title, body),
-    getAutoLaunch: () => ipcRenderer.invoke('app:getAutoLaunch'),
-    setAutoLaunch: (enabled: boolean) => ipcRenderer.invoke('app:setAutoLaunch', enabled),
+    getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+    showNotification: (title: string, body: string): void =>
+      ipcRenderer.send('app:showNotification', title, body),
+    getAutoLaunch: (): Promise<boolean> => ipcRenderer.invoke('app:getAutoLaunch'),
+    setAutoLaunch: (enabled: boolean): Promise<boolean> =>
+      ipcRenderer.invoke('app:setAutoLaunch', enabled),
   },
-  data: {
-    exportAll: (settings: any) => ipcRenderer.invoke('data:export', settings),
-    importAll: () => ipcRenderer.invoke('data:import'),
+
+  /**
+   * Refresh token lives ONLY in the main process (safeStorage). The renderer can
+   * ask main to perform /auth/refresh and receive only the access token back; it
+   * can store a freshly-issued refresh token (after login/register) and clear it.
+   */
+  secureStore: {
+    setRefreshToken: (token: string): Promise<void> =>
+      ipcRenderer.invoke('secureStore:setRefreshToken', token),
+    clear: (): Promise<void> => ipcRenderer.invoke('secureStore:clear'),
+    /** Performs POST /auth/refresh in main using the stored refresh token. */
+    refreshAndGetAccess: (): Promise<{
+      accessToken: string;
+      expiresIn: number;
+      user: { id: string; email: string; timeZoneId: string };
+    } | null> => ipcRenderer.invoke('secureStore:refreshAndGetAccess'),
   },
-  recurrence: {
-    create: (task: any, rule: any) => ipcRenderer.invoke('recurrence:create', task, rule),
-    updateSeries: (ruleId: string, updates: any) =>
-      ipcRenderer.invoke('recurrence:updateSeries', ruleId, updates),
-    deleteSeries: (ruleId: string) => ipcRenderer.invoke('recurrence:deleteSeries', ruleId),
-    deleteSeriesFuture: (ruleId: string, fromDate: string) =>
-      ipcRenderer.invoke('recurrence:deleteSeriesFuture', ruleId, fromDate),
-    detachInstance: (taskId: string) => ipcRenderer.invoke('recurrence:detachInstance', taskId),
-    ensureInstances: (startDate: string, endDate: string) =>
-      ipcRenderer.invoke('recurrence:ensureInstances', startDate, endDate),
-    updateRule: (ruleId: string, ruleUpdates: any) =>
-      ipcRenderer.invoke('recurrence:updateRule', ruleId, ruleUpdates),
-    getRule: (ruleId: string) => ipcRenderer.invoke('recurrence:getRule', ruleId),
-  },
+
   focus: {
-    updateTray: (data: { taskTitle: string | null; elapsed: string | null; isPlaying: boolean }) =>
-      ipcRenderer.send('focus:updateTray', data),
-    showWidget: () => ipcRenderer.send('focus:showWidget'),
-    hideWidget: () => ipcRenderer.send('focus:hideWidget'),
-    sendWidgetState: (data: any) => ipcRenderer.send('focus:widgetState', data),
+    // forward state to the always-on-top widget window
+    showWidget: (): void => ipcRenderer.send('focus:showWidget'),
+    hideWidget: (): void => ipcRenderer.send('focus:hideWidget'),
+    sendWidgetState: (data: unknown): void => ipcRenderer.send('focus:widgetState', data),
+    updateTray: (data: {
+      taskTitle: string | null;
+      elapsed: string | null;
+      isPlaying: boolean;
+    }): void => ipcRenderer.send('focus:updateTray', data),
   },
-  focusSessions: {
-    add: (session: {
-      taskId: string | null;
-      project: string;
-      startedAt: string;
-      endedAt: string;
-      minutes: number;
-      date: string;
-    }) => ipcRenderer.invoke('focusSessions:add', session),
-  },
-  dailyPlans: {
-    upsert: (plan: { date: string; plannedTaskIds: string[]; plannedMinutes: number }) =>
-      ipcRenderer.invoke('dailyPlans:upsert', plan),
-    get: (date: string) => ipcRenderer.invoke('dailyPlans:get', date),
-  },
-  reports: {
-    getData: (start: string, end: string) => ipcRenderer.invoke('reports:getData', start, end),
-  },
-  on: (channel: string, callback: (...args: any[]) => void) => {
+
+  on: (channel: string, callback: (...args: any[]) => void): void => {
     ipcRenderer.on(channel, (_e, ...args) => callback(...args));
   },
-  off: (channel: string, callback: (...args: any[]) => void) => {
+  off: (channel: string, callback: (...args: any[]) => void): void => {
     ipcRenderer.removeListener(channel, callback);
   },
-  removeAllListeners: (channel: string) => {
+  removeAllListeners: (channel: string): void => {
     ipcRenderer.removeAllListeners(channel);
   },
 };
