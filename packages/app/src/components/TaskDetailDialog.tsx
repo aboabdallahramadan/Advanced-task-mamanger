@@ -67,7 +67,7 @@ export function TaskDetailDialog() {
 
   // Form state
   const [title, setTitle] = useState('');
-  const [project, setProject] = useState('');
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [plannedDate, setPlannedDate] = useState('');
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [actualTimeMinutes, setActualTimeMinutes] = useState(0);
@@ -136,7 +136,7 @@ export function TaskDetailDialog() {
       if (task) {
         setTitle(task.title);
         setTimeout(() => descriptionEditor?.commands.setContent(task.notes || ''), 0);
-        setProject(task.project || '');
+        setProjectId(task.projectId ?? null);
         setPlannedDate(task.plannedDate || '');
         setDurationMinutes(task.durationMinutes || 30);
         setActualTimeMinutes(task.actualTimeMinutes || 0);
@@ -166,7 +166,7 @@ export function TaskDetailDialog() {
       // Create mode — reset form
       setTitle('');
       setTimeout(() => descriptionEditor?.commands.setContent(''), 0);
-      setProject('');
+      setProjectId(null);
       setPlannedDate(selectedDate);
       setDurationMinutes(30);
       setActualTimeMinutes(0);
@@ -225,7 +225,7 @@ export function TaskDetailDialog() {
     const taskData: Partial<Task> = {
       title: title.trim(),
       notes: descriptionEditor?.getHTML() || '',
-      project,
+      projectId,
       plannedDate: plannedDate || null,
       durationMinutes,
       actualTimeMinutes,
@@ -686,8 +686,8 @@ export function TaskDetailDialog() {
               Project
             </label>
             <select
-              value={project}
-              onChange={(e) => setProject(e.target.value)}
+              value={projectId ?? ''}
+              onChange={(e) => setProjectId(e.target.value || null)}
               className="w-full px-4 py-2.5 bg-surface-950 border border-surface-700/60 rounded-xl text-surface-100 focus:outline-none focus:border-accent-500/50 focus:ring-1 focus:ring-accent-500/20 transition-all [color-scheme:dark] appearance-none cursor-pointer"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
@@ -697,7 +697,7 @@ export function TaskDetailDialog() {
             >
               <option value="">No project</option>
               {projects.map((p) => (
-                <option key={p.id} value={p.name}>
+                <option key={p.id} value={p.id}>
                   {p.emoji} {p.name}
                 </option>
               ))}
