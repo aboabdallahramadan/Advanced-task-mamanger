@@ -1264,11 +1264,12 @@ export const useStore = create<AppState>((set, get) => ({
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
+      const { projectName } = get();
       return filtered.filter(
         (t) =>
           t.title.toLowerCase().includes(q) ||
           stripHtml(t.notes).toLowerCase().includes(q) ||
-          t.project.toLowerCase().includes(q),
+          projectName(t.projectId).toLowerCase().includes(q),
       );
     }
 
