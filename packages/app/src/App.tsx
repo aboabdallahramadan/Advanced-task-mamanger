@@ -27,6 +27,8 @@ import { ReportsView } from './components/ReportsView';
 import { NoteGroupDialog } from './components/NoteGroupDialog';
 import { useStore } from './store';
 import { usePlatform } from './AppRoot';
+import { startReminderScheduler } from './reminders/reminderScheduler';
+import { OnlineErrorBanner } from './components/OnlineErrorBanner';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock, Plus } from 'lucide-react';
@@ -43,6 +45,7 @@ export default function App() {
     openTaskDialog,
   } = useStore();
   const platform = usePlatform();
+  const getReminderTasks = useStore((s) => s.getReminderTasks);
   const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
   const [overSlot, setOverSlot] = React.useState<{ hour: number; minute: number } | null>(null);
 
@@ -72,6 +75,15 @@ export default function App() {
     platform.on('navigate', onNavigate);
     return () => platform.off('navigate', onNavigate);
   }, [platform, startPlanningFlow]);
+
+  // Client-side reminder timer (replaces the removed main-process scheduler).
+  useEffect(() => {
+    const stop = startReminderScheduler({
+      getTasks: () => getReminderTasks(),
+      notify: (title, body) => platform.notify(title, body),
+    });
+    return stop;
+  }, [platform, getReminderTasks]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = event.active.data.current;
@@ -130,6 +142,7 @@ export default function App() {
       <div className="h-screen flex bg-surface-950 select-none">
         {/* Title bar drag region */}
         <div className="fixed top-0 left-0 right-0 h-10 titlebar-drag-region z-50" />
+        <OnlineErrorBanner />
 
         {/* Sidebar */}
         <Sidebar />
