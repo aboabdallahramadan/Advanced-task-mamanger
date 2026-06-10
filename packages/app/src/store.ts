@@ -310,6 +310,14 @@ interface AppState {
   filteredTasks: () => Task[];
   freeMinutesRemaining: () => number;
   projectName: (projectId: string | null) => string;
+
+  // Auth seam — called by AppRoot after login / on logout
+  /** Inject the DataClient (called once by AppRoot after auth). */
+  setDataClient: (client: DataClient) => void;
+  /** Reset all data state back to initial (called by AppRoot on logout). */
+  reset: () => void;
+  /** Load all data from the server (tasks, projects, notes, settings). Called once after auth. */
+  initialLoad: () => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -1351,5 +1359,34 @@ export const useStore = create<AppState>((set, get) => ({
       console.error('Failed to load reports:', e);
       set({ reportData: null, reportLoading: false });
     }
+  },
+
+  // ── Auth seam ────────────────────────────────────────────────────────────
+  setDataClient: (client: DataClient) => {
+    _dataClient = client;
+  },
+
+  reset: () => {
+    // Clear the module-level DataClient reference so stale calls fail loudly.
+    _dataClient = null;
+    set({
+      tasks: [],
+      loading: false,
+      projects: [],
+      selectedProjectId: null,
+      noteGroups: [],
+      selectedNoteGroupId: null,
+      selectedNoteId: null,
+      noteEditorReturnView: null,
+      currentNotes: [],
+      projectNotes: [],
+      allNotes: [],
+      reportData: null,
+      reportLoading: false,
+    });
+  },
+
+  initialLoad: async () => {
+    await Promise.all([get().loadTasks(), get().loadProjects(), get().loadNoteGroups()]);
   },
 }));

@@ -1,14 +1,39 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import AppRoot from '@tmap/app';
+import { AppRoot } from '@tmap/app';
 import '@tmap/app/index.css';
+import { createTmapClient } from '@tmap/api-client';
+import type { DataClient } from '@/data/DataClient';
+import type { Platform } from '@/platform/Platform';
 
-// Q1: thin web renderer entry. AppRoot is the @tmap/app stub (renders <App />).
-// NOTE: <App /> still references window.api at runtime; the web host has no
-// window.api yet, so deep interactions will error at runtime until Q2 injects a
-// DataClient and Q3 provides WebPlatform. Q1's gate is BUILD-only for web.
+// Q4 stubs — replaced in Q5 when WebPlatform + HttpDataClient land.
+// These satisfy the TypeScript shape but are intentionally non-functional at runtime.
+const API_BASE = (import.meta as any).env?.VITE_API_BASE_URL ?? 'http://localhost:3000';
+
+const tmapClient = createTmapClient({ baseUrl: API_BASE });
+
+// Minimal Platform stub (web — real WebPlatform wired in Q5).
+const platform: Platform = {
+  capabilities: {
+    tray: false,
+    focusWidgetWindow: false,
+    autoLaunch: false,
+    dataPort: false,
+  },
+  auth: {
+    refreshAndGetAccess: async () => null,
+    clear: async () => {},
+  },
+  notify: () => {},
+  on: () => {},
+  off: () => {},
+};
+
+// Minimal DataClient stub — real HttpDataClient wired in Q5.
+const dataClient = {} as DataClient;
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <AppRoot />
+    <AppRoot dataClient={dataClient} platform={platform} tmapClient={tmapClient} />
   </React.StrictMode>,
 );
