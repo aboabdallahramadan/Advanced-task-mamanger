@@ -88,7 +88,7 @@ export function ProjectView() {
   const projectTasks = useMemo(() => {
     if (!project) return [];
     let result = tasks
-      .filter((t) => t.project === project.name && t.status !== 'archived')
+      .filter((t) => t.projectId === project.id && t.status !== 'archived')
       .sort((a, b) => {
         // Sort: active first, then done; within each group by order
         if (a.status === 'done' && b.status !== 'done') return 1;
@@ -170,7 +170,7 @@ export function ProjectView() {
     if (quickAddText.trim() && project) {
       createTask({
         title: quickAddText.trim(),
-        project: project.name,
+        projectId: project.id,
         status: 'planned',
       });
       setQuickAddText('');
