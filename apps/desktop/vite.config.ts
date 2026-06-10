@@ -20,7 +20,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'path', 'fs', 'os', 'url', 'sql.js', 'uuid'],
+              external: ['electron', 'path', 'fs', 'os', 'url'],
             },
           },
         },
