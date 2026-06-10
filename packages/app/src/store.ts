@@ -72,12 +72,13 @@ function logFocusSession(
   let project = '';
   if (targetType === 'task') {
     taskId = targetId;
-    project = tasks.find((t) => t.id === targetId)?.project || '';
+    const t = tasks.find((tt) => tt.id === targetId);
+    project = (t?.projectId ? projects.find((p) => p.id === t.projectId)?.name : '') || '';
   } else {
     project = projects.find((p) => p.id === targetId)?.name || '';
   }
-  window.api.focusSessions
-    .add({
+  dc()
+    .focusSessions.add({
       taskId,
       project,
       startedAt: new Date(startMs).toISOString(),
@@ -373,7 +374,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadTasks: async () => {
     set({ loading: true });
     try {
-      const tasks = await window.api.tasks.getAll();
+      const tasks = await dc().tasks.getAll();
       const today = format(new Date(), 'yyyy-MM-dd');
 
       // Auto-rollover: move past unfinished tasks to today
@@ -389,7 +390,7 @@ export const useStore = create<AppState>((set, get) => ({
         ) {
           // Recurring instances: archive past missed ones
           if (task.recurrenceRuleId && task.recurrenceOriginalDate) {
-            rolloverPromises.push(window.api.tasks.update(task.id, { status: 'archived' }));
+            rolloverPromises.push(dc().tasks.update(task.id, { status: 'archived' }));
             return { ...task, status: 'archived' as Task['status'] };
           }
 
@@ -402,7 +403,7 @@ export const useStore = create<AppState>((set, get) => ({
           if (task.status === 'scheduled') {
             updates.status = 'planned';
           }
-          rolloverPromises.push(window.api.tasks.update(task.id, updates));
+          rolloverPromises.push(dc().tasks.update(task.id, updates));
           return {
             ...task,
             ...updates,
@@ -422,7 +423,7 @@ export const useStore = create<AppState>((set, get) => ({
       // Ensure recurring task instances are generated for the next 2 weeks
       try {
         const twoWeeks = format(addDays(new Date(), 14), 'yyyy-MM-dd');
-        const newInstances = await window.api.recurrence.ensureInstances(today, twoWeeks);
+        const newInstances = await dc().recurrence.ensureInstances(today, twoWeeks);
         if (newInstances && newInstances.length > 0) {
           set((s) => ({ tasks: [...s.tasks, ...newInstances] }));
         }
@@ -438,7 +439,7 @@ export const useStore = create<AppState>((set, get) => ({
   loadTasksByDate: async (date: string) => {
     set({ loading: true });
     try {
-      const tasks = await window.api.tasks.getByDate(date);
+      const tasks = await dc().tasks.getByDate(date);
       set({ tasks, loading: false });
     } catch (e) {
       console.error('Failed to load tasks by date:', e);
@@ -448,7 +449,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   createTask: async (task: Partial<Task>) => {
     try {
-      const newTask = await window.api.tasks.create(task);
+      const newTask = await dc().tasks.create(task);
       set((s) => ({ tasks: [...s.tasks, newTask] }));
       return newTask;
     } catch (e) {
@@ -459,7 +460,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateTask: async (id: string, updates: Partial<Task>) => {
     try {
-      const updated = await window.api.tasks.update(id, updates);
+      const updated = await dc().tasks.update(id, updates);
       set((s) => ({
         tasks: s.tasks.map((t) => (t.id === id ? updated : t)),
       }));
@@ -476,7 +477,7 @@ export const useStore = create<AppState>((set, get) => ({
           focusMode: { targetType: null, targetId: null, isPlaying: false, sessionStartTime: null },
         });
       }
-      await window.api.tasks.delete(id);
+      await dc().tasks.delete(id);
       set((s) => ({
         tasks: s.tasks.filter((t) => t.id !== id),
         selectedTaskIds: new Set([...s.selectedTaskIds].filter((sid) => sid !== id)),
@@ -488,7 +489,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   reorderTasks: async (tasks: { id: string; order: number }[]) => {
     try {
-      await window.api.tasks.reorder(tasks);
+      await dc().tasks.reorder(tasks);
       set((s) => {
         const orderMap = new Map(tasks.map((i) => [i.id, i.order]));
         return {
@@ -551,9 +552,9 @@ export const useStore = create<AppState>((set, get) => ({
   // ─── Recurrence Actions ─────────────────────────────────
   createRecurringTask: async (task, rule) => {
     try {
-      await window.api.recurrence.create(task, rule);
-      // Reload all tasks since multiple instances were created
-      await get().loadTasks();
+      // HttpDataClient returns the full task list (targeted reload) after create.
+      const tasks = await dc().recurrence.create(task, rule);
+      set({ tasks });
       return null;
     } catch (e) {
       console.error('Failed to create recurring task:', e);
@@ -563,7 +564,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateRecurrenceSeries: async (ruleId, updates) => {
     try {
-      await window.api.recurrence.updateSeries(ruleId, updates);
+      await dc().recurrence.updateSeries(ruleId, updates);
       await get().loadTasks();
     } catch (e) {
       console.error('Failed to update recurrence series:', e);
@@ -572,7 +573,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteRecurrenceSeries: async (ruleId) => {
     try {
-      await window.api.recurrence.deleteSeries(ruleId);
+      await dc().recurrence.deleteSeries(ruleId);
       await get().loadTasks();
     } catch (e) {
       console.error('Failed to delete recurrence series:', e);
@@ -581,7 +582,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteRecurrenceSeriesFuture: async (ruleId, fromDate) => {
     try {
-      await window.api.recurrence.deleteSeriesFuture(ruleId, fromDate);
+      await dc().recurrence.deleteSeriesFuture(ruleId, fromDate);
       await get().loadTasks();
     } catch (e) {
       console.error('Failed to delete future recurrence instances:', e);
@@ -590,7 +591,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   detachRecurrenceInstance: async (taskId) => {
     try {
-      await window.api.recurrence.detachInstance(taskId);
+      await dc().recurrence.detachInstance(taskId);
       set((s) => ({
         tasks: s.tasks.map((t) => (t.id === taskId ? { ...t, recurrenceDetached: true } : t)),
       }));
@@ -601,7 +602,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   ensureRecurrenceInstances: async (startDate, endDate) => {
     try {
-      const newInstances = await window.api.recurrence.ensureInstances(startDate, endDate);
+      const newInstances = await dc().recurrence.ensureInstances(startDate, endDate);
       if (newInstances && newInstances.length > 0) {
         set((s) => ({ tasks: [...s.tasks, ...newInstances] }));
       }
@@ -613,7 +614,7 @@ export const useStore = create<AppState>((set, get) => ({
   // ─── Subtask Actions ─────────────────────────────────────
   createSubtask: async (taskId: string, title: string) => {
     try {
-      const subtask = await window.api.subtasks.create(taskId, title);
+      const subtask = await dc().subtasks.create(taskId, title);
       set((s) => ({
         tasks: s.tasks.map((t) =>
           t.id === taskId ? { ...t, subtasks: [...t.subtasks, subtask] } : t,
@@ -628,7 +629,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateSubtask: async (taskId: string, subtaskId: string, updates) => {
     try {
-      await window.api.subtasks.update(subtaskId, updates);
+      await dc().subtasks.update(subtaskId, updates);
       set((s) => ({
         tasks: s.tasks.map((t) =>
           t.id === taskId
@@ -648,7 +649,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteSubtask: async (taskId: string, subtaskId: string) => {
     try {
-      await window.api.subtasks.delete(subtaskId);
+      await dc().subtasks.delete(subtaskId);
       set((s) => ({
         tasks: s.tasks.map((t) =>
           t.id === taskId ? { ...t, subtasks: t.subtasks.filter((st) => st.id !== subtaskId) } : t,
@@ -662,7 +663,7 @@ export const useStore = create<AppState>((set, get) => ({
   // ─── Project Actions ─────────────────────────────────────
   loadProjects: async () => {
     try {
-      const projects = await window.api.projects.getAll();
+      const projects = await dc().projects.getAll();
       set({ projects });
     } catch (e) {
       console.error('Failed to load projects:', e);
@@ -671,7 +672,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   createProject: async (input) => {
     try {
-      const project = await window.api.projects.create(input);
+      const project = await dc().projects.create(input);
       set((s) => ({ projects: [...s.projects, project] }));
       return project;
     } catch (e) {
@@ -682,7 +683,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateProject: async (id, updates) => {
     try {
-      const updated = await window.api.projects.update(id, updates);
+      const updated = await dc().projects.update(id, updates);
       set((s) => ({
         projects: s.projects.map((p) => (p.id === id ? updated : p)),
       }));
@@ -699,7 +700,7 @@ export const useStore = create<AppState>((set, get) => ({
           focusMode: { targetType: null, targetId: null, isPlaying: false, sessionStartTime: null },
         });
       }
-      await window.api.projects.delete(id);
+      await dc().projects.delete(id);
       set((s) => ({
         projects: s.projects.filter((p) => p.id !== id),
       }));
@@ -721,7 +722,7 @@ export const useStore = create<AppState>((set, get) => ({
   // ─── Note Group Actions ──────────────────────────────────
   loadNoteGroups: async () => {
     try {
-      const noteGroups = await window.api.noteGroups.getAll();
+      const noteGroups = await dc().noteGroups.getAll();
       set({ noteGroups });
     } catch (e) {
       console.error('Failed to load note groups:', e);
@@ -730,7 +731,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   createNoteGroup: async (input) => {
     try {
-      const group = await window.api.noteGroups.create(input);
+      const group = await dc().noteGroups.create(input);
       set((s) => ({ noteGroups: [...s.noteGroups, group] }));
       return group;
     } catch (e) {
@@ -741,7 +742,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateNoteGroup: async (id, updates) => {
     try {
-      const updated = await window.api.noteGroups.update(id, updates);
+      const updated = await dc().noteGroups.update(id, updates);
       set((s) => ({
         noteGroups: s.noteGroups.map((g) => (g.id === id ? updated : g)),
       }));
@@ -752,7 +753,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   deleteNoteGroup: async (id) => {
     try {
-      await window.api.noteGroups.delete(id);
+      await dc().noteGroups.delete(id);
       set((s) => ({
         noteGroups: s.noteGroups.filter((g) => g.id !== id),
         selectedNoteGroupId: s.selectedNoteGroupId === id ? null : s.selectedNoteGroupId,
@@ -783,7 +784,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   reorderNoteGroups: async (items) => {
     try {
-      await window.api.noteGroups.reorder(items);
+      await dc().noteGroups.reorder(items);
       set((s) => {
         const orderMap = new Map(items.map((i) => [i.id, i.order]));
         return {
@@ -800,7 +801,7 @@ export const useStore = create<AppState>((set, get) => ({
   // ─── Note Actions ────────────────────────────────────────
   loadAllNotes: async () => {
     try {
-      const notes = await window.api.notes.getAll();
+      const notes = await dc().notes.getAll();
       set({ allNotes: notes });
     } catch (e) {
       console.error('Failed to load all notes:', e);
@@ -809,7 +810,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadNotesByProject: async (projectId) => {
     try {
-      const notes = await window.api.notes.getByProject(projectId);
+      const notes = await dc().notes.getByProject(projectId);
       set({ projectNotes: notes });
     } catch (e) {
       console.error('Failed to load project notes:', e);
@@ -818,7 +819,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   createProjectNote: async (projectId) => {
     try {
-      const note = await window.api.notes.create({ projectId });
+      const note = await dc().notes.create({ projectId });
       set((s) => ({
         projectNotes: [...s.projectNotes, note],
         selectedNoteId: note.id,
@@ -833,7 +834,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   loadNotesByGroup: async (groupId) => {
     try {
-      const notes = await window.api.notes.getByGroup(groupId);
+      const notes = await dc().notes.getByGroup(groupId);
       set({ currentNotes: notes });
     } catch (e) {
       console.error('Failed to load notes:', e);
@@ -842,7 +843,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   createNote: async (groupId) => {
     try {
-      const note = await window.api.notes.create({ groupId });
+      const note = await dc().notes.create({ groupId });
       set((s) => ({
         currentNotes: [...s.currentNotes, note],
         selectedNoteId: note.id,
@@ -857,7 +858,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   updateNote: async (id, updates) => {
     try {
-      const updated = await window.api.notes.update(id, updates);
+      const updated = await dc().notes.update(id, updates);
       set((s) => ({
         currentNotes: s.currentNotes.map((n) => (n.id === id ? updated : n)),
         projectNotes: s.projectNotes.map((n) => (n.id === id ? updated : n)),
@@ -876,7 +877,7 @@ export const useStore = create<AppState>((set, get) => ({
         get().projectNotes.find((n) => n.id === id) ||
         get().allNotes.find((n) => n.id === id);
 
-      await window.api.notes.delete(id);
+      await dc().notes.delete(id);
       const { selectedNoteId, selectedNoteGroupId, noteEditorReturnView } = get();
 
       let viewUpdate: Record<string, any> = {};
@@ -914,7 +915,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   reorderNotes: async (items) => {
     try {
-      await window.api.notes.reorder(items);
+      await dc().notes.reorder(items);
       set((s) => {
         const orderMap = new Map(items.map((i) => [i.id, i.order]));
         return {
@@ -1014,7 +1015,7 @@ export const useStore = create<AppState>((set, get) => ({
     const tasksForDay = plannedForDate(date);
     const plannedMinutes = tasksForDay.reduce((s, t) => s + (t.durationMinutes || 0), 0);
     try {
-      await window.api.dailyPlans.upsert({
+      await dc().dailyPlans.upsert({
         date,
         plannedTaskIds: tasksForDay.map((t) => t.id),
         plannedMinutes,
@@ -1036,22 +1037,14 @@ export const useStore = create<AppState>((set, get) => ({
   // Settings Persistence
   loadSettings: async () => {
     try {
-      const settings = await window.api.settings.get();
-      if (settings && typeof settings === 'object') {
-        const updates: Partial<AppState> = {};
-        if (typeof settings.workStartHour === 'number')
-          updates.workStartHour = settings.workStartHour;
-        if (typeof settings.workEndHour === 'number') updates.workEndHour = settings.workEndHour;
-        if (typeof settings.timeIncrement === 'number')
-          updates.timeIncrement = settings.timeIncrement;
-        if (typeof settings.sidebarCollapsed === 'boolean')
-          updates.sidebarCollapsed = settings.sidebarCollapsed;
-        if (typeof settings.notesCollapsed === 'boolean')
-          updates.notesCollapsed = settings.notesCollapsed;
-        if (typeof settings.projectsCollapsed === 'boolean')
-          updates.projectsCollapsed = settings.projectsCollapsed;
-        set(updates);
-      }
+      const { settings } = await dc().settings.get();
+      const updates: Partial<AppState> = {};
+      if (typeof settings.workStartHour === 'number')
+        updates.workStartHour = settings.workStartHour;
+      if (typeof settings.workEndHour === 'number') updates.workEndHour = settings.workEndHour;
+      if (typeof settings.timeIncrement === 'number')
+        updates.timeIncrement = settings.timeIncrement;
+      set(updates);
     } catch (e) {
       console.error('Failed to load settings:', e);
     }
@@ -1059,22 +1052,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   saveSettings: async () => {
     try {
-      const {
-        workStartHour,
-        workEndHour,
-        timeIncrement,
-        sidebarCollapsed,
-        notesCollapsed,
-        projectsCollapsed,
-      } = get();
-      await window.api.settings.save({
-        workStartHour,
-        workEndHour,
-        timeIncrement,
-        sidebarCollapsed,
-        notesCollapsed,
-        projectsCollapsed,
-      });
+      const { workStartHour, workEndHour, timeIncrement } = get();
+      // Only the three synced numeric values go to the server; local-only UI
+      // collapse flags persist to localStorage (handled by the host in Q5/Q6).
+      await dc().settings.save({ workStartHour, workEndHour, timeIncrement });
     } catch (e) {
       console.error('Failed to save settings:', e);
     }
@@ -1083,7 +1064,7 @@ export const useStore = create<AppState>((set, get) => ({
   // Project Reorder
   reorderProjects: async (items: { id: string; order: number }[]) => {
     try {
-      await window.api.projects.reorder(items);
+      await dc().projects.reorder(items);
       set((s) => {
         const orderMap = new Map(items.map((i) => [i.id, i.order]));
         return {
@@ -1344,8 +1325,8 @@ export const useStore = create<AppState>((set, get) => ({
       const range = getRange(reportRange, now);
       const prev = getPreviousRange(reportRange, now);
       const [current, previous] = await Promise.all([
-        window.api.reports.getData(range.start, range.end),
-        window.api.reports.getData(prev.start, prev.end),
+        dc().reports.getData(range.start, range.end),
+        dc().reports.getData(prev.start, prev.end),
       ]);
       // Drop the result if a newer loadReports call superseded this one.
       if (token !== reportRequestToken) return;
