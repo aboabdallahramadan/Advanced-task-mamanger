@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { usePlatform } from '../AppRoot';
 import { X, Save, Clock, Power } from 'lucide-react';
 import { clsx } from 'clsx';
+import { usePlatform } from '../AppRoot';
 
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   value: i,
@@ -10,7 +10,6 @@ const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 }));
 
 export function SettingsDialog() {
-  const platform = usePlatform();
   const {
     settingsOpen,
     setSettingsOpen,
@@ -20,27 +19,25 @@ export function SettingsDialog() {
     setWorkHours,
     setTimeIncrement,
   } = useStore();
-
-  const supportsAutoLaunch = platform.capabilities.autoLaunch;
+  const platform = usePlatform();
 
   const [start, setStart] = useState(workStartHour);
   const [end, setEnd] = useState(workEndHour);
   const [increment, setIncrement] = useState(timeIncrement);
   const [autoLaunch, setAutoLaunch] = useState(false);
 
+  const autoLaunchSupported = platform.capabilities.autoLaunch && !!platform.autoLaunch;
+
   useEffect(() => {
     if (settingsOpen) {
       setStart(workStartHour);
       setEnd(workEndHour);
       setIncrement(timeIncrement);
-      if (supportsAutoLaunch) {
-        platform.autoLaunch
-          ?.get()
-          .then(setAutoLaunch)
-          .catch(() => {});
+      if (autoLaunchSupported) {
+        platform.autoLaunch!.get().then(setAutoLaunch).catch(() => {});
       }
     }
-  }, [settingsOpen, workStartHour, workEndHour, timeIncrement, supportsAutoLaunch, platform]);
+  }, [settingsOpen, workStartHour, workEndHour, timeIncrement, autoLaunchSupported, platform]);
 
   if (!settingsOpen) return null;
 
@@ -80,7 +77,7 @@ export function SettingsDialog() {
         {/* Body */}
         <div className="p-6 space-y-6 overflow-y-auto">
           {/* Startup (desktop only) */}
-          {supportsAutoLaunch && (
+          {autoLaunchSupported && (
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
                 Startup
@@ -94,7 +91,7 @@ export function SettingsDialog() {
                   onClick={() => {
                     const next = !autoLaunch;
                     setAutoLaunch(next);
-                    void platform.autoLaunch?.set(next);
+                    void platform.autoLaunch!.set(next);
                   }}
                   className={clsx(
                     'relative w-10 h-5 rounded-full transition-colors',
@@ -151,7 +148,6 @@ export function SettingsDialog() {
               </div>
             </div>
 
-            {/* Preview */}
             <div className="mt-3 px-3 py-2 bg-surface-950 rounded-lg border border-surface-800/60 text-xs text-surface-400 flex items-center gap-2">
               <Clock className="w-3.5 h-3.5" />
               <span>
@@ -186,6 +182,7 @@ export function SettingsDialog() {
               ))}
             </div>
           </div>
+          {/* Data export/import section intentionally removed in SP2 (online-only; spec §6/§7). */}
         </div>
 
         {/* Footer */}
