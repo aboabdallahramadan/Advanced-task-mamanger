@@ -87,6 +87,7 @@ function saveFilters(filters: SavedFilters) {
 
 export function AllTasksView() {
   const { tasks, projects, reorderTasks } = useStore();
+  const projectName = useStore((s) => s.projectName);
 
   // Load saved filters once
   const saved = useRef(loadFilters()).current;
@@ -134,6 +135,17 @@ export function AllTasksView() {
     groupBy,
   ]);
 
+  // Validate saved selectedProjects against known project ids — clear stale name-based values
+  useEffect(() => {
+    if (saved.selectedProjects) {
+      const validIds = new Set(projects.map((p) => p.id).concat(['']));
+      const allValid = saved.selectedProjects.every((id) => validIds.has(id));
+      if (!allValid) {
+        setSelectedProjects(null); // stale name-based saved filter — reset gracefully
+      }
+    }
+  }, []); // run once on mount
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const isFiltered =
@@ -168,7 +180,7 @@ export function AllTasksView() {
       if (!selectedPriorities.has(t.priority)) return false;
       // Project
       if (selectedProjects !== null) {
-        const proj = t.project || '';
+        const proj = t.projectId || '';
         if (!selectedProjects.has(proj)) return false;
       }
       // Date range
@@ -183,7 +195,7 @@ export function AllTasksView() {
             .replace(/<[^>]*>/g, ' ')
             .toLowerCase()
             .includes(q) &&
-          !t.project.toLowerCase().includes(q)
+          !projectName(t.projectId).toLowerCase().includes(q)
         )
           return false;
       }
@@ -281,7 +293,7 @@ export function AllTasksView() {
           key = task.status;
           break;
         case 'project':
-          key = task.project || 'No Project';
+          key = task.projectId || '';
           break;
         case 'priority':
           key = task.priority ? PRIORITY_LABELS[task.priority] : 'No Priority';
@@ -296,7 +308,14 @@ export function AllTasksView() {
 
     return order.map((key) => ({
       key,
-      label: groupBy === 'status' ? STATUS_LABELS[key] || key : key,
+      label:
+        groupBy === 'status'
+          ? STATUS_LABELS[key] || key
+          : groupBy === 'project'
+            ? key === ''
+              ? 'No Project'
+              : projectName(key)
+            : key,
       tasks: map.get(key)!,
     }));
   }, [filteredTasks, groupBy]);
@@ -310,14 +329,8 @@ export function AllTasksView() {
     // No-op: reorder doesn't make sense in a filtered/sorted view
   }, []);
 
-  // Unique project names for filter
-  const allProjectNames = useMemo(() => {
-    const names = new Set<string>();
-    for (const t of tasks) {
-      if (t.project) names.add(t.project);
-    }
-    return Array.from(names).sort();
-  }, [tasks]);
+  // projects already comes from useStore; derive ids directly — no useMemo needed
+  const allProjectIds = projects.map((p) => p.id);
 
   return (
     <div className="flex-1 flex flex-col h-full bg-surface-950">
@@ -419,27 +432,21 @@ export function AllTasksView() {
 
         <FilterDropdown
           label="Project"
-          count={selectedProjects?.size ?? allProjectNames.length + 1}
-          total={allProjectNames.length + 1}
+          count={selectedProjects?.size ?? allProjectIds.length + 1}
+          total={allProjectIds.length + 1}
         >
           <FilterCheckbox
             label="No Project"
             checked={selectedProjects === null || selectedProjects.has('')}
             onChange={(checked) => {
               if (selectedProjects === null) {
-                // Switching from "all" to selective: include all except toggled
-                const next = new Set(allProjectNames);
-                if (!checked) next.delete('');
-                else next.add('');
-                // Actually start with all + no-project
-                const full = new Set(['', ...allProjectNames]);
+                const full = new Set(['', ...allProjectIds]);
                 if (!checked) full.delete('');
                 setSelectedProjects(full);
               } else {
                 const next = new Set(selectedProjects);
                 checked ? next.add('') : next.delete('');
-                // If all are now selected, reset to null
-                if (next.size === allProjectNames.length + 1) {
+                if (next.size === allProjectIds.length + 1) {
                   setSelectedProjects(null);
                 } else {
                   setSelectedProjects(next);
@@ -447,20 +454,20 @@ export function AllTasksView() {
               }
             }}
           />
-          {allProjectNames.map((name) => (
+          {projects.map((p) => (
             <FilterCheckbox
-              key={name}
-              label={name}
-              checked={selectedProjects === null || selectedProjects.has(name)}
+              key={p.id}
+              label={`${p.emoji} ${p.name}`}
+              checked={selectedProjects === null || selectedProjects.has(p.id)}
               onChange={(checked) => {
                 if (selectedProjects === null) {
-                  const full = new Set(['', ...allProjectNames]);
-                  if (!checked) full.delete(name);
+                  const full = new Set(['', ...allProjectIds]);
+                  if (!checked) full.delete(p.id);
                   setSelectedProjects(full);
                 } else {
                   const next = new Set(selectedProjects);
-                  checked ? next.add(name) : next.delete(name);
-                  if (next.size === allProjectNames.length + 1) {
+                  checked ? next.add(p.id) : next.delete(p.id);
+                  if (next.size === allProjectIds.length + 1) {
                     setSelectedProjects(null);
                   } else {
                     setSelectedProjects(next);
