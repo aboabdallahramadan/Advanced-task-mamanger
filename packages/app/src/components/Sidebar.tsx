@@ -292,7 +292,7 @@ export function Sidebar() {
                     const count = deduplicateRecurring(
                       tasks.filter(
                         (t) =>
-                          t.project === project.name &&
+                          t.projectId === project.id &&
                           t.status !== 'archived' &&
                           t.status !== 'done',
                       ),
