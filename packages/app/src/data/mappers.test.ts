@@ -207,7 +207,7 @@ describe('toFocusSession / toDailyPlan / toReportData', () => {
       createdAt: 'c', updatedAt: 'u',
     });
     expect(fs.minutes).toBe(25);
-    expect(fs.project).toBe('Marketing');
+    expect(fs.project).toBe('Marketing'); // FocusSession.project is a name string
     expect(fs.taskId).toBe(null);
   });
 
@@ -228,7 +228,7 @@ describe('toFocusSession / toDailyPlan / toReportData', () => {
       dailyPlans: [{ date: '2026-06-08', committedAt: 'c', plannedTaskIds: ['t1'], plannedMinutes: '60' }],
     });
     expect(rd.sessions[0].minutes).toBe(30);
-    expect(rd.completedTasks[0].project).toBe('Ops');
+    expect(rd.completedTasks[0].project).toBe('Ops'); // ReportData completedTask.project is a name string
     expect(rd.dailyPlans[0].plannedMinutes).toBe(60);
   });
 });

@@ -542,7 +542,7 @@ export class HttpDataClient implements DataClient {
         await this.api.POST('/api/v1/focus-sessions', {
           body: {
             taskId: s.taskId,
-            project: s.project,
+            project: s.project, // FocusSession.project is a name string (project name at session time)
             startedAt: s.startedAt,
             endedAt: s.endedAt,
             minutes: s.minutes,

@@ -76,9 +76,9 @@ export function ReportsView() {
   // the positional palette for unmatched rows (including the "No project" bucket).
   const projectColorByName = new Map(allProjects.map((p) => [p.name, p.color]));
   const projectData = projects.map((p, i) => ({
-    name: p.project || 'No project',
+    name: p.project || 'No project', // ReportData ProjectTime.project is a name string
     minutes: p.minutes,
-    color: projectColorByName.get(p.project) ?? COLORS[i % COLORS.length],
+    color: projectColorByName.get(p.project) ?? COLORS[i % COLORS.length], // ReportData ProjectTime.project
   }));
   const avg = throughput.length
     ? throughput.reduce((s, p) => s + p.completed, 0) / throughput.length

@@ -16,7 +16,7 @@ export function throughputByDay(data: ReportData, days: string[]): ThroughputPoi
 export function timeByProject(sessions: { project: string; minutes: number }[]): ProjectTime[] {
   const totals = new Map<string, number>();
   for (const s of sessions) {
-    totals.set(s.project, (totals.get(s.project) || 0) + s.minutes);
+    totals.set(s.project, (totals.get(s.project) || 0) + s.minutes); // ReportData ProjectTime.project is a name string
   }
   return Array.from(totals.entries())
     .map(([project, minutes]) => ({ project, minutes }))

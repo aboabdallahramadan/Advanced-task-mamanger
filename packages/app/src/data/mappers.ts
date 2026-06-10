@@ -248,7 +248,7 @@ export function toFocusSession(r: FocusSessionResponse): FocusSession {
   return {
     id: r.id,
     taskId: r.taskId ?? null,
-    project: r.project,
+    project: r.project, // FocusSession.project is a name string (project name at session time)
     startedAt: r.startedAt,
     endedAt: r.endedAt,
     minutes: toNum(r.minutes, 0),
@@ -297,11 +297,11 @@ export function toReportData(r: ReportDataResponse): ReportData {
   return {
     completedTasks: r.completedTasks.map((t) => ({
       id: t.id,
-      project: t.project,
+      project: t.project, // ReportData completedTask.project is a name string
       date: t.date,
     })),
     sessions: r.sessions.map((s) => ({
-      project: s.project,
+      project: s.project, // ReportData session.project is a name string
       minutes: toNum(s.minutes, 0),
       date: s.date,
     })),
