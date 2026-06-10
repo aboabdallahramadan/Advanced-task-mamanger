@@ -309,6 +309,7 @@ interface AppState {
   backlogTasks: () => Task[];
   filteredTasks: () => Task[];
   freeMinutesRemaining: () => number;
+  projectName: (projectId: string | null) => string;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -1310,6 +1311,12 @@ export const useStore = create<AppState>((set, get) => ({
     const totalWorkMinutes = (workEndHour - workStartHour) * 60;
     const scheduledMinutes = scheduled.reduce((sum, t) => sum + (t.durationMinutes || 0), 0);
     return totalWorkMinutes - scheduledMinutes;
+  },
+
+  projectName: (projectId: string | null) => {
+    if (!projectId) return '';
+    const { projects } = get();
+    return projects.find((p) => p.id === projectId)?.name ?? '';
   },
 
   setReportRange: (mode: ReportRangeMode) => {
