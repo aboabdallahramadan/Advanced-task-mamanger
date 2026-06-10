@@ -6,7 +6,8 @@
 //   • If refresh() fails or returns null: reject all queued callers + call onLogout() once.
 //   • A 401 that comes FROM the refresh path itself never recurses — logs out immediately.
 //   • Retried POSTs/PATCHes reuse the exact same init object (no body mutation).
-//   • After signOut(): reject all future calls without refreshing.
+//   • Every request carries the AbortController's signal (set via setAbortController).
+//   • After signOut(): abort in-flight requests, reject all future calls without refreshing.
 
 import type { AuthTokenResponse } from './types';
 
@@ -27,8 +28,10 @@ export interface RefreshClientOptions {
 }
 
 export interface RefreshClient extends MinimalClient {
-  /** Mark the session as ended — future calls are rejected, no more refresh attempts. */
+  /** Mark the session as ended — abort in-flight requests, reject future calls, no more refresh. */
   signOut: () => void;
+  /** Sets the AbortController whose signal is attached to every wrapped request. */
+  setAbortController: (ac: AbortController) => void;
 }
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -38,10 +41,22 @@ export function createRefreshClient({ client, refresh, onLogout }: RefreshClient
   let refreshPromise: Promise<AuthTokenResponse | null> | null = null;
   // Set to true after signOut() or a terminal refresh failure.
   let signedOut = false;
+  // The controller whose signal is attached to every request; aborted on signOut().
+  let abortController: AbortController | undefined;
 
   function doLogout(): void {
     signedOut = true;
     onLogout();
+  }
+
+  /**
+   * Attaches the AbortController's signal to a request init, without clobbering a
+   * caller-supplied signal. Pass-through when no controller has been set.
+   */
+  function withSignal(init: unknown): unknown {
+    if (!abortController?.signal) return init;
+    const base = (init ?? {}) as { signal?: AbortSignal };
+    return { ...base, signal: base.signal ?? abortController.signal };
   }
 
   /**
@@ -75,7 +90,9 @@ export function createRefreshClient({ client, refresh, onLogout }: RefreshClient
       throw new Error('Session ended — not making request');
     }
 
-    const result = await client[method](path, init);
+    // NOTE: the original `init` (incl. any body with a client-generated id) is preserved
+    // across the original attempt and the retry; only the abort signal is layered on here.
+    const result = await client[method](path, withSignal(init));
 
     if (result.response.status !== 401) {
       return result;
@@ -108,6 +125,10 @@ export function createRefreshClient({ client, refresh, onLogout }: RefreshClient
     DELETE: (path, init) => call('DELETE', path, init, false),
     signOut() {
       signedOut = true;
+      abortController?.abort();
+    },
+    setAbortController(ac: AbortController) {
+      abortController = ac;
     },
   };
 }
