@@ -166,3 +166,92 @@ describe('fromTask — domain -> CreateTaskRequest / UpdateTaskRequest', () => {
     expect(body.id).toBe('client-uuid');
   });
 });
+
+describe('toProject / toNoteGroup / toNote — carry _rank, default order 0', () => {
+  it('toProject coerces actualTimeMinutes and exposes _rank', () => {
+    const p = toProject({
+      id: 'p1', name: 'P', color: '#fff', emoji: '🚀',
+      rank: 'm', actualTimeMinutes: '90',
+      createdAt: 'a', updatedAt: 'b',
+    });
+    expect(p.actualTimeMinutes).toBe(90);
+    expect(p.order).toBe(0);
+    expect((p as any)._rank).toBe('m');
+  });
+
+  it('toNoteGroup maps projectId null and _rank', () => {
+    const g = toNoteGroup({
+      id: 'g1', name: 'G', emoji: '📁', projectId: null,
+      rank: 'k', createdAt: 'a', updatedAt: 'b',
+    });
+    expect(g.projectId).toBe(null);
+    expect((g as any)._rank).toBe('k');
+  });
+
+  it('toNote maps groupId/projectId and _rank', () => {
+    const n = toNote({
+      id: 'n1', groupId: 'g1', projectId: null, title: 'T', content: '<p/>',
+      rank: 'h', createdAt: 'a', updatedAt: 'b',
+    });
+    expect(n.groupId).toBe('g1');
+    expect(n.projectId).toBe(null);
+    expect((n as any)._rank).toBe('h');
+  });
+});
+
+describe('toFocusSession / toDailyPlan / toReportData', () => {
+  it('toFocusSession coerces minutes and preserves project name string', () => {
+    const fs = toFocusSession({
+      id: 'f1', taskId: null, project: 'Marketing',
+      startedAt: 's', endedAt: 'e', minutes: '25', date: '2026-06-08',
+      createdAt: 'c', updatedAt: 'u',
+    });
+    expect(fs.minutes).toBe(25);
+    expect(fs.project).toBe('Marketing');
+    expect(fs.taskId).toBe(null);
+  });
+
+  it('toDailyPlan coerces plannedMinutes', () => {
+    const dp = toDailyPlan({
+      date: '2026-06-08', committedAt: 'c',
+      plannedTaskIds: ['t1', 't2'], plannedMinutes: '120',
+      createdAt: 'a', updatedAt: 'b',
+    });
+    expect(dp.plannedMinutes).toBe(120);
+    expect(dp.plannedTaskIds).toEqual(['t1', 't2']);
+  });
+
+  it('toReportData coerces session/plan minutes and keeps project names', () => {
+    const rd = toReportData({
+      completedTasks: [{ id: 't1', project: 'Ops', date: '2026-06-08' }],
+      sessions: [{ project: 'Ops', minutes: '30', date: '2026-06-08' }],
+      dailyPlans: [{ date: '2026-06-08', committedAt: 'c', plannedTaskIds: ['t1'], plannedMinutes: '60' }],
+    });
+    expect(rd.sessions[0].minutes).toBe(30);
+    expect(rd.completedTasks[0].project).toBe('Ops');
+    expect(rd.dailyPlans[0].plannedMinutes).toBe(60);
+  });
+});
+
+describe('toRecurrenceRule', () => {
+  it('folds enums and coerces numerics', () => {
+    const rr = toRecurrenceRule({
+      id: 'r1', frequency: 'Weekly', interval: '2',
+      daysOfWeek: ['1', '3', '5'], endType: 'Count',
+      endCount: '10', endDate: null, generatedUntil: '2026-07-01',
+      createdAt: 'a', updatedAt: 'b',
+    });
+    expect(rr.frequency).toBe('weekly');
+    expect(rr.interval).toBe(2);
+    expect(rr.daysOfWeek).toEqual([1, 3, 5]);
+    expect(rr.endType).toBe('count');
+    expect(rr.endCount).toBe(10);
+  });
+});
+
+describe('fromSubtaskUpdate (order -> sortOrder, omit unset)', () => {
+  it('maps order to sortOrder and leaves unset fields null', () => {
+    expect(fromSubtaskUpdate({ order: 3 })).toEqual({ title: null, completed: null, sortOrder: 3 });
+    expect(fromSubtaskUpdate({ completed: true })).toEqual({ title: null, completed: true, sortOrder: null });
+  });
+});
