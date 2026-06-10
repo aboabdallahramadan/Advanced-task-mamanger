@@ -1,5 +1,6 @@
 // packages/app/src/auth/__tests__/authStore.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe as describe2, it as it2, expect as expect2, vi as vi2, beforeEach as beforeEach2 } from 'vitest';
 import { createAuthStore } from '../authStore';
 import type { AuthTokenResponse } from '../types';
 
@@ -104,5 +105,75 @@ describe('authStore — register/login transitions', () => {
     await expect(store.getState().register('a@b.c', 'x')).rejects.toThrow();
     expect(store.getState().status).toBe('anonymous');
     expect(store.getState().error).toMatch(/Password too short/);
+  });
+});
+
+// --- append to packages/app/src/auth/__tests__/authStore.test.ts ---
+
+describe2('authStore — bootstrap network-vs-401 + logout', () => {
+  let client: any;
+  let onAuthed: ReturnType<typeof vi2.fn>;
+  let onLoggedOut: ReturnType<typeof vi2.fn>;
+
+  function ok2(data: unknown) {
+    return { data, error: undefined, response: { status: 200 } };
+  }
+  function auth2(token: string) {
+    return { accessToken: token, expiresIn: 900, user: { id: 'u1', email: 'a@b.c', timeZoneId: 'UTC' } };
+  }
+  function makePlatform2(refreshImpl: () => Promise<any>) {
+    return { auth: { refreshAndGetAccess: vi2.fn(refreshImpl), clear: vi2.fn(async () => {}) } };
+  }
+
+  beforeEach2(() => {
+    onAuthed = vi2.fn();
+    onLoggedOut = vi2.fn();
+    client = { POST: vi2.fn(async () => ok2({})), GET: vi2.fn(), PATCH: vi2.fn(), PUT: vi2.fn(), DELETE: vi2.fn() };
+  });
+
+  it2('bootstrap with valid refresh → authed', async () => {
+    const platform = makePlatform2(async () => auth2('boot-tok'));
+    const store = createAuthStore({ client, platform, onAuthed, onLoggedOut });
+    await store.getState().bootstrap();
+    const s = store.getState();
+    expect2(s.status).toBe('authed');
+    expect2(s.accessToken).toBe('boot-tok');
+    expect2(s.user?.id).toBe('u1');
+    expect2(onAuthed).toHaveBeenCalledTimes(1);
+  });
+
+  it2('bootstrap refresh returns null (401) → anonymous AND clears stored token', async () => {
+    const platform = makePlatform2(async () => null);
+    const store = createAuthStore({ client, platform, onAuthed, onLoggedOut });
+    await store.getState().bootstrap();
+    expect2(store.getState().status).toBe('anonymous');
+    expect2(store.getState().networkError).toBe(false);
+    expect2(platform.auth.clear).toHaveBeenCalledTimes(1);
+  });
+
+  it2('bootstrap refresh throws network error → anonymous, token NOT cleared, networkError set', async () => {
+    const platform = makePlatform2(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const store = createAuthStore({ client, platform, onAuthed, onLoggedOut });
+    await store.getState().bootstrap();
+    const s = store.getState();
+    expect2(s.status).toBe('anonymous');
+    expect2(s.networkError).toBe(true);
+    expect2(platform.auth.clear).not.toHaveBeenCalled();
+  });
+
+  it2('logout → anonymous, clears token, calls platform.clear + onLoggedOut', async () => {
+    const platform = makePlatform2(async () => auth2('boot-tok'));
+    const store = createAuthStore({ client, platform, onAuthed, onLoggedOut });
+    await store.getState().bootstrap(); // authed
+    await store.getState().logout();
+    const s = store.getState();
+    expect2(s.status).toBe('anonymous');
+    expect2(s.accessToken).toBeNull();
+    expect2(s.user).toBeNull();
+    expect2(platform.auth.clear).toHaveBeenCalledTimes(1);
+    expect2(onLoggedOut).toHaveBeenCalledTimes(1);
+    expect2(client.POST).toHaveBeenCalledWith('/api/v1/auth/logout', expect2.anything());
   });
 });
