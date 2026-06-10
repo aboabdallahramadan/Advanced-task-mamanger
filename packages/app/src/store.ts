@@ -19,6 +19,27 @@ import { format, addDays, startOfWeek, endOfWeek } from 'date-fns';
 import { sessionMinutes } from './lib/focusSession';
 import { getRange, getPreviousRange, daysInRange } from './lib/dateRange';
 import { summarize, throughputByDay, timeByProject as timeByProjectFn } from './lib/reports';
+import type { DataClient } from './data/DataClient';
+
+// ── DataClient injection seam ───────────────────────────────
+// The host (AppRoot, built per app entry) injects the concrete HttpDataClient
+// after auth. Every data action reads it via dc(); calling a data action before
+// injection is a programming error (auth gates the app, so this never happens
+// in normal flow) and throws a clear message.
+let _dataClient: DataClient | null = null;
+
+/** Inject the DataClient. Called once by AppRoot after the client is built. */
+export function setDataClient(client: DataClient): void {
+  _dataClient = client;
+}
+
+/** Accessor used by every store data action. */
+function dc(): DataClient {
+  if (!_dataClient) {
+    throw new Error('DataClient not initialized — call setDataClient() before using the store');
+  }
+  return _dataClient;
+}
 
 function stripHtml(html: string): string {
   return html
