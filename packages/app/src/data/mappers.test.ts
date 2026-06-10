@@ -255,3 +255,30 @@ describe('fromSubtaskUpdate (order -> sortOrder, omit unset)', () => {
     expect(fromSubtaskUpdate({ completed: true })).toEqual({ title: null, completed: true, sortOrder: null });
   });
 });
+
+describe('parseSettings / stringifySettings', () => {
+  it('parses the three synced numeric values string -> number', () => {
+    const parsed = parseSettings({ workStartHour: '8', workEndHour: '20', timeIncrement: '15' });
+    expect(parsed).toEqual({ workStartHour: 8, workEndHour: 20, timeIncrement: 15 });
+  });
+
+  it('leaves unknown keys as strings (timeZoneId is NOT inside the map)', () => {
+    const parsed = parseSettings({ workStartHour: '9', someFutureKey: 'hello' });
+    expect(parsed.workStartHour).toBe(9);
+    expect(parsed.someFutureKey).toBe('hello');
+  });
+
+  it('stringifies only the three synced numeric keys', () => {
+    const body = stringifySettings({
+      workStartHour: 8, workEndHour: 20, timeIncrement: 10,
+      sidebarCollapsed: true, // local-only -> not persisted to server
+    });
+    expect(body).toEqual({ workStartHour: '8', workEndHour: '20', timeIncrement: '10' });
+    expect('sidebarCollapsed' in body).toBe(false);
+  });
+
+  it('omits undefined synced keys rather than writing "undefined"', () => {
+    const body = stringifySettings({ workStartHour: 8 });
+    expect(body).toEqual({ workStartHour: '8' });
+  });
+});
