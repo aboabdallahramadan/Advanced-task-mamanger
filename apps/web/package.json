@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "vitest run",
     "build": "tsc -b ../../packages/app/tsconfig.json && tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
     "format": "prettier --write \"**/*.{ts,tsx,css,json,html}\""
