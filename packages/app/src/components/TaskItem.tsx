@@ -44,6 +44,8 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
     openTaskDialog,
   } = useStore();
 
+  const pName = useStore((s) => s.projectName(task.projectId));
+
   const [editTitle, setEditTitle] = useState(task.title);
   const [showMenu, setShowMenu] = useState(false);
   const editInputRef = useRef<HTMLInputElement>(null);
@@ -223,10 +225,10 @@ export function TaskItem({ task, isDragOverlay }: TaskItemProps) {
             </span>
           )}
 
-          {task.project && (
+          {task.projectId && (
             <span className="chip text-2xs hidden group-hover:inline-flex sm:inline-flex">
               <Folder className="w-2.5 h-2.5" />
-              {task.project}
+              {pName}
             </span>
           )}
 
