@@ -10,6 +10,5 @@ export {
   useAuthStore,
 } from './authStore';
 export type { AuthState, AuthStatus, AuthStoreDeps } from './authStore';
-// (temporary until Q4-8)
-// export { LoginView } from './LoginView';
-// export { RegisterView } from './RegisterView';
+export { LoginView } from './LoginView';
+export { RegisterView } from './RegisterView';
