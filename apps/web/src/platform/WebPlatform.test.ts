@@ -57,11 +57,24 @@ describe('WebPlatform', () => {
     expect(await p.auth.refreshAndGetAccess()).toBeNull();
   });
 
-  it('returns null (does not throw) on network failure', async () => {
+  it('throws on a network failure (fetch rejects) so bootstrap keeps the session', async () => {
+    // SF-3: only a true 401 returns null (→ clear session). A network failure must
+    // propagate so authStore.bootstrap's network branch keeps the (possibly valid)
+    // cookie session and shows a retry banner instead of signing the user out.
     globalThis.fetch = vi.fn(async () => {
       throw new TypeError('Failed to fetch');
     }) as unknown as typeof fetch;
     const p = new WebPlatform('http://api.test');
-    expect(await p.auth.refreshAndGetAccess()).toBeNull();
+    await expect(p.auth.refreshAndGetAccess()).rejects.toThrow();
+  });
+
+  it('throws (NetworkError, not null) on a 5xx from refresh', async () => {
+    // A 5xx is a server/transport problem, not an auth failure — same handling as
+    // a fetch rejection: throw so the session is preserved, never returned as null.
+    globalThis.fetch = vi.fn(
+      async () => new Response('', { status: 503 }),
+    ) as unknown as typeof fetch;
+    const p = new WebPlatform('http://api.test');
+    await expect(p.auth.refreshAndGetAccess()).rejects.toThrow();
   });
 });
