@@ -34,16 +34,7 @@ import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock, Plus } from 'lucide-react';
 
 export default function App() {
-  const {
-    loadTasks,
-    loadProjects,
-    loadNoteGroups,
-    scheduleTask,
-    startPlanningFlow,
-    currentView,
-    loadSettings,
-    openTaskDialog,
-  } = useStore();
+  const { scheduleTask, startPlanningFlow, currentView, loadSettings, openTaskDialog } = useStore();
   const platform = usePlatform();
   const getReminderTasks = useStore((s) => s.getReminderTasks);
   const [draggedTask, setDraggedTask] = React.useState<Task | null>(null);
@@ -51,12 +42,12 @@ export default function App() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
+  // Data (tasks/projects/noteGroups) is loaded once on the authed transition by
+  // AppRoot.onAuthed → store.initialLoad(); App only needs settings here, which
+  // initialLoad deliberately leaves out (it's host/UI config, not synced entities).
   useEffect(() => {
-    loadTasks();
-    loadProjects();
-    loadNoteGroups();
     loadSettings();
-  }, [loadTasks, loadProjects, loadNoteGroups, loadSettings]);
+  }, [loadSettings]);
 
   // Global keyboard shortcuts
   useEffect(() => {

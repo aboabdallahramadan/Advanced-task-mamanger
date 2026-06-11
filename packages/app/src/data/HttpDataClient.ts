@@ -243,16 +243,18 @@ export class HttpDataClient implements DataClient {
       return p as Project;
     },
     update: async (id: string, u: Partial<Project>): Promise<Project> => {
-      // PUT replaces all four mutable fields; merge against the cached/known state.
-      const current = await this.projects.getAll().then((all) => all.find((p) => p.id === id));
+      // PATCH applies only the provided fields (server treats null as "leave
+      // unchanged"), so send exactly what changed — no read-merge round-trip.
+      // rank is reordered via reorder(), never here, so it always stays null
+      // (sending a cached/fallback rank could clobber the real one on a cache miss).
       const row = unwrap(
         await this.api.PATCH('/api/v1/projects/{id}', {
           params: { path: { id } },
           body: {
-            name: u.name ?? current?.name ?? '',
-            color: u.color ?? current?.color ?? '#6366f1',
-            emoji: u.emoji ?? current?.emoji ?? '📁',
-            rank: this.projectRanks.get(id) ?? 'n',
+            name: u.name ?? null,
+            color: u.color ?? null,
+            emoji: u.emoji ?? null,
+            rank: null,
           } as never,
         }),
       );

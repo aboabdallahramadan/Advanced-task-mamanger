@@ -22,6 +22,18 @@ import { summarize, throughputByDay, timeByProject as timeByProjectFn } from './
 import { loadLocalPrefs, saveLocalPref } from './lib/localPrefs';
 import type { DataClient } from './data/DataClient';
 
+/**
+ * Append tasks that arrive without a meaningful `order` (e.g. ensureInstances
+ * returns every instance at order:0) to an existing list, assigning each a
+ * trailing order strictly above the current max so the UI sort stays stable
+ * and free of order:0 ties. Preserves the incoming relative order.
+ */
+function appendWithTrailingOrder(existing: Task[], incoming: Task[]): Task[] {
+  const maxOrder = existing.reduce((m, t) => Math.max(m, t.order ?? 0), -1);
+  const appended = incoming.map((t, i) => ({ ...t, order: maxOrder + 1 + i }));
+  return [...existing, ...appended];
+}
+
 // ─── Settings split helpers (synced via dataClient.settings; local via localPrefs) ───
 
 export interface SyncedSettings {
@@ -520,7 +532,11 @@ export const useStore = create<AppState>((set, get) => ({
         const twoWeeks = format(addDays(new Date(), 14), 'yyyy-MM-dd');
         const newInstances = await dc().recurrence.ensureInstances(today, twoWeeks);
         if (newInstances && newInstances.length > 0) {
-          set((s) => ({ tasks: [...s.tasks, ...newInstances] }));
+          // ensureInstances returns instances all at order:0 (the mapper can't run the
+          // container rank-sort over a partial set), so appending them verbatim would
+          // tie them with each other and the existing order:0 task. Give them trailing,
+          // distinct orders after the current max to keep the UI sort stable.
+          set((s) => ({ tasks: appendWithTrailingOrder(s.tasks, newInstances) }));
         }
       } catch (e) {
         console.error('Failed to ensure recurrence instances:', e);
@@ -699,7 +715,8 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const newInstances = await dc().recurrence.ensureInstances(startDate, endDate);
       if (newInstances && newInstances.length > 0) {
-        set((s) => ({ tasks: [...s.tasks, ...newInstances] }));
+        // See loadTasks: appended instances arrive at order:0; trail them after the max.
+        set((s) => ({ tasks: appendWithTrailingOrder(s.tasks, newInstances) }));
       }
     } catch (e) {
       console.error('Failed to ensure recurrence instances:', e);

@@ -99,10 +99,13 @@ export function AppRoot({ platform, tmapClient }: AppRootProps) {
     void getAuthStore().getState().bootstrap();
   }, []);
 
-  // Web: request Notification permission once so client-side reminders can fire.
-  // Host-agnostic — on desktop, Electron's Notification is not window.Notification,
-  // so the `'Notification' in window` guard prevents a (harmless) double request.
+  // Web only: request Notification permission once so client-side reminders can fire.
+  // Desktop notifies through the OS via main (platform.notify → window.api), so the
+  // renderer's web Notification prompt is both unnecessary and a UX wart there. The
+  // Electron renderer is Chromium, so `window.Notification` IS present on desktop —
+  // gate on capabilities.tray (web=false) rather than feature-detecting the API.
   useEffect(() => {
+    if (platform.capabilities.tray) return; // desktop → OS notifications via main
     if (
       typeof window !== 'undefined' &&
       'Notification' in window &&
