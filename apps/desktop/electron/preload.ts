@@ -25,6 +25,8 @@ const api = {
     setRefreshToken: (token: string): Promise<void> =>
       ipcRenderer.invoke('secureStore:setRefreshToken', token),
     clear: (): Promise<void> => ipcRenderer.invoke('secureStore:clear'),
+    /** Revokes the stored refresh token server-side (POST /auth/logout in main), then clears it. */
+    logout: (): Promise<void> => ipcRenderer.invoke('secureStore:logout'),
     /** Performs POST /auth/refresh in main using the stored refresh token. */
     refreshAndGetAccess: (): Promise<{
       accessToken: string;

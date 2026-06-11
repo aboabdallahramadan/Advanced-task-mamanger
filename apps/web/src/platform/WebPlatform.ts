@@ -22,26 +22,39 @@ export class WebPlatform implements Platform {
 
   readonly auth = {
     refreshAndGetAccess: async (): Promise<AuthTokenResponse | null> => {
-      try {
-        const res = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'X-Tmap-Refresh': '1' },
-        });
-        if (res.status === 401) return null; // cookie missing/expired → anonymous
-        if (!res.ok) return null; // network/5xx → couldn't refresh (don't clear)
-        const data = (await res.json()) as AuthTokenResponse;
-        return data;
-      } catch {
-        return null; // network failure → couldn't refresh
+      // 401 → true auth failure: return null so bootstrap clears the session.
+      // network failure / 5xx → THROW (name 'NetworkError') so authStore.bootstrap's
+      // network branch shows a retry banner and KEEPS the possibly-valid cookie session.
+      const res = await fetch(`${this.baseUrl}/api/v1/auth/refresh`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'X-Tmap-Refresh': '1' },
+      });
+      if (res.status === 401) return null;
+      if (!res.ok) {
+        const err = new Error(`refresh failed: ${res.status}`);
+        err.name = 'NetworkError';
+        throw err;
       }
+      return (await res.json()) as AuthTokenResponse;
     },
     clear: async (): Promise<void> => {
-      // The httpOnly cookie is cleared server-side by /auth/logout (called by
-      // authStore.logout). Nothing JS-accessible to clear here.
+      // The httpOnly cookie is cleared server-side by /auth/logout (called via
+      // logout() below). Nothing JS-accessible to clear here.
     },
     setRefreshToken: async (): Promise<void> => {
       // Web: refresh token is set as an httpOnly cookie by the server response.
+    },
+    logout: async (): Promise<void> => {
+      // Revoke server-side via the httpOnly cookie (server reads it; no body).
+      try {
+        await fetch(`${this.baseUrl}/api/v1/auth/logout`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+      } catch {
+        // best-effort; local sign-out proceeds regardless
+      }
     },
   };
 

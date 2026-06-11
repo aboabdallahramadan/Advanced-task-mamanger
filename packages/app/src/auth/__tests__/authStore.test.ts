@@ -136,7 +136,13 @@ describe2('authStore — bootstrap network-vs-401 + logout', () => {
     };
   }
   function makePlatform2(refreshImpl: () => Promise<any>) {
-    return { auth: { refreshAndGetAccess: vi2.fn(refreshImpl), clear: vi2.fn(async () => {}) } };
+    return {
+      auth: {
+        refreshAndGetAccess: vi2.fn(refreshImpl),
+        clear: vi2.fn(async () => {}),
+        logout: vi2.fn(async () => {}),
+      },
+    };
   }
 
   beforeEach2(() => {
@@ -197,7 +203,9 @@ describe2('authStore — bootstrap network-vs-401 + logout', () => {
     expect2(s.user).toBeNull();
     expect2(platform.auth.clear).toHaveBeenCalledTimes(1);
     expect2(onLoggedOut).toHaveBeenCalledTimes(1);
-    expect2(client.POST).toHaveBeenCalledWith('/api/v1/auth/logout', expect2.anything());
+    // logout now revokes server-side via the host adapter (desktop: main sends the
+    // stored token; web: cookie), NOT a renderer client.POST({refreshToken:null}).
+    expect2(platform.auth.logout).toHaveBeenCalledTimes(1);
   });
 });
 

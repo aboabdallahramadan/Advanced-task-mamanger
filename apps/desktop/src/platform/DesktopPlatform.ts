@@ -32,6 +32,10 @@ export class DesktopPlatform implements Platform {
     setRefreshToken: async (token: string): Promise<void> => {
       await window.api.secureStore.setRefreshToken(token);
     },
+    /** Revoke the session server-side from main (sends the stored refresh token), then clears it. */
+    logout: async (): Promise<void> => {
+      await window.api.secureStore.logout();
+    },
   };
 
   notify(title: string, body: string): void {

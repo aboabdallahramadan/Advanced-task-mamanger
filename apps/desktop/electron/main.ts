@@ -293,6 +293,25 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle('secureStore:logout', async () => {
+    // Revoke the session server-side using the stored refresh token, THEN forget it
+    // locally. (The renderer can't see the refresh token, so the server-side revoke
+    // must originate here — otherwise logout left the desktop session valid until expiry.)
+    const refreshToken = readRefreshToken();
+    if (refreshToken) {
+      try {
+        await fetch(`${API_BASE_URL}/api/v1/auth/logout`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken }),
+        });
+      } catch (e) {
+        console.error('secureStore:logout revoke failed:', e);
+      }
+    }
+    clearRefreshToken();
+  });
+
   // ─── Focus Timer Tray Widget ───────────────────────────────
   ipcMain.on(
     'focus:updateTray',

@@ -138,9 +138,12 @@ export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
     },
 
     async logout() {
-      // Best-effort server revoke; never block local sign-out on it.
+      // Server-side revoke via the host adapter: desktop sends the stored refresh
+      // token from main; web revokes via the httpOnly cookie. Best-effort — never
+      // block local sign-out. (Previously POSTed {refreshToken:null}, which revoked
+      // nothing on desktop since the token isn't visible to the renderer.)
       try {
-        await client.POST('/api/v1/auth/logout', { body: { refreshToken: null } });
+        await platform.auth.logout?.();
       } catch {
         /* ignore — local sign-out proceeds regardless */
       }

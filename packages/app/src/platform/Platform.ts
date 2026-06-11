@@ -55,6 +55,8 @@ export interface Platform {
     clear(): Promise<void>;
     /** Desktop-only: persist a freshly-issued refresh token (web uses the cookie). */
     setRefreshToken?(token: string): Promise<void>;
+    /** Revoke the session server-side (desktop: main sends the stored token; web: cookie). */
+    logout?(): Promise<void>;
   };
 
   /** OS notification on desktop; permission-gated Web Notifications on web. */

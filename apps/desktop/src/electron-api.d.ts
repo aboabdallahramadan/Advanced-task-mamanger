@@ -20,6 +20,7 @@ export interface DesktopApi {
   secureStore: {
     setRefreshToken(token: string): Promise<void>;
     clear(): Promise<void>;
+    logout(): Promise<void>;
     refreshAndGetAccess(): Promise<{
       accessToken: string;
       expiresIn: number;
