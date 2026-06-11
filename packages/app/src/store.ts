@@ -460,7 +460,7 @@ export const useStore = create<AppState>((set, get) => ({
 
       // Auto-rollover: move past unfinished tasks to today
       // For recurring instances, archive past missed ones instead of rolling forward
-      const rolloverPromises: Promise<any>[] = [];
+      const rolloverActions: Array<() => Promise<unknown>> = [];
       const updatedTasks = tasks.map((task: Task) => {
         if (
           task.plannedDate &&
@@ -471,7 +471,7 @@ export const useStore = create<AppState>((set, get) => ({
         ) {
           // Recurring instances: archive past missed ones
           if (task.recurrenceRuleId && task.recurrenceOriginalDate) {
-            rolloverPromises.push(dc().tasks.update(task.id, { status: 'archived' }));
+            rolloverActions.push(() => dc().tasks.update(task.id, { status: 'archived' }));
             return { ...task, status: 'archived' as Task['status'] };
           }
 
@@ -484,7 +484,7 @@ export const useStore = create<AppState>((set, get) => ({
           if (task.status === 'scheduled') {
             updates.status = 'planned';
           }
-          rolloverPromises.push(dc().tasks.update(task.id, updates));
+          rolloverActions.push(() => dc().tasks.update(task.id, updates));
           return {
             ...task,
             ...updates,
@@ -494,9 +494,23 @@ export const useStore = create<AppState>((set, get) => ({
         return task;
       });
 
-      // Fire rollover updates in the background (don't block UI)
-      if (rolloverPromises.length > 0) {
-        Promise.all(rolloverPromises).catch((e) => console.error('Rollover update failed:', e));
+      // Run rollover updates in the background (don't block UI) with BOUNDED concurrency,
+      // and SURFACE any failure via the online-error banner (spec §7: no silent fire-and-forget).
+      if (rolloverActions.length > 0) {
+        void (async () => {
+          const CHUNK = 5;
+          const failures: unknown[] = [];
+          for (let i = 0; i < rolloverActions.length; i += CHUNK) {
+            const results = await Promise.allSettled(rolloverActions.slice(i, i + CHUNK).map((fn) => fn()));
+            for (const r of results) if (r.status === 'rejected') failures.push(r.reason);
+          }
+          if (failures.length > 0) {
+            console.error('Rollover update failed:', failures);
+            get().setOnlineError(
+              `Couldn’t sync ${failures.length} rolled-over task${failures.length === 1 ? '' : 's'} to the server — check your connection.`,
+            );
+          }
+        })();
       }
 
       set({ tasks: updatedTasks, loading: false });
