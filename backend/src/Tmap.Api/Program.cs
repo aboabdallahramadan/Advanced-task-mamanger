@@ -36,6 +36,9 @@ builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
+    // Presence-tracking Optional<T>: lets PATCH handlers distinguish absent (leave unchanged)
+    // from explicit null (clear) for nullable task fields. Serialized as the inner value.
+    options.SerializerOptions.Converters.Add(new OptionalJsonConverterFactory());
 });
 
 // HTTP-scoped current-user accessor (reads the 'sub' claim). P1 hardens the fail-closed
@@ -87,6 +90,15 @@ builder.Services.AddOpenApi("v1", options =>
 {
     options.AddDocumentTransformer<DocumentInfoTransformer>();
     options.AddDocumentTransformer<BearerSecuritySchemeTransformer>();
+    // Render Optional<T> request properties as their inner nullable type so the generated
+    // client schema stays identical to a plain nullable field. Force these wrapper types to be
+    // INLINED (no $ref component) so the schema transformer can rewrite them into the inner type.
+    var defaultRefId = options.CreateSchemaReferenceId;
+    options.CreateSchemaReferenceId = jsonTypeInfo =>
+        OptionalType.GetInnerType(jsonTypeInfo.Type) is not null
+            ? null
+            : defaultRefId(jsonTypeInfo);
+    options.AddSchemaTransformer<OptionalSchemaTransformer>();
 });
 
 // HSTS: clear the default localhost exclusion so integration tests (which hit https://localhost

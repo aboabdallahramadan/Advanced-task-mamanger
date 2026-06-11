@@ -159,6 +159,104 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
     }
 
     [Fact]
+    public async Task Patch_with_explicit_null_clears_scheduledStart_but_omitting_it_leaves_value()
+    {
+        var auth = await RegisterAsync();
+        var created = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new
+            {
+                title = "Scheduled",
+                status = "Scheduled",
+                scheduledStart = "2026-06-10T09:00:00+00:00",
+                scheduledEnd = "2026-06-10T10:00:00+00:00",
+            }))
+            .Content.ReadFromJsonAsync<TaskResponse>();
+        created!.ScheduledStart.Should().NotBeNull();
+
+        // (1) Explicit null in the body CLEARS the field.
+        var clearResp = await auth.Client.PatchAsJsonAsync($"/api/v1/tasks/{created.Id}",
+            new { scheduledStart = (DateTimeOffset?)null });
+        clearResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var cleared = await clearResp.Content.ReadFromJsonAsync<TaskResponse>();
+        cleared!.ScheduledStart.Should().BeNull("explicit null must clear scheduledStart");
+        cleared.ScheduledEnd.Should().NotBeNull("an absent field must be left unchanged");
+
+        // The clear persists across a fresh read (the original bug: stale value reappeared on getAll).
+        await using (var db = NewElevatedDbContext())
+        {
+            var row = await db.Tasks.SingleAsync(t => t.Id == created.Id);
+            row.ScheduledStart.Should().BeNull();
+            row.ScheduledEnd.Should().NotBeNull();
+        }
+
+        // (2) Set a value again, then a PATCH that OMITS scheduledStart must leave it intact.
+        var setResp = await auth.Client.PatchAsJsonAsync($"/api/v1/tasks/{created.Id}",
+            new { scheduledStart = "2026-06-11T08:00:00+00:00" });
+        setResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await setResp.Content.ReadFromJsonAsync<TaskResponse>())!.ScheduledStart.Should().NotBeNull();
+
+        var unrelatedPatch = await auth.Client.PatchAsJsonAsync($"/api/v1/tasks/{created.Id}",
+            new { title = "Renamed only" });
+        unrelatedPatch.StatusCode.Should().Be(HttpStatusCode.OK);
+        var afterUnrelated = await unrelatedPatch.Content.ReadFromJsonAsync<TaskResponse>();
+        afterUnrelated!.Title.Should().Be("Renamed only");
+        afterUnrelated.ScheduledStart.Should().NotBeNull(
+            "omitting scheduledStart must leave the existing value untouched");
+    }
+
+    [Fact]
+    public async Task Patch_with_explicit_null_clears_projectId_priority_and_plannedDate()
+    {
+        var auth = await RegisterAsync();
+
+        var projectId = Guid.CreateVersion7();
+        await using (var arrange = NewElevatedDbContext())
+        {
+            arrange.Projects.Add(new Project
+            {
+                Id = projectId,
+                UserId = auth.UserId,
+                Name = "P",
+                Color = "#1",
+                Emoji = "📁",
+                Rank = "a0",
+                ActualTimeMinutes = 0,
+            });
+            await arrange.SaveChangesAsync();
+        }
+
+        var created = await (await auth.Client.PostAsJsonAsync("/api/v1/tasks",
+            new
+            {
+                title = "Full",
+                status = "Planned",
+                projectId,
+                priority = 2,
+                reminderMinutes = 15,
+                plannedDate = "2026-06-10",
+            }))
+            .Content.ReadFromJsonAsync<TaskResponse>();
+        created!.ProjectId.Should().Be(projectId);
+        created.Priority.Should().Be(2);
+
+        var resp = await auth.Client.PatchAsJsonAsync($"/api/v1/tasks/{created.Id}", new
+        {
+            projectId = (Guid?)null,
+            priority = (int?)null,
+            reminderMinutes = (int?)null,
+            plannedDate = (DateOnly?)null,
+        });
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var db = NewElevatedDbContext();
+        var row = await db.Tasks.SingleAsync(t => t.Id == created.Id);
+        row.ProjectId.Should().BeNull("explicit null must clear projectId (move-to-backlog/detach)");
+        row.Priority.Should().BeNull();
+        row.ReminderMinutes.Should().BeNull();
+        row.PlannedDate.Should().BeNull();
+    }
+
+    [Fact]
     public async Task Reorder_updates_rank_on_targeted_rows_only()
     {
         var auth = await RegisterAsync();

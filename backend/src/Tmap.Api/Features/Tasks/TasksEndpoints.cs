@@ -135,7 +135,9 @@ public static class TasksEndpoints
         }
 
         // WRITE-side ownership: validate the (re)assigned project belongs to the caller.
-        if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
+        // Only when a non-null ProjectId is explicitly supplied (an explicit null CLEARS it).
+        if (req.ProjectId is { HasValue: true, Value: { } pid }
+            && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
         {
             return ProjectNotOwned();
         }
@@ -150,9 +152,10 @@ public static class TasksEndpoints
             task.Notes = req.Notes;
         }
 
-        if (req.ProjectId is not null)
+        // Optional<T?>: present (even explicit null) overwrites; absent leaves unchanged.
+        if (req.ProjectId.HasValue)
         {
-            task.ProjectId = req.ProjectId;
+            task.ProjectId = req.ProjectId.Value;
         }
 
         if (req.Labels is not null)
@@ -170,19 +173,19 @@ public static class TasksEndpoints
             task.Status = s;
         }
 
-        if (req.PlannedDate is not null)
+        if (req.PlannedDate.HasValue)
         {
-            task.PlannedDate = req.PlannedDate;
+            task.PlannedDate = req.PlannedDate.Value;
         }
 
-        if (req.ScheduledStart is not null)
+        if (req.ScheduledStart.HasValue)
         {
-            task.ScheduledStart = req.ScheduledStart;
+            task.ScheduledStart = req.ScheduledStart.Value;
         }
 
-        if (req.ScheduledEnd is not null)
+        if (req.ScheduledEnd.HasValue)
         {
-            task.ScheduledEnd = req.ScheduledEnd;
+            task.ScheduledEnd = req.ScheduledEnd.Value;
         }
 
         if (req.DurationMinutes is { } dm)
@@ -195,14 +198,14 @@ public static class TasksEndpoints
             task.ActualTimeMinutes = am;
         }
 
-        if (req.Priority is not null)
+        if (req.Priority.HasValue)
         {
-            task.Priority = req.Priority;
+            task.Priority = req.Priority.Value;
         }
 
-        if (req.ReminderMinutes is not null)
+        if (req.ReminderMinutes.HasValue)
         {
-            task.ReminderMinutes = req.ReminderMinutes;
+            task.ReminderMinutes = req.ReminderMinutes.Value;
         }
 
         if (!string.IsNullOrEmpty(req.Rank))

@@ -1,3 +1,4 @@
+using Tmap.Api.Common;
 using Tmap.Api.Features.Subtasks;
 using Tmap.Api.Infrastructure.Entities;
 using TaskStatus = Tmap.Api.Infrastructure.Entities.TaskStatus;
@@ -24,17 +25,19 @@ public sealed record CreateTaskRequest(
 public sealed record UpdateTaskRequest(
     string? Title,
     string? Notes,
-    Guid? ProjectId,
+    // CLEARABLE: Optional<T?> distinguishes "absent" (leave unchanged) from explicit null (clear),
+    // so unschedule / move-to-backlog / rollover persist instead of silently no-op'ing.
+    Optional<Guid?> ProjectId,
     List<string>? Labels,
     string? Source,
     TaskStatus? Status,
-    DateOnly? PlannedDate,
-    DateTimeOffset? ScheduledStart,
-    DateTimeOffset? ScheduledEnd,
+    Optional<DateOnly?> PlannedDate,
+    Optional<DateTimeOffset?> ScheduledStart,
+    Optional<DateTimeOffset?> ScheduledEnd,
     int? DurationMinutes,
     int? ActualTimeMinutes,
-    int? Priority,
-    int? ReminderMinutes,
+    Optional<int?> Priority,
+    Optional<int?> ReminderMinutes,
     string? Rank,
     DateOnly? DueDate,
     DateTimeOffset? CompletedAt);
