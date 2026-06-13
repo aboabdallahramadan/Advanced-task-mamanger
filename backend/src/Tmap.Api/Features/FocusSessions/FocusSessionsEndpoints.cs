@@ -19,17 +19,27 @@ public static class FocusSessionsEndpoints
         return app;
     }
 
-    private static async Task<Created<FocusSessionResponse>> Add(
+    private static async Task<Results<Created<FocusSessionResponse>, Ok<FocusSessionResponse>>> Add(
         CreateFocusSessionRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
-        // FocusSessions are append-only telemetry; the client never needs to replay a specific Id,
-        // so Id is always server-generated and client-supplied Id is intentionally not supported.
+        // Idempotent replay: a focus session with this client id already exists → 200 + its DTO.
+        // (Without this, the offline op queue replaying a create would silently duplicate the session.)
+        if (req.Id is { } reqId && reqId != Guid.Empty)
+        {
+            var existing = await CreateConflict.FindExistingByIdAsync(
+                db.FocusSessions, f => f.Id == reqId, ct);
+            if (existing is not null)
+            {
+                return TypedResults.Ok(ToResponse(existing));
+            }
+        }
+
         var entity = new FocusSession
         {
-            Id = Guid.CreateVersion7(),
+            Id = req.Id is { } id && id != Guid.Empty ? id : Guid.CreateVersion7(),
             UserId = currentUser.Id, // interceptor also stamps; explicit for clarity
             TaskId = req.TaskId,
             Project = req.Project,

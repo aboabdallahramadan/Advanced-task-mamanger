@@ -55,4 +55,33 @@ public class FocusSessionsTests(PostgresFixture fixture) : IntegrationTestBase(f
         var resp = await user.Client.PostAsJsonAsync("/api/v1/focus-sessions", body);
         resp.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    [Fact]
+    public async Task Add_SameClientId_Twice_Returns200_OneRow()
+    {
+        var user = await RegisterAsync();
+        var id = Guid.CreateVersion7();
+        var body = new CreateFocusSessionRequest(
+            Id: id,
+            TaskId: null,
+            Project: "Deep Work",
+            StartedAt: DateTimeOffset.Parse("2026-06-01T09:00:00Z"),
+            EndedAt: DateTimeOffset.Parse("2026-06-01T09:25:00Z"),
+            Minutes: 25,
+            Date: new DateOnly(2026, 6, 1));
+
+        var first = await user.Client.PostAsJsonAsync("/api/v1/focus-sessions", body);
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+        var firstDto = await first.Content.ReadFromJsonAsync<FocusSessionResponse>();
+        firstDto!.Id.Should().Be(id);
+
+        var second = await user.Client.PostAsJsonAsync("/api/v1/focus-sessions", body);
+        second.StatusCode.Should().Be(HttpStatusCode.OK, "replaying a focus-session create is idempotent");
+        var secondDto = await second.Content.ReadFromJsonAsync<FocusSessionResponse>();
+        secondDto!.Id.Should().Be(id);
+
+        await using var db = NewElevatedDbContext();
+        var count = await db.Set<FocusSession>().CountAsync(f => f.Id == id);
+        count.Should().Be(1, "no duplicate session");
+    }
 }
