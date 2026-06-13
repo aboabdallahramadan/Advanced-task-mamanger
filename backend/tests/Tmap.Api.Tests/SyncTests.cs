@@ -155,4 +155,32 @@ public class SyncTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         body!.Changes.Projects.Should().ContainSingle();
         body.HasMore.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Sync_IsTenantIsolated_UserA_NeverSees_UserB_Rows()
+    {
+        var a = await RegisterAsync();
+        var b = await RegisterAsync();
+
+        // B creates a project + task.
+        var bProj = await (await b.Client.PostAsJsonAsync("/api/v1/projects",
+            new { name = "B-secret", color = "#111111", emoji = "🔒", rank = "a0" }))
+            .Content.ReadFromJsonAsync<ProjectSyncRowDto>();
+        var bTask = await (await b.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "B-task", rank = "a0" }))
+            .Content.ReadFromJsonAsync<TaskSyncRowDto>();
+
+        // A creates one of their own.
+        var aProj = await (await a.Client.PostAsJsonAsync("/api/v1/projects",
+            new { name = "A-own", color = "#222222", emoji = "📁", rank = "a0" }))
+            .Content.ReadFromJsonAsync<ProjectSyncRowDto>();
+
+        var aSync = await a.Client.GetFromJsonAsync<SyncResponseDto>("/api/v1/sync?since=0");
+
+        aSync!.Changes.Projects.Should().Contain(p => p.Id == aProj!.Id);
+        aSync.Changes.Projects.Should().NotContain(p => p.Id == bProj!.Id,
+            "RLS + Tenant filter must keep userB's project out of userA's sync");
+        aSync.Changes.Tasks.Should().NotContain(t => t.Id == bTask!.Id,
+            "RLS + Tenant filter must keep userB's task out of userA's sync");
+    }
 }
