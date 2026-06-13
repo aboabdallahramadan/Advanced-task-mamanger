@@ -24,13 +24,24 @@ public static class SubtasksEndpoints
         return app;
     }
 
-    internal static async Task<Results<Created<SubtaskResponse>, NotFound, ValidationProblem>> CreateAsync(
+    internal static async Task<Results<Created<SubtaskResponse>, Ok<SubtaskResponse>, NotFound, ValidationProblem>> CreateAsync(
         Guid taskId,
         CreateSubtaskRequest req,
         AppDbContext db,
         ICurrentUser user,
         CancellationToken ct)
     {
+        // Idempotent replay: an existing owned subtask with this id (live or tombstoned) → 200 + its DTO.
+        if (req.Id is { } reqId && reqId != Guid.Empty)
+        {
+            var existing = await CreateConflict.FindExistingByIdAsync(
+                db.Subtasks, s => s.Id == reqId, ct);
+            if (existing is not null)
+            {
+                return TypedResults.Ok(TasksEndpoints.ToSubtaskResponse(existing));
+            }
+        }
+
         // parent must be visible to the caller (tenant filter) else 404
         var parentExists = await db.Tasks.AnyAsync(t => t.Id == taskId, ct);
         if (!parentExists)

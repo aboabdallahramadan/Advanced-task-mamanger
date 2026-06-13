@@ -285,4 +285,23 @@ public sealed class NoteGroupsTests(PostgresFixture fixture) : IntegrationTestBa
         var liveNote = await assertDb.Notes.SingleAsync(n => n.Id == looseNoteId);
         liveNote.DeletedAt.Should().BeNull();
     }
+
+    [Fact]
+    public async Task Create_SameClientId_Twice_Returns200_SameId_NoDuplicate()
+    {
+        var user = await RegisterAsync();
+        var id = Guid.CreateVersion7();
+        var body = new { id, name = "G", emoji = "📝", projectId = (Guid?)null, rank = "a0" };
+
+        var first = await user.Client.PostAsJsonAsync("/api/v1/note-groups", body);
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await user.Client.PostAsJsonAsync("/api/v1/note-groups", body);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await second.Content.ReadFromJsonAsync<NoteGroupResponse>();
+        dto!.Id.Should().Be(id);
+
+        var list = await user.Client.GetFromJsonAsync<List<NoteGroupResponse>>("/api/v1/note-groups");
+        list!.Count(g => g.Id == id).Should().Be(1);
+    }
 }

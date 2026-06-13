@@ -38,12 +38,23 @@ public static class ProjectEndpoints
         return TypedResults.Ok(projects);
     }
 
-    private static async Task<Created<ProjectResponse>> Create(
+    private static async Task<Results<Created<ProjectResponse>, Ok<ProjectResponse>>> Create(
         CreateProjectRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        // Idempotent replay: an existing owned project with this id (live or tombstoned) → 200 + its DTO.
+        if (req.Id is { } reqId && reqId != Guid.Empty)
+        {
+            var existingById = await CreateConflict.FindExistingByIdAsync(
+                db.Projects, p => p.Id == reqId, ct);
+            if (existingById is not null)
+            {
+                return TypedResults.Ok(ToResponse(existingById));
+            }
+        }
+
         // Rank is optional — when omitted, server appends after the user's current max rank.
         var rank = !string.IsNullOrEmpty(req.Rank)
             ? req.Rank

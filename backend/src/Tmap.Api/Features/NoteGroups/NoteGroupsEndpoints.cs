@@ -45,12 +45,23 @@ public static class NoteGroupsEndpoints
         return TypedResults.Ok(groups.Select(ToResponse).ToList());
     }
 
-    private static async Task<Results<Created<NoteGroupResponse>, ValidationProblem>> Create(
+    private static async Task<Results<Created<NoteGroupResponse>, Ok<NoteGroupResponse>, ValidationProblem>> Create(
         CreateNoteGroupRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        // Idempotent replay: an existing owned note-group with this id (live or tombstoned) → 200 + its DTO.
+        if (req.Id is { } reqId && reqId != Guid.Empty)
+        {
+            var existing = await CreateConflict.FindExistingByIdAsync(
+                db.NoteGroups, g => g.Id == reqId, ct);
+            if (existing is not null)
+            {
+                return TypedResults.Ok(ToResponse(existing));
+            }
+        }
+
         // WRITE-side ownership: tenant-filtered Projects means a non-match = not the caller's.
         if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
         {

@@ -31,12 +31,28 @@ public static class TasksEndpoints
         return group;
     }
 
-    internal static async Task<Results<Created<TaskResponse>, ValidationProblem>> CreateAsync(
+    internal static async Task<Results<Created<TaskResponse>, Ok<TaskResponse>, ValidationProblem>> CreateAsync(
         CreateTaskRequest req,
         AppDbContext db,
         ICurrentUser user,
         CancellationToken ct)
     {
+        // Idempotent replay: an existing owned row with this id (live or tombstoned) → 200 + its DTO.
+        if (req.Id is { } reqId && reqId != Guid.Empty)
+        {
+            var existing = await CreateConflict.FindExistingByIdAsync(
+                db.Tasks.Include(t => t.Subtasks), t => t.Id == reqId, ct);
+            if (existing is not null)
+            {
+                var existingSubtasks = existing.Subtasks
+                    .Where(st => st.DeletedAt == null)
+                    .OrderBy(st => st.SortOrder)
+                    .Select(ToSubtaskResponse)
+                    .ToList();
+                return TypedResults.Ok(ToResponse(existing, existingSubtasks));
+            }
+        }
+
         // WRITE-side ownership: tenant-filtered Projects means a non-match = not the caller's.
         if (req.ProjectId is { } pid && !await db.Projects.AnyAsync(p => p.Id == pid, ct))
         {

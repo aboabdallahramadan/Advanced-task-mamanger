@@ -258,4 +258,23 @@ public sealed class ProjectsTests(PostgresFixture fixture) : IntegrationTestBase
             "the reorder ExecuteUpdate must trigger the DB change_seq bump on the reordered row");
         aSeqAfter.Should().Be(aSeqBefore, "an untouched row's change_seq must not move");
     }
+
+    [Fact]
+    public async Task Create_SameClientId_Twice_Returns200_SameId_NoDuplicate()
+    {
+        var user = await RegisterAsync();
+        var id = Guid.CreateVersion7();
+        var body = new CreateProjectRequest("Replayed", "#111111", "📁", "a0", id);
+
+        var first = await user.Client.PostAsJsonAsync("/api/v1/projects", body);
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await user.Client.PostAsJsonAsync("/api/v1/projects", body);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await second.Content.ReadFromJsonAsync<ProjectResponse>();
+        dto!.Id.Should().Be(id);
+
+        var list = await user.Client.GetFromJsonAsync<List<ProjectResponse>>("/api/v1/projects");
+        list!.Count(p => p.Id == id).Should().Be(1);
+    }
 }

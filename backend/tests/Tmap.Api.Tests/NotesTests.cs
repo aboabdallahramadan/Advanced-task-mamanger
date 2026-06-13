@@ -261,4 +261,23 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
             .SingleAsync(n => n.Id == noteId);
         tombstoned.DeletedAt.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task Create_SameClientId_Twice_Returns200_SameId_NoDuplicate()
+    {
+        var user = await RegisterAsync();
+        var id = Guid.CreateVersion7();
+        var body = new { id, groupId = (Guid?)null, projectId = (Guid?)null, title = "N", content = "", rank = "a0" };
+
+        var first = await user.Client.PostAsJsonAsync("/api/v1/notes", body);
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await user.Client.PostAsJsonAsync("/api/v1/notes", body);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await second.Content.ReadFromJsonAsync<NoteResponse>();
+        dto!.Id.Should().Be(id);
+
+        var list = await user.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
+        list!.Count(n => n.Id == id).Should().Be(1);
+    }
 }

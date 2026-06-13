@@ -118,4 +118,26 @@ public sealed class SubtasksTests(PostgresFixture fixture) : IntegrationTestBase
         var row = await db.Subtasks.IgnoreQueryFilters(["SoftDelete", "Tenant"]).SingleAsync(s => s.Id == sub.Id);
         row.DeletedAt.Should().BeNull();   // intruder's call did nothing
     }
+
+    [Fact]
+    public async Task Create_SameClientId_Twice_Returns200_SameId_NoDuplicate()
+    {
+        var user = await RegisterAsync();
+        var task = await (await user.Client.PostAsJsonAsync("/api/v1/tasks",
+            new { title = "parent", rank = "a0" }))
+            .Content.ReadFromJsonAsync<Tmap.Api.Features.Tasks.TaskResponse>();
+        var subId = Guid.CreateVersion7();
+        var body = new { id = subId, title = "S" };
+
+        var first = await user.Client.PostAsJsonAsync($"/api/v1/tasks/{task!.Id}/subtasks", body);
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await user.Client.PostAsJsonAsync($"/api/v1/tasks/{task.Id}/subtasks", body);
+        second.StatusCode.Should().Be(HttpStatusCode.OK);
+        var dto = await second.Content.ReadFromJsonAsync<Tmap.Api.Features.Subtasks.SubtaskResponse>();
+        dto!.Id.Should().Be(subId);
+
+        var tasks = await user.Client.GetFromJsonAsync<List<Tmap.Api.Features.Tasks.TaskResponse>>("/api/v1/tasks");
+        tasks!.Single(t => t.Id == task.Id).Subtasks.Count(s => s.Id == subId).Should().Be(1);
+    }
 }

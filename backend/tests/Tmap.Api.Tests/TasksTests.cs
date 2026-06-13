@@ -497,4 +497,23 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         row.DeletedAt.Should().BeNull();
         row.Title.Should().Be("secret");
     }
+
+    [Fact]
+    public async Task Create_SameClientId_Twice_Returns200_SameId_NoDuplicate()
+    {
+        var user = await RegisterAsync();
+        var id = Guid.CreateVersion7();
+        var body = new { id, title = "Replayed", rank = "a0" };
+
+        var first = await user.Client.PostAsJsonAsync("/api/v1/tasks", body);
+        first.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        var second = await user.Client.PostAsJsonAsync("/api/v1/tasks", body);
+        second.StatusCode.Should().Be(HttpStatusCode.OK, "replaying a create is idempotent");
+        var dto = await second.Content.ReadFromJsonAsync<TaskResponse>();
+        dto!.Id.Should().Be(id);
+
+        var list = await user.Client.GetFromJsonAsync<List<TaskResponse>>("/api/v1/tasks");
+        list!.Count(t => t.Id == id).Should().Be(1, "no duplicate row");
+    }
 }
