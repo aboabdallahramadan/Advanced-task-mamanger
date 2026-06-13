@@ -125,7 +125,7 @@ public static class RecurrenceEndpoints
 
         var rule = new RecurrenceRule
         {
-            Id = Guid.CreateVersion7(),
+            Id = req.Rule.Id is { } rid && rid != Guid.Empty ? rid : Guid.CreateVersion7(),
             UserId = userId,
             Frequency = req.Rule.Frequency,
             IntervalValue = req.Rule.Interval < 1 ? 1 : req.Rule.Interval,

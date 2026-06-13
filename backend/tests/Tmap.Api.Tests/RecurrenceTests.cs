@@ -52,6 +52,32 @@ public class RecurrenceTests(PostgresFixture fixture) : IntegrationTestBase(fixt
     }
 
     [Fact]
+    public async Task Create_WithClientRuleId_RoundTrips()
+    {
+        var user = await RegisterAsync();
+        var ruleId = Guid.CreateVersion7();
+
+        var req = new CreateRecurringTaskRequest(
+            new RecurringTaskInput(
+                Title: "Standup", Notes: "", ProjectId: null, Labels: new(), Source: "local",
+                PlannedDate: new DateOnly(2026, 6, 1), DurationMinutes: 15, Priority: null,
+                ReminderMinutes: 0),
+            new RecurrenceRuleInput(
+                Frequency: RecurrenceFrequency.Weekly, Interval: 1, DaysOfWeek: new List<int> { 1, 3, 5 },
+                EndType: RecurrenceEndType.Never, EndCount: null, EndDate: null, Id: ruleId));
+
+        var resp = await user.Client.PostAsJsonAsync("/api/v1/recurrence", req);
+        resp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await resp.Content.ReadFromJsonAsync<RecurrenceTaskResponse[]>();
+        created![0].RecurrenceRuleId.Should().Be(ruleId, "the client-supplied rule id is honored");
+
+        // The rule is fetchable at the client-supplied id.
+        var rule = await user.Client.GetFromJsonAsync<RecurrenceRuleResponse>(
+            $"/api/v1/recurrence/rules/{ruleId}");
+        rule!.Id.Should().Be(ruleId);
+    }
+
+    [Fact]
     public async Task GetRule_ReturnsNotFound_ForUnknownId()
     {
         var user = await RegisterAsync();

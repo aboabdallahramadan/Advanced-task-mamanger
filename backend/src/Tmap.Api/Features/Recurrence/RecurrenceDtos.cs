@@ -21,7 +21,8 @@ public sealed record RecurrenceRuleInput(
     List<int> DaysOfWeek,
     RecurrenceEndType EndType,
     int? EndCount,
-    DateOnly? EndDate);
+    DateOnly? EndDate,
+    Guid? Id = null);
 
 public sealed record CreateRecurringTaskRequest(
     RecurringTaskInput Task,
