@@ -516,4 +516,25 @@ public sealed class TasksTests(PostgresFixture fixture) : IntegrationTestBase(fi
         var list = await user.Client.GetFromJsonAsync<List<TaskResponse>>("/api/v1/tasks");
         list!.Count(t => t.Id == id).Should().Be(1, "no duplicate row");
     }
+
+    [Fact]
+    public async Task List_TiedRanks_AreOrderedById_Stably()
+    {
+        var user = await RegisterAsync();
+        // Two ids in known order; both rank "a0" (the tie case).
+        var idLo = new Guid("00000000-0000-0000-0000-000000000001");
+        var idHi = new Guid("00000000-0000-0000-0000-000000000002");
+        // Insert hi first to prove order comes from id, not insertion.
+        await user.Client.PostAsJsonAsync("/api/v1/tasks", new { id = idHi, title = "Hi", rank = "a0" });
+        await user.Client.PostAsJsonAsync("/api/v1/tasks", new { id = idLo, title = "Lo", rank = "a0" });
+
+        var list1 = await user.Client.GetFromJsonAsync<List<TaskResponse>>("/api/v1/tasks");
+        var tied1 = list1!.Where(t => t.Id == idLo || t.Id == idHi).Select(t => t.Id).ToList();
+        tied1.Should().Equal(new[] { idLo, idHi }, "tied ranks order by id ascending");
+
+        // Stable across a repeated read.
+        var list2 = await user.Client.GetFromJsonAsync<List<TaskResponse>>("/api/v1/tasks");
+        var tied2 = list2!.Where(t => t.Id == idLo || t.Id == idHi).Select(t => t.Id).ToList();
+        tied2.Should().Equal(tied1, "ordering is stable across list reads");
+    }
 }

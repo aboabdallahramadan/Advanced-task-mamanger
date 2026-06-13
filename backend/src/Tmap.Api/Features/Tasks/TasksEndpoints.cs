@@ -120,7 +120,10 @@ public static class TasksEndpoints
                 EF.Functions.ILike(t.Notes, pattern));
         }
 
-        var rows = await query.OrderBy(t => t.Rank).ToListAsync(ct);
+        var rows = await query
+            .OrderBy(t => EF.Functions.Collate(t.Rank, "C"))
+            .ThenBy(t => t.Id)
+            .ToListAsync(ct);
 
         var result = rows
             .Select(t => ToResponse(

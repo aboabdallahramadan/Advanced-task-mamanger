@@ -40,6 +40,7 @@ public static class NoteGroupsEndpoints
 
         var groups = await query
             .OrderBy(g => EF.Functions.Collate(g.Rank, "C"))
+            .ThenBy(g => g.Id)
             .ToListAsync(ct);
 
         return TypedResults.Ok(groups.Select(ToResponse).ToList());

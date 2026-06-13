@@ -280,4 +280,20 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
         var list = await user.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
         list!.Count(n => n.Id == id).Should().Be(1);
     }
+
+    [Fact]
+    public async Task List_TiedRanks_AreOrderedById_Stably()
+    {
+        var user = await RegisterAsync();
+        var idLo = new Guid("00000000-0000-0000-0000-000000000021");
+        var idHi = new Guid("00000000-0000-0000-0000-000000000022");
+        await user.Client.PostAsJsonAsync("/api/v1/notes",
+            new { id = idHi, groupId = (Guid?)null, projectId = (Guid?)null, title = "Hi", content = "", rank = "a0" });
+        await user.Client.PostAsJsonAsync("/api/v1/notes",
+            new { id = idLo, groupId = (Guid?)null, projectId = (Guid?)null, title = "Lo", content = "", rank = "a0" });
+
+        var list = await user.Client.GetFromJsonAsync<List<NoteResponse>>("/api/v1/notes");
+        var tied = list!.Where(n => n.Id == idLo || n.Id == idHi).Select(n => n.Id).ToList();
+        tied.Should().Equal(idLo, idHi);
+    }
 }

@@ -327,4 +327,20 @@ public sealed class ProjectsTests(PostgresFixture fixture) : IntegrationTestBase
             new CreateProjectRequest("Shared", "#222222", "📁", "a0"));
         bResp.StatusCode.Should().Be(HttpStatusCode.Created);
     }
+
+    [Fact]
+    public async Task List_TiedRanks_AreOrderedById_Stably()
+    {
+        var user = await RegisterAsync();
+        var idLo = new Guid("00000000-0000-0000-0000-000000000011");
+        var idHi = new Guid("00000000-0000-0000-0000-000000000012");
+        await user.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Hi", "#111111", "📁", "a0", idHi));
+        await user.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Lo", "#222222", "📁", "a0", idLo));
+
+        var list = await user.Client.GetFromJsonAsync<List<ProjectResponse>>("/api/v1/projects");
+        var tied = list!.Where(p => p.Id == idLo || p.Id == idHi).Select(p => p.Id).ToList();
+        tied.Should().Equal(idLo, idHi);
+    }
 }

@@ -32,6 +32,7 @@ public static class ProjectEndpoints
         // matching the ordinal ordering assumed by the rank key scheme.
         var projects = await db.Projects
             .OrderBy(p => EF.Functions.Collate(p.Rank, "C"))
+            .ThenBy(p => p.Id)
             .Select(p => ToResponse(p))
             .ToListAsync(ct);
 

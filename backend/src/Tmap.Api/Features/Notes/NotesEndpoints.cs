@@ -48,6 +48,7 @@ public static class NotesEndpoints
 
         var notes = await query
             .OrderBy(n => EF.Functions.Collate(n.Rank, "C"))
+            .ThenBy(n => n.Id)
             .ToListAsync(ct);
 
         return TypedResults.Ok(notes.Select(ToResponse).ToList());
