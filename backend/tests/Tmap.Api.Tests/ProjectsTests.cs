@@ -277,4 +277,54 @@ public sealed class ProjectsTests(PostgresFixture fixture) : IntegrationTestBase
         var list = await user.Client.GetFromJsonAsync<List<ProjectResponse>>("/api/v1/projects");
         list!.Count(p => p.Id == id).Should().Be(1);
     }
+
+    [Fact]
+    public async Task Create_DuplicateName_Returns409_WithExistingId()
+    {
+        var user = await RegisterAsync();
+        var first = await (await user.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Dupe", "#111111", "📁", "a0")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+
+        // Different client id, same name → 409 carrying the live project's id.
+        var resp = await user.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Dupe", "#222222", "📁", "a1"));
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("existingId").GetGuid().Should().Be(first!.Id);
+    }
+
+    [Fact]
+    public async Task Rename_ToExistingName_Returns409_WithExistingId()
+    {
+        var user = await RegisterAsync();
+        var a = await (await user.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Alpha", "#111111", "📁", "a0")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+        var b = await (await user.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Beta", "#222222", "📁", "a1")))
+            .Content.ReadFromJsonAsync<ProjectResponse>();
+
+        // Rename B → "Alpha" collides with A.
+        var resp = await user.Client.PatchAsJsonAsync($"/api/v1/projects/{b!.Id}",
+            new UpdateProjectRequest(Name: "Alpha"));
+        resp.StatusCode.Should().Be(HttpStatusCode.Conflict);
+
+        using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("existingId").GetGuid().Should().Be(a!.Id);
+    }
+
+    [Fact]
+    public async Task Create_DuplicateName_DoesNotCollideAcrossUsers()
+    {
+        var a = await RegisterAsync();
+        var b = await RegisterAsync();
+        await a.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Shared", "#111111", "📁", "a0"));
+        // B can use the same name — uniqueness is per-user.
+        var bResp = await b.Client.PostAsJsonAsync("/api/v1/projects",
+            new CreateProjectRequest("Shared", "#222222", "📁", "a0"));
+        bResp.StatusCode.Should().Be(HttpStatusCode.Created);
+    }
 }

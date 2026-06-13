@@ -38,7 +38,7 @@ public static class ProjectEndpoints
         return TypedResults.Ok(projects);
     }
 
-    private static async Task<Results<Created<ProjectResponse>, Ok<ProjectResponse>>> Create(
+    private static async Task<Results<Created<ProjectResponse>, Ok<ProjectResponse>, ProblemHttpResult>> Create(
         CreateProjectRequest req,
         AppDbContext db,
         ICurrentUser currentUser,
@@ -53,6 +53,16 @@ public static class ProjectEndpoints
             {
                 return TypedResults.Ok(ToResponse(existingById));
             }
+        }
+
+        // Unique-name pre-check among the caller's LIVE projects (mirrors the partial unique index).
+        var nameClashId = await db.Projects
+            .Where(p => p.Name == req.Name)
+            .Select(p => (Guid?)p.Id)
+            .FirstOrDefaultAsync(ct);
+        if (nameClashId is { } clashId)
+        {
+            return NameConflict(clashId);
         }
 
         // Rank is optional — when omitted, server appends after the user's current max rank.
@@ -77,7 +87,7 @@ public static class ProjectEndpoints
         return TypedResults.Created($"/api/v1/projects/{project.Id}", ToResponse(project));
     }
 
-    private static async Task<Results<Ok<ProjectResponse>, NotFound>> Update(
+    private static async Task<Results<Ok<ProjectResponse>, NotFound, ProblemHttpResult>> Update(
         Guid id,
         UpdateProjectRequest req,
         AppDbContext db,
@@ -89,8 +99,18 @@ public static class ProjectEndpoints
             return TypedResults.NotFound();
         }
 
-        if (req.Name is not null)
+        if (req.Name is not null && req.Name != project.Name)
         {
+            // Rename must not collide with another LIVE project of the same user.
+            var clashId = await db.Projects
+                .Where(p => p.Name == req.Name && p.Id != id)
+                .Select(p => (Guid?)p.Id)
+                .FirstOrDefaultAsync(ct);
+            if (clashId is { } existing)
+            {
+                return NameConflict(existing);
+            }
+
             project.Name = req.Name;
         }
 
@@ -181,6 +201,14 @@ public static class ProjectEndpoints
             .FirstOrDefaultAsync(ct);
         return Ranking.RankAfter(maxRank);
     }
+
+    /// <summary>RFC 9457 409 for a duplicate live project name; carries the existing row's id
+    /// in extensions.existingId so the client can adopt-existing (SP3 §3.3).</summary>
+    private static ProblemHttpResult NameConflict(Guid existingId) =>
+        TypedResults.Problem(
+            title: "A project with this name already exists.",
+            statusCode: StatusCodes.Status409Conflict,
+            extensions: new Dictionary<string, object?> { ["existingId"] = existingId });
 
     private static ProjectResponse ToResponse(Project p) => new(
         p.Id,
