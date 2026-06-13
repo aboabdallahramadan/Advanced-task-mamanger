@@ -21,6 +21,10 @@ packages/app/dist-types/
 .env.local
 .superpowers/
 
+# git worktrees (subagent-driven execution workspaces)
+.claude/worktrees/
+.sp3-plan-parts/
+
 # --- .NET backend (P0) ---
 backend/**/bin/
 backend/**/obj/
