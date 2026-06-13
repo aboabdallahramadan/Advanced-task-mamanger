@@ -180,8 +180,6 @@ export function planRow(date: string, o: Partial<DailyPlanSyncRow> = {}): DailyP
     committedAt: '2026-06-11T08:00:00Z',
     plannedTaskIds: [],
     plannedMinutes: 0,
-    createdAt: '2026-06-11T00:00:00Z',
-    updatedAt: '2026-06-11T00:00:00Z',
     changeSeq: 0,
     deletedAt: null,
     ...o,
@@ -192,8 +190,6 @@ export function settingRow(key: string, value: string, o: Partial<SettingSyncRow
   return {
     key,
     value,
-    createdAt: '2026-06-11T00:00:00Z',
-    updatedAt: '2026-06-11T00:00:00Z',
     changeSeq: 0,
     deletedAt: null,
     ...o,
