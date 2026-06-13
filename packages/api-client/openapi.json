@@ -195,6 +195,16 @@
               }
             }
           },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskResponse"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Bad Request",
             "content": {
@@ -426,6 +436,16 @@
               }
             }
           },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubtaskResponse"
+                }
+              }
+            }
+          },
           "404": {
             "description": "Not Found"
           },
@@ -577,6 +597,16 @@
         "responses": {
           "201": {
             "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -753,6 +783,16 @@
         "responses": {
           "201": {
             "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteGroupResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -965,6 +1005,16 @@
               }
             }
           },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NoteResponse"
+                }
+              }
+            }
+          },
           "400": {
             "description": "Bad Request",
             "content": {
@@ -1155,6 +1205,16 @@
         "responses": {
           "201": {
             "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FocusSessionResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
             "content": {
               "application/json": {
                 "schema": {
@@ -1704,6 +1764,58 @@
           }
         ]
       }
+    },
+    "/api/v1/sync": {
+      "get": {
+        "tags": [
+          "SyncEndpoints"
+        ],
+        "operationId": "Sync",
+        "parameters": [
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int64",
+              "default": 0
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": [ ]
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1822,6 +1934,13 @@
           "date": {
             "type": "string",
             "format": "date"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -2186,6 +2305,57 @@
           }
         }
       },
+      "DailyPlanSyncRow": {
+        "required": [
+          "date",
+          "committedAt",
+          "plannedTaskIds",
+          "plannedMinutes",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "committedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "plannedTaskIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "plannedMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "DeleteSeriesFutureRequest": {
         "required": [
           "fromDate"
@@ -2252,6 +2422,81 @@
           },
           "updatedAt": {
             "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FocusSessionSyncRow": {
+        "required": [
+          "id",
+          "taskId",
+          "project",
+          "startedAt",
+          "endedAt",
+          "minutes",
+          "date",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "project": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "minutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
             "format": "date-time"
           }
         }
@@ -2374,6 +2619,65 @@
           }
         }
       },
+      "NoteGroupSyncRow": {
+        "required": [
+          "id",
+          "name",
+          "emoji",
+          "projectId",
+          "rank",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "emoji": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "NoteResponse": {
         "required": [
           "id",
@@ -2424,6 +2728,73 @@
           }
         }
       },
+      "NoteSyncRow": {
+        "required": [
+          "id",
+          "groupId",
+          "projectId",
+          "title",
+          "content",
+          "rank",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "groupId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "ProjectResponse": {
         "required": [
           "id",
@@ -2467,6 +2838,70 @@
           },
           "updatedAt": {
             "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectSyncRow": {
+        "required": [
+          "id",
+          "name",
+          "color",
+          "emoji",
+          "rank",
+          "actualTimeMinutes",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string"
+          },
+          "emoji": {
+            "type": "string"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "actualTimeMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
             "format": "date-time"
           }
         }
@@ -2535,6 +2970,13 @@
               "string"
             ],
             "format": "date"
+          },
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
           }
         }
       },
@@ -2611,6 +3053,100 @@
           },
           "updatedAt": {
             "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RecurrenceRuleSyncRow": {
+        "required": [
+          "id",
+          "frequency",
+          "interval",
+          "daysOfWeek",
+          "endType",
+          "endCount",
+          "endDate",
+          "generatedUntil",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "frequency": {
+            "$ref": "#/components/schemas/RecurrenceFrequency"
+          },
+          "interval": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "daysOfWeek": {
+            "type": "array",
+            "items": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          "endType": {
+            "$ref": "#/components/schemas/RecurrenceEndType"
+          },
+          "endCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "endDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "generatedUntil": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
             "format": "date-time"
           }
         }
@@ -2829,6 +3365,38 @@
           }
         }
       },
+      "SettingSyncRow": {
+        "required": [
+          "key",
+          "value",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
       "SubtaskResponse": {
         "required": [
           "id",
@@ -2870,6 +3438,161 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SubtaskSyncRow": {
+        "required": [
+          "id",
+          "taskId",
+          "title",
+          "completed",
+          "sortOrder",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "taskId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "completed": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "SyncChanges": {
+        "required": [
+          "tasks",
+          "subtasks",
+          "projects",
+          "noteGroups",
+          "notes",
+          "recurrenceRules",
+          "focusSessions",
+          "dailyPlans",
+          "settings"
+        ],
+        "type": "object",
+        "properties": {
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TaskSyncRow"
+            }
+          },
+          "subtasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SubtaskSyncRow"
+            }
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectSyncRow"
+            }
+          },
+          "noteGroups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteGroupSyncRow"
+            }
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoteSyncRow"
+            }
+          },
+          "recurrenceRules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecurrenceRuleSyncRow"
+            }
+          },
+          "focusSessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FocusSessionSyncRow"
+            }
+          },
+          "dailyPlans": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyPlanSyncRow"
+            }
+          },
+          "settings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SettingSyncRow"
+            }
+          }
+        }
+      },
+      "SyncResponse": {
+        "required": [
+          "changes",
+          "nextSince",
+          "hasMore"
+        ],
+        "type": "object",
+        "properties": {
+          "changes": {
+            "$ref": "#/components/schemas/SyncChanges"
+          },
+          "nextSince": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "hasMore": {
+            "type": "boolean"
           }
         }
       },
@@ -3057,6 +3780,182 @@
           "Done",
           "Archived"
         ]
+      },
+      "TaskSyncRow": {
+        "required": [
+          "id",
+          "title",
+          "notes",
+          "projectId",
+          "labels",
+          "source",
+          "status",
+          "plannedDate",
+          "scheduledStart",
+          "scheduledEnd",
+          "durationMinutes",
+          "actualTimeMinutes",
+          "priority",
+          "reminderMinutes",
+          "rank",
+          "dueDate",
+          "recurrenceRuleId",
+          "isRecurrenceTemplate",
+          "recurrenceDetached",
+          "recurrenceOriginalDate",
+          "completedAt",
+          "createdAt",
+          "updatedAt",
+          "changeSeq",
+          "deletedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "source": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TaskStatus"
+          },
+          "plannedDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "scheduledStart": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "scheduledEnd": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "durationMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "actualTimeMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "priority": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reminderMinutes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "rank": {
+            "type": "string"
+          },
+          "dueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "recurrenceRuleId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "isRecurrenceTemplate": {
+            "type": "boolean"
+          },
+          "recurrenceDetached": {
+            "type": "boolean"
+          },
+          "recurrenceOriginalDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "changeSeq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "deletedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
       },
       "UpdateNoteGroupRequest": {
         "required": [
@@ -3541,6 +4440,9 @@
     },
     {
       "name": "RecurrenceEndpoints"
+    },
+    {
+      "name": "SyncEndpoints"
     }
   ]
 }

@@ -269,6 +269,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["TaskResponse"];
+                    };
+                };
                 /** @description Created */
                 201: {
                     headers: {
@@ -448,6 +457,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["SubtaskResponse"];
+                    };
+                };
                 /** @description Created */
                 201: {
                     headers: {
@@ -605,6 +623,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProjectResponse"];
+                    };
+                };
                 /** @description Created */
                 201: {
                     headers: {
@@ -776,6 +803,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NoteGroupResponse"];
+                    };
+                };
                 /** @description Created */
                 201: {
                     headers: {
@@ -966,6 +1002,15 @@ export interface paths {
                 };
             };
             responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["NoteResponse"];
+                    };
+                };
                 /** @description Created */
                 201: {
                     headers: {
@@ -1300,6 +1345,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/sync": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["Sync"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1343,6 +1404,8 @@ export interface components {
             minutes: number | string;
             /** Format: date */
             date: string;
+            /** Format: uuid */
+            id?: null | string;
         };
         CreateNoteGroupRequest: {
             name: string;
@@ -1429,6 +1492,19 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        DailyPlanSyncRow: {
+            /** Format: date */
+            date: string;
+            /** Format: date-time */
+            committedAt: string;
+            plannedTaskIds: string[];
+            /** Format: int32 */
+            plannedMinutes: number | string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
+        };
         DeleteSeriesFutureRequest: {
             /** Format: date */
             fromDate: string;
@@ -1451,6 +1527,29 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        FocusSessionSyncRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            taskId: null | string;
+            project: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            endedAt: string;
+            /** Format: int32 */
+            minutes: number | string;
+            /** Format: date */
+            date: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
         };
         HttpValidationProblemDetails: {
             type?: null | string;
@@ -1483,6 +1582,23 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        NoteGroupSyncRow: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            emoji: string;
+            /** Format: uuid */
+            projectId: null | string;
+            rank: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
+        };
         NoteResponse: {
             /** Format: uuid */
             id: string;
@@ -1498,6 +1614,25 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        NoteSyncRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            groupId: null | string;
+            /** Format: uuid */
+            projectId: null | string;
+            title: string;
+            content: string;
+            rank: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
+        };
         ProjectResponse: {
             /** Format: uuid */
             id: string;
@@ -1511,6 +1646,24 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        ProjectSyncRow: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            color: string;
+            emoji: string;
+            rank: string;
+            /** Format: int32 */
+            actualTimeMinutes: number | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
         };
         /** @enum {unknown} */
         RecurrenceEndType: "Never" | "Count" | "Date";
@@ -1526,6 +1679,8 @@ export interface components {
             endCount: null | number | string;
             /** Format: date */
             endDate: null | string;
+            /** Format: uuid */
+            id?: null | string;
         };
         RecurrenceRuleResponse: {
             /** Format: uuid */
@@ -1545,6 +1700,29 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        RecurrenceRuleSyncRow: {
+            /** Format: uuid */
+            id: string;
+            frequency: components["schemas"]["RecurrenceFrequency"];
+            /** Format: int32 */
+            interval: number | string;
+            daysOfWeek: (number | string)[];
+            endType: components["schemas"]["RecurrenceEndType"];
+            /** Format: int32 */
+            endCount: null | number | string;
+            /** Format: date */
+            endDate: null | string;
+            /** Format: date */
+            generatedUntil: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
         };
         RecurringTaskInput: {
             title: string;
@@ -1600,6 +1778,14 @@ export interface components {
             };
             timeZoneId: string;
         };
+        SettingSyncRow: {
+            key: string;
+            value: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
+        };
         SubtaskResponse: {
             /** Format: uuid */
             id: string;
@@ -1613,6 +1799,41 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+        };
+        SubtaskSyncRow: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            taskId: string;
+            title: string;
+            completed: boolean;
+            /** Format: int32 */
+            sortOrder: number | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
+        };
+        SyncChanges: {
+            tasks: components["schemas"]["TaskSyncRow"][];
+            subtasks: components["schemas"]["SubtaskSyncRow"][];
+            projects: components["schemas"]["ProjectSyncRow"][];
+            noteGroups: components["schemas"]["NoteGroupSyncRow"][];
+            notes: components["schemas"]["NoteSyncRow"][];
+            recurrenceRules: components["schemas"]["RecurrenceRuleSyncRow"][];
+            focusSessions: components["schemas"]["FocusSessionSyncRow"][];
+            dailyPlans: components["schemas"]["DailyPlanSyncRow"][];
+            settings: components["schemas"]["SettingSyncRow"][];
+        };
+        SyncResponse: {
+            changes: components["schemas"]["SyncChanges"];
+            /** Format: int64 */
+            nextSince: number | string;
+            hasMore: boolean;
         };
         TaskResponse: {
             /** Format: uuid */
@@ -1659,6 +1880,50 @@ export interface components {
         };
         /** @enum {unknown} */
         TaskStatus: "Inbox" | "Backlog" | "Planned" | "Scheduled" | "Done" | "Archived";
+        TaskSyncRow: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            notes: string;
+            /** Format: uuid */
+            projectId: null | string;
+            labels: string[];
+            source: string;
+            status: components["schemas"]["TaskStatus"];
+            /** Format: date */
+            plannedDate: null | string;
+            /** Format: date-time */
+            scheduledStart: null | string;
+            /** Format: date-time */
+            scheduledEnd: null | string;
+            /** Format: int32 */
+            durationMinutes: number | string;
+            /** Format: int32 */
+            actualTimeMinutes: number | string;
+            /** Format: int32 */
+            priority: null | number | string;
+            /** Format: int32 */
+            reminderMinutes: null | number | string;
+            rank: string;
+            /** Format: date */
+            dueDate: null | string;
+            /** Format: uuid */
+            recurrenceRuleId: null | string;
+            isRecurrenceTemplate: boolean;
+            recurrenceDetached: boolean;
+            /** Format: date */
+            recurrenceOriginalDate: null | string;
+            /** Format: date-time */
+            completedAt: null | string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int64 */
+            changeSeq: number | string;
+            /** Format: date-time */
+            deletedAt: null | string;
+        };
         UpdateNoteGroupRequest: {
             name: null | string;
             emoji: null | string;
@@ -1768,6 +2033,15 @@ export interface operations {
             };
         };
         responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FocusSessionResponse"];
+                };
+            };
             /** @description Created */
             201: {
                 headers: {
@@ -2149,6 +2423,29 @@ export interface operations {
                 };
                 content: {
                     "application/problem+json": components["schemas"]["HttpValidationProblemDetails"];
+                };
+            };
+        };
+    };
+    Sync: {
+        parameters: {
+            query?: {
+                since?: number | string;
+                limit?: number | string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncResponse"];
                 };
             };
         };
