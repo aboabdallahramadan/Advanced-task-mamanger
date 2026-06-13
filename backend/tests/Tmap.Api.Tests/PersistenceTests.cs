@@ -492,3 +492,35 @@ public class RlsCrossTenantTests(PostgresFixture fixture) : IntegrationTestBase(
             .Which.SqlState.Should().Be("42501", "row-security policy violation SQLSTATE");
     }
 }
+
+[Collection("db")]
+public class ChangeSeqIndexMigrationTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
+{
+    [Theory]
+    [InlineData("tasks")]
+    [InlineData("subtasks")]
+    [InlineData("projects")]
+    [InlineData("note_groups")]
+    [InlineData("notes")]
+    [InlineData("recurrence_rules")]
+    [InlineData("recurrence_exceptions")]
+    [InlineData("focus_sessions")]
+    [InlineData("daily_plans")]
+    [InlineData("user_settings")]
+    public async Task UserId_ChangeSeq_Index_Exists_On_Every_Synced_Table(string table)
+    {
+        await using var ctx = NewElevatedDbContext();
+
+        // pg_indexes.indexdef is the canonical CREATE INDEX text; assert both columns are present
+        // in order. The migration names every index ix_{table}_user_id_change_seq.
+        var indexName = $"ix_{table}_user_id_change_seq";
+        var def = await ctx.Database
+            .SqlQuery<string?>(
+                $"SELECT indexdef AS \"Value\" FROM pg_indexes WHERE tablename = {table} AND indexname = {indexName}")
+            .SingleOrDefaultAsync();
+
+        def.Should().NotBeNull($"{indexName} should exist after the ChangeSeqIndexes migration");
+        def!.Should().Contain("user_id");
+        def.Should().Contain("change_seq");
+    }
+}
