@@ -16,6 +16,7 @@ using Tmap.Api.Features.Recurrence;
 using Tmap.Api.Features.Reports;
 using Tmap.Api.Features.Settings;
 using Tmap.Api.Features.Subtasks;
+using Tmap.Api.Features.Sync;
 using Tmap.Api.Features.Tasks;
 using Tmap.Api.Infrastructure.Identity;
 using Tmap.Api.Infrastructure.Jwt;
@@ -168,6 +169,7 @@ apiV1.MapDailyPlansEndpoints();
 apiV1.MapSettingsEndpoints();
 apiV1.MapReportsEndpoints();
 apiV1.MapRecurrenceEndpoints();
+apiV1.MapSyncEndpoints();
 
 app.Run();
 
