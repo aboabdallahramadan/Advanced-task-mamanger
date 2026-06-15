@@ -5,7 +5,7 @@ import { SyncEngine } from '../SyncEngine';
 import type { SyncTransport } from '../SyncTransport';
 import type { SyncOp, SyncStatus } from '../types';
 import type { SyncResponse, TaskSyncRow } from '../../data/local/rows';
-import { PUSH_DEBOUNCE_MS, PERIODIC_SYNC_MS } from '../constants';
+import { PUSH_DEBOUNCE_MS, PERIODIC_SYNC_MS, ENSURE_HORIZON_DAYS } from '../constants';
 
 let n = 0;
 const stores: LocalStore[] = [];
@@ -445,5 +445,58 @@ describe('409 adopt-existing — ghost→existing id rewrite (spec §3.3)', () =
     const sentPatch = t.sent.find((o) => o.method === 'PATCH');
     expect(sentPatch!.path).toBe('/api/v1/projects/P-real');         // path rewritten
     expect(sentPatch!.entityKeys).toEqual(['projects:P-real']);      // entityKeys rewritten
+  });
+});
+
+describe('post-push ensure-instances trigger (spec §4.3)', () => {
+  it('calls ensureInstances ONCE when a replayed op had regenAfterPush, before pull', async () => {
+    const store = freshStore();
+    const order: string[] = [];
+    const t = spyTransport((o) => { order.push(`send:${o.path}`); return { status: 200 }; });
+    const origEnsure = t.ensureInstances.bind(t);
+    t.ensureInstances = async (s: string, e: string) => { order.push('ensure'); return origEnsure(s, e); };
+    const origPull = t.pull.bind(t);
+    (t as { pull: () => Promise<unknown> }).pull = async () => { order.push('pull'); return origPull(); };
+
+    await store.ops.add(op({
+      method: 'POST', path: '/api/v1/recurrence',
+      body: { task: { id: 'tmpl' }, rule: { id: 'r1', frequency: 'Daily' } },
+      entityKeys: ['tasks:tmpl', 'recurrenceRules:r1'], kind: 'create', regenAfterPush: true,
+    }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(t.ensured).toHaveLength(1);                 // exactly one ensure call
+    // Ordering: the create was sent, then ensure, then pull.
+    expect(order.indexOf('ensure')).toBeGreaterThan(order.indexOf('send:/api/v1/recurrence'));
+    expect(order.indexOf('pull')).toBeGreaterThan(order.indexOf('ensure'));
+
+    // Horizon = [today, today + ENSURE_HORIZON_DAYS].
+    const [start, end] = t.ensured[0];
+    const days = (Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000;
+    expect(Math.round(days)).toBe(ENSURE_HORIZON_DAYS);
+  });
+
+  it('does NOT call ensureInstances when no replayed op had regenAfterPush', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 200 }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' }, entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+    await engine.syncNow();
+    expect(t.ensured).toHaveLength(0);
+  });
+
+  it('does NOT call ensureInstances when the regenAfterPush op failed to replay (network abort)', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => { throw Object.assign(new TypeError('offline'), { name: 'TypeError' }); });
+    await store.ops.add(op({
+      method: 'POST', path: '/api/v1/recurrence', body: { task: { id: 'tmpl' }, rule: { id: 'r1' } },
+      entityKeys: ['tasks:tmpl', 'recurrenceRules:r1'], kind: 'create', regenAfterPush: true,
+    }));
+    const engine = new SyncEngine({ store, transport: t });
+    await engine.syncNow();
+    expect(t.ensured).toHaveLength(0); // op never succeeded → no regen
+    expect(t.pulls).toBe(1);           // pull still ran (§3.3)
   });
 });
