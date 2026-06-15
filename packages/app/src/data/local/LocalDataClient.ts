@@ -89,6 +89,30 @@ function nowIso(): string {
 }
 
 /**
+ * Diff a wire-shaped patch against the current row's wire-shaped value, returning the
+ * subset of keys whose value actually changed (deep-equal by JSON for array/object
+ * fields like labels/plannedTaskIds). Explicit null in the patch is a real value (clear).
+ */
+function diffFields(
+  current: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (!valueEqual(current[k], v)) out[k] = v;
+  }
+  return out;
+}
+
+function valueEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b) || (typeof a === 'object' && a !== null)) {
+    return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  }
+  return false;
+}
+
+/**
  * fromTask for the CREATE path — mirrors HttpDataClient.tasks.create: maps the domain
  * partial to the wire body. mappers.fromTask only forwards present keys and case-folds
  * status; the create endpoint defaults the rest server-side. We add id + rank at the call site.
@@ -213,8 +237,29 @@ export class LocalDataClient implements DataClient {
       });
       return this.mapTask(row, []);
     },
-    update: async (_id: string, _u: Partial<Task>): Promise<Task> => {
-      throw new Error('not implemented in R2-1');
+    update: async (id: string, u: Partial<Task>): Promise<Task> => {
+      const row = await this.store.tasks.get(id);
+      if (!row) throw new Error(`task ${id} not found`);
+      // Map the domain patch to wire shape (case-fold status, drop order), then diff vs the row.
+      const patch = fromTaskCreate(u);
+      const changed = diffFields(row as unknown as Record<string, unknown>, patch);
+      const subs = await this.liveSubtasks(id);
+      if (Object.keys(changed).length === 0) {
+        return { ...this.mapTask(row, subs), order: 0 };
+      }
+      const next = { ...row, ...changed, updatedAt: nowIso() } as TaskSyncRow;
+      await this.writeTx([this.store.tasks], async () => {
+        await this.store.tasks.put(next);
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/tasks/${id}`,
+          body: changed,
+          entityKeys: [entityKey('tasks', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+      return { ...this.mapTask(next, subs), order: 0 };
     },
     delete: async (_id: string): Promise<void> => {
       throw new Error('not implemented in R2-1');
@@ -262,8 +307,37 @@ export class LocalDataClient implements DataClient {
       });
       return stripRank({ ...toProject(row), order: 0 });
     },
-    update: async (_id: string, _u: Partial<Project>): Promise<Project> => {
-      throw new Error('not implemented in R2-2');
+    update: async (id: string, u: Partial<Project>): Promise<Project> => {
+      const row = await this.store.projects.get(id);
+      if (!row) throw new Error(`project ${id} not found`);
+      const patch: Record<string, unknown> = {};
+      if (u.name !== undefined) patch.name = u.name;
+      if (u.color !== undefined) patch.color = u.color;
+      if (u.emoji !== undefined) patch.emoji = u.emoji;
+      const changed = diffFields(row as unknown as Record<string, unknown>, patch);
+      if (Object.keys(changed).length === 0) {
+        return stripRank({ ...toProject(row), order: 0 });
+      }
+      const next = { ...row, ...changed, updatedAt: nowIso() } as ProjectSyncRow;
+      // Wire body uses the server null=unchanged convention: changed keys real, rest null.
+      const body = {
+        name: 'name' in changed ? changed.name : null,
+        color: 'color' in changed ? changed.color : null,
+        emoji: 'emoji' in changed ? changed.emoji : null,
+        rank: null,
+      };
+      await this.writeTx([this.store.projects], async () => {
+        await this.store.projects.put(next);
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/projects/${id}`,
+          body,
+          entityKeys: [entityKey('projects', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+      return stripRank({ ...toProject(next), order: 0 });
     },
     delete: async (_id: string): Promise<void> => {
       throw new Error('not implemented in R2-2');
@@ -317,8 +391,36 @@ export class LocalDataClient implements DataClient {
       });
       return stripRank({ ...toNoteGroup(row) });
     },
-    update: async (_id: string, _u: Partial<NoteGroup>): Promise<NoteGroup> => {
-      throw new Error('not implemented in R2-2');
+    update: async (id: string, u: Partial<NoteGroup>): Promise<NoteGroup> => {
+      const row = await this.store.noteGroups.get(id);
+      if (!row) throw new Error(`noteGroup ${id} not found`);
+      const patch: Record<string, unknown> = {};
+      if (u.name !== undefined) patch.name = u.name;
+      if (u.emoji !== undefined) patch.emoji = u.emoji;
+      if (u.projectId !== undefined) patch.projectId = u.projectId;
+      const changed = diffFields(row as unknown as Record<string, unknown>, patch);
+      if (Object.keys(changed).length === 0) {
+        return stripRank({ ...toNoteGroup(row) });
+      }
+      const next = { ...row, ...changed, updatedAt: nowIso() } as NoteGroupSyncRow;
+      const body = {
+        name: 'name' in changed ? changed.name : null,
+        emoji: 'emoji' in changed ? changed.emoji : null,
+        projectId: 'projectId' in changed ? changed.projectId : null,
+        rank: null,
+      };
+      await this.writeTx([this.store.noteGroups], async () => {
+        await this.store.noteGroups.put(next);
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/note-groups/${id}`,
+          body,
+          entityKeys: [entityKey('noteGroups', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+      return stripRank({ ...toNoteGroup(next) });
     },
     delete: async (_id: string): Promise<void> => {
       throw new Error('not implemented in R2-2');
@@ -386,8 +488,8 @@ export class LocalDataClient implements DataClient {
       return stripRank({ ...toNote(row) });
     },
     update: async (
-      _id: string,
-      _u: Partial<{
+      id: string,
+      u: Partial<{
         title: string;
         content: string;
         groupId: string;
@@ -395,7 +497,37 @@ export class LocalDataClient implements DataClient {
         order: number;
       }>,
     ): Promise<Note> => {
-      throw new Error('not implemented in R2-2');
+      const row = await this.store.notes.get(id);
+      if (!row) throw new Error(`note ${id} not found`);
+      const patch: Record<string, unknown> = {};
+      if (u.groupId !== undefined) patch.groupId = u.groupId;
+      if (u.projectId !== undefined) patch.projectId = u.projectId;
+      if (u.title !== undefined) patch.title = u.title;
+      if (u.content !== undefined) patch.content = u.content;
+      const changed = diffFields(row as unknown as Record<string, unknown>, patch);
+      if (Object.keys(changed).length === 0) {
+        return stripRank({ ...toNote(row) });
+      }
+      const next = { ...row, ...changed, updatedAt: nowIso() } as NoteSyncRow;
+      const body = {
+        groupId: 'groupId' in changed ? changed.groupId : null,
+        projectId: 'projectId' in changed ? changed.projectId : null,
+        title: 'title' in changed ? changed.title : null,
+        content: 'content' in changed ? changed.content : null,
+        rank: null,
+      };
+      await this.writeTx([this.store.notes], async () => {
+        await this.store.notes.put(next);
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/notes/${id}`,
+          body,
+          entityKeys: [entityKey('notes', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+      return stripRank({ ...toNote(next) });
     },
     delete: async (_id: string): Promise<void> => {
       throw new Error('not implemented in R2-2');
@@ -466,10 +598,29 @@ export class LocalDataClient implements DataClient {
       return toSubtask(row as never, sortOrder);
     },
     update: async (
-      _id: string,
-      _u: { title?: string; completed?: boolean; order?: number },
+      id: string,
+      u: { title?: string; completed?: boolean; order?: number },
     ): Promise<void> => {
-      throw new Error('not implemented in R2-4');
+      const row = await this.store.subtasks.get(id);
+      if (!row) throw new Error(`subtask ${id} not found`);
+      const patch: Record<string, unknown> = {};
+      if (u.title !== undefined) patch.title = u.title;
+      if (u.completed !== undefined) patch.completed = u.completed;
+      if (u.order !== undefined) patch.sortOrder = u.order;
+      const changed = diffFields(row as unknown as Record<string, unknown>, patch);
+      if (Object.keys(changed).length === 0) return;
+      const next = { ...row, ...changed, updatedAt: nowIso() } as SubtaskSyncRow;
+      await this.writeTx([this.store.subtasks], async () => {
+        await this.store.subtasks.put(next);
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/subtasks/${id}`,
+          body: changed,
+          entityKeys: [entityKey('subtasks', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
     },
     delete: async (_id: string): Promise<void> => {
       throw new Error('not implemented in R2-5');
