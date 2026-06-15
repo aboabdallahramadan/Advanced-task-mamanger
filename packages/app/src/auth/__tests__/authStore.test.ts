@@ -303,3 +303,102 @@ describe2('authStore — desktop persists refresh token on login/register', () =
     expect2(setRefreshToken).not.toHaveBeenCalled();
   });
 });
+
+// --- R5-3: authed-offline bootstrap + 401 keeps the pointer (C8.3) ---
+
+describe2('authStore — authed-offline bootstrap (C8.3)', () => {
+  function ok4(data: unknown) {
+    return { data, error: undefined, response: { status: 200 } };
+  }
+  function makePlatform4(refreshImpl: () => Promise<any>) {
+    return {
+      auth: {
+        refreshAndGetAccess: vi2.fn(refreshImpl),
+        clear: vi2.fn(async () => {}),
+        logout: vi2.fn(async () => {}),
+      },
+    };
+  }
+  const baseClient = () => ({
+    POST: vi2.fn(async () => ok4({})),
+    GET: vi2.fn(),
+    PATCH: vi2.fn(),
+    PUT: vi2.fn(),
+    DELETE: vi2.fn(),
+  });
+
+  it2(
+    'transient refresh failure WITH a known last user → authed-offline (accessToken null, networkError true)',
+    async () => {
+      const platform = makePlatform4(async () => {
+        throw new TypeError('Failed to fetch'); // transient (network/5xx grouped per SF-3)
+      });
+      const lastUser = { id: 'u-offline', email: 'off@line.dev', timeZoneId: 'UTC' };
+      const resolveLastUser = vi2.fn(async () => lastUser);
+      const onAuthed = vi2.fn();
+      const store = createAuthStore({
+        client: baseClient(),
+        platform,
+        onAuthed,
+        onLoggedOut: vi2.fn(),
+        resolveLastUser,
+      });
+
+      await store.getState().bootstrap();
+      const s = store.getState();
+      expect2(s.status).toBe('authed'); // renders from local data
+      expect2(s.user).toEqual(lastUser);
+      expect2(s.accessToken).toBeNull(); // no token offline; engine idles until reconnect
+      expect2(s.networkError).toBe(true);
+      expect2(platform.auth.clear).not.toHaveBeenCalled(); // DB + token survive
+      expect2(onAuthed).toHaveBeenCalledTimes(1); // AppRoot still opens the store + engine
+    },
+  );
+
+  it2(
+    'transient refresh failure with NO known last user → anonymous + networkError (today\'s behaviour)',
+    async () => {
+      const platform = makePlatform4(async () => {
+        throw new TypeError('Failed to fetch');
+      });
+      const resolveLastUser = vi2.fn(async () => null); // no prior local user
+      const store = createAuthStore({
+        client: baseClient(),
+        platform,
+        onAuthed: vi2.fn(),
+        onLoggedOut: vi2.fn(),
+        resolveLastUser,
+      });
+
+      await store.getState().bootstrap();
+      const s = store.getState();
+      expect2(s.status).toBe('anonymous');
+      expect2(s.networkError).toBe(true);
+      expect2(platform.auth.clear).not.toHaveBeenCalled(); // still never wipe on transient
+    },
+  );
+
+  it2('true 401 → anonymous, clears the keychain token but KEEPS DB + pointer (no wipe)', async () => {
+    // resolveLastUser is irrelevant on a true 401; the pointer is NOT cleared here
+    // (re-login as the same user reuses the DB). Only explicit logout clears it.
+    const platform = makePlatform4(async () => null); // resolved null === true 401
+    const resolveLastUser = vi2.fn(async () => ({ id: 'u1', email: 'a@b.c', timeZoneId: 'UTC' }));
+    const clearPointer = vi2.fn();
+    const store = createAuthStore({
+      client: baseClient(),
+      platform,
+      onAuthed: vi2.fn(),
+      onLoggedOut: vi2.fn(),
+      resolveLastUser,
+      clearLastUserPointer: clearPointer,
+    });
+
+    await store.getState().bootstrap();
+    const s = store.getState();
+    expect2(s.status).toBe('anonymous');
+    expect2(s.networkError).toBe(false);
+    expect2(platform.auth.clear).toHaveBeenCalledTimes(1); // dead access token cleared
+    expect2(clearPointer).not.toHaveBeenCalled(); // pointer persists on session expiry
+    expect2(resolveLastUser).not.toHaveBeenCalled(); // only consulted on the transient branch
+  });
+});

@@ -41,6 +41,15 @@ export interface AuthStoreDeps {
   onAuthed: (auth: AuthTokenResponse) => void;
   /** Called after logout completes (status -> anonymous). */
   onLoggedOut: () => void;
+  /**
+   * C8.3 offline bootstrap: resolve the last-authed user from the global pointer
+   * (`getLastUserId()`) + that DB's `meta.lastUser`. Consulted ONLY on the
+   * transient-refresh-failure branch to enter authed-offline. Absent → today's
+   * behaviour (anonymous + networkError). Wired by AppRoot.
+   */
+  resolveLastUser?: () => Promise<AuthUser | null>;
+  /** Clears `tmap:lastUserId`. NOT called on session expiry — only by explicit logout. */
+  clearLastUserPointer?: () => void;
 }
 
 function isNetworkError(e: unknown): boolean {
@@ -63,7 +72,7 @@ function readRefreshToken(body: unknown): string | null {
 }
 
 export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
-  const { client, platform, onAuthed, onLoggedOut } = deps;
+  const { client, platform, onAuthed, onLoggedOut, resolveLastUser } = deps;
   let refreshPromise: Promise<AuthTokenResponse | null> | null = null;
 
   const store = createStore<AuthState>((set, get) => ({
@@ -186,7 +195,9 @@ export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
           });
           onAuthed(auth);
         } else {
-          // refresh returned null === a real 401: stored token is dead, clear it.
+          // refresh RESOLVED null === a real 401: stored access token is dead, clear it.
+          // C8.3: KEEP the local DB + op queue and the tmap:lastUserId pointer — re-login
+          // as the same user reuses them. Only explicit logout wipes/clears the pointer.
           try {
             await platform.auth.clear();
           } catch {
@@ -196,8 +207,21 @@ export function createAuthStore(deps: AuthStoreDeps): StoreApi<AuthState> {
         }
       } catch (e) {
         if (isNetworkError(e)) {
-          // Do NOT destroy a (possibly valid) stored token on a transient network failure.
-          set({ status: 'anonymous', user: null, accessToken: null, networkError: true });
+          // Transient (network drop / refresh 5xx, grouped per SF-3). Do NOT destroy the
+          // stored token. C8.3: if a last-authed local user exists, render authed-OFFLINE
+          // (no access token; the engine idles until connectivity, then refreshes + syncs).
+          const lastUser = resolveLastUser ? await resolveLastUser().catch(() => null) : null;
+          if (lastUser) {
+            set({
+              status: 'authed',
+              user: lastUser,
+              accessToken: null, // no token offline
+              networkError: true,
+            });
+            onAuthed({ accessToken: '', expiresIn: 0, user: lastUser });
+          } else {
+            set({ status: 'anonymous', user: null, accessToken: null, networkError: true });
+          }
         } else {
           try {
             await platform.auth.clear();
