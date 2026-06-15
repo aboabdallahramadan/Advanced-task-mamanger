@@ -604,3 +604,98 @@ describe('SyncEngine — post-push ensure-instances rows applied via applyPull (
     expect((engine as unknown as { pendingEnsureRows: TaskSyncRow[] | null }).pendingEnsureRows).toBeNull();
   });
 });
+
+function serverTaskRow(id: string, rank: string): Record<string, unknown> {
+  return {
+    id, title: `srv-${id}`, notes: '', projectId: null, labels: [], source: 'manual',
+    status: 'Inbox', plannedDate: null, scheduledStart: null, scheduledEnd: null,
+    durationMinutes: 0, actualTimeMinutes: 0, priority: null, reminderMinutes: null,
+    rank, dueDate: null, recurrenceRuleId: null, isRecurrenceTemplate: false,
+    recurrenceDetached: false, recurrenceOriginalDate: null, completedAt: null,
+    createdAt: '2026-06-01T00:00:00Z', updatedAt: '2026-06-01T00:00:00Z', deletedAt: null,
+  };
+}
+
+describe('SyncEngine cycle integration (real fakeSyncServer)', () => {
+  it('cold start from since=0 pulls a multi-page dataset into an empty store', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    // > PULL_LIMIT rows to force page chaining.
+    for (let i = 0; i < PULL_LIMIT + 100; i++) {
+      server.seed('tasks', serverTaskRow(`t${String(i).padStart(4, '0')}`, `a${i}`));
+    }
+    const engine = new SyncEngine({ store, transport: server.transport() });
+
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBeUndefined();
+    await engine.syncNow();
+
+    expect(await store.tasks.count()).toBe(PULL_LIMIT + 100); // all pages applied
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBe(true);
+    const cursor = await store.getMeta<number>('syncCursor');
+    expect(cursor).toBeGreaterThanOrEqual(PULL_LIMIT + 100);
+  });
+
+  it('warm pull overlap re-read is idempotent (no duplicates, cursor does not regress)', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    server.seed('tasks', serverTaskRow('t1', 'a0'));
+    server.seed('tasks', serverTaskRow('t2', 'a1'));
+    const engine = new SyncEngine({ store, transport: server.transport() });
+
+    await engine.syncNow(); // initial pull
+    const cursorAfter1 = await store.getMeta<number>('syncCursor');
+
+    await engine.syncNow(); // warm pull re-reads the overlap window (since = max(0, cursor-5000) = 0 here)
+    expect(await store.tasks.count()).toBe(2); // idempotent upsert-by-key — no dupes
+    const cursorAfter2 = await store.getMeta<number>('syncCursor');
+    expect(cursorAfter2).toBeGreaterThanOrEqual(cursorAfter1!); // never regresses
+  });
+
+  it('push-then-pull confirms own writes with no flicker: changeSeq advances on the pulled row', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    const engine = new SyncEngine({ store, transport: server.transport() });
+    const client = new LocalDataClient(store, {
+      nudge: () => {},
+      online: () => true,
+      ensureInstances: (s: string, e: string) => engine.ensureInstances(s, e),
+    });
+
+    const created = await client.tasks.create({ title: 'Mine' });
+    expect((await store.tasks.get(created.id))!.changeSeq).toBe(0); // local create starts at 0 (C3)
+
+    await engine.syncNow(); // push the create, then pull confirms it
+
+    const confirmed = await store.tasks.get(created.id);
+    expect(confirmed).toBeDefined();
+    expect(confirmed!.title).toBe('Mine'); // no flicker — title unchanged
+    expect(confirmed!.changeSeq).toBeGreaterThan(0); // server-stamped changeSeq adopted
+  });
+
+  it('a user write mid-pull is shadow-protected and reconciles on the next cycle', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    const engine = new SyncEngine({ store, transport: server.transport() });
+    const client = new LocalDataClient(store, {
+      nudge: () => {},
+      online: () => true,
+      ensureInstances: (s: string, e: string) => engine.ensureInstances(s, e),
+    });
+
+    const created = await client.tasks.create({ title: 'Base' });
+    await engine.syncNow(); // create lands on server
+
+    // Another device advances the row on the server (new changeSeq).
+    server.bumpSeq('tasks', created.id, { title: 'remote title' });
+
+    // This device writes the SAME row locally just before the pull — a pending op
+    // now shadows tasks:<id>, so this cycle's pull skips the remote 'remote title'.
+    await client.tasks.update(created.id, { title: 'local title' });
+    await engine.syncNow(); // pushes local PATCH (local title wins as later arrival), pull shadowed
+
+    // After the push delivered 'local title' and the next cycle pulls cleanly:
+    await engine.syncNow();
+    const final = await store.tasks.get(created.id);
+    expect(final!.title).toBe('local title'); // local edit (later arrival) is authoritative
+  });
+});
