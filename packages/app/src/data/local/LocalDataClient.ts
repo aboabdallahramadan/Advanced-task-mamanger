@@ -42,6 +42,7 @@ import {
   toNoteGroup,
   toNote,
   toDailyPlan,
+  toFocusSession,
   parseSettings,
   toServerStatus,
 } from '../mappers';
@@ -687,12 +688,35 @@ export class LocalDataClient implements DataClient {
 
   // ── daily plans ────────────────────────────────────────────
   dailyPlans = {
-    upsert: async (_p: {
+    upsert: async (p: {
       date: string;
       plannedTaskIds: string[];
       plannedMinutes: number;
     }): Promise<DailyPlan> => {
-      throw new Error('not implemented in R2-2');
+      // committedAt is stamped locally for an offline-readable plan; the server
+      // re-stamps the authoritative value on apply (spec §6).
+      const committedAt = nowIso();
+      const existing = await this.store.dailyPlans.get(p.date);
+      const row = {
+        date: p.date,
+        committedAt,
+        plannedTaskIds: p.plannedTaskIds,
+        plannedMinutes: p.plannedMinutes,
+        changeSeq: existing?.changeSeq ?? 0,
+        deletedAt: null,
+      };
+      await this.writeTx([this.store.dailyPlans], async () => {
+        await this.store.dailyPlans.put(row as never);
+        await this.store.ops.add({
+          method: 'PUT',
+          path: `/api/v1/daily-plans/${p.date}`,
+          body: { plannedTaskIds: p.plannedTaskIds, plannedMinutes: p.plannedMinutes },
+          entityKeys: [entityKey('dailyPlans', p.date)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+      return toDailyPlan(row as never);
     },
     get: async (date: string): Promise<DailyPlan | null> => {
       const row = await this.store.dailyPlans.get(date);
@@ -709,8 +733,53 @@ export class LocalDataClient implements DataClient {
       const lastUser = await this.store.getMeta<{ timeZoneId?: string }>('lastUser');
       return { settings: parseSettings(map), timeZoneId: lastUser?.timeZoneId ?? 'UTC' };
     },
-    save: async (_s: Record<string, unknown>, _timeZoneId?: string): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    save: async (s: Record<string, unknown>, timeZoneId?: string): Promise<void> => {
+      // The three synced numeric keys, stringified (mirrors mappers.stringifySettings).
+      const SYNCED = ['workStartHour', 'workEndHour', 'timeIncrement'] as const;
+      const rows = await this.store.settings.toArray();
+      const current: Record<string, string> = {};
+      for (const r of rows) current[r.key] = r.value;
+      const changedSettings: Record<string, string> = {};
+      for (const k of SYNCED) {
+        const v = s[k];
+        if (v === undefined || v === null) continue;
+        const str = String(v);
+        if (current[k] !== str) changedSettings[k] = str;
+      }
+      const lastUser = await this.store.getMeta<{ id: string; email: string; timeZoneId: string }>(
+        'lastUser',
+      );
+      const tzChanged = timeZoneId !== undefined && timeZoneId !== lastUser?.timeZoneId;
+      if (Object.keys(changedSettings).length === 0 && !tzChanged) return;
+
+      const body: { settings: Record<string, string>; timeZoneId?: string } = {
+        settings: changedSettings,
+      };
+      if (tzChanged) body.timeZoneId = timeZoneId;
+
+      const tables = [this.store.settings, this.store.meta];
+      await this.writeTx(tables, async () => {
+        for (const [k, v] of Object.entries(changedSettings)) {
+          const ex = await this.store.settings.get(k);
+          await this.store.settings.put({
+            key: k,
+            value: v,
+            changeSeq: ex?.changeSeq ?? 0,
+            deletedAt: null,
+          } as never);
+        }
+        if (tzChanged && lastUser) {
+          await this.store.meta.put({ key: 'lastUser', value: { ...lastUser, timeZoneId } });
+        }
+        await this.store.ops.add({
+          method: 'PUT',
+          path: '/api/v1/settings',
+          body,
+          entityKeys: Object.keys(changedSettings).map((k) => entityKey('settings', k)),
+          kind: 'other',
+          attempts: 0,
+        });
+      });
     },
   };
 
@@ -784,9 +853,56 @@ export class LocalDataClient implements DataClient {
     },
   };
 
+  // ── focus sessions ─────────────────────────────────────────
+  focusSessions = {
+    add: async (s: {
+      taskId: string | null;
+      project: string;
+      startedAt: string;
+      endedAt: string;
+      minutes: number;
+      date: string;
+    }): Promise<FocusSession> => {
+      const id = newId();
+      const row = {
+        id,
+        taskId: s.taskId,
+        project: s.project,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        minutes: s.minutes,
+        date: s.date,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      const body = {
+        id,
+        taskId: s.taskId,
+        project: s.project,
+        startedAt: s.startedAt,
+        endedAt: s.endedAt,
+        minutes: s.minutes,
+        date: s.date,
+      };
+      await this.writeTx([this.store.focusSessions], async () => {
+        await this.store.focusSessions.add(row as never);
+        await this.store.ops.add({
+          method: 'POST',
+          path: '/api/v1/focus-sessions',
+          body,
+          entityKeys: [entityKey('focusSessions', id)],
+          kind: 'create',
+          attempts: 0,
+        });
+      });
+      return toFocusSession(row as never);
+    },
+  };
+
   // Still placeholders (filled in by later R2 tasks):
   recurrence!: DataClient['recurrence'];
-  focusSessions!: DataClient['focusSessions'];
   reports!: DataClient['reports'];
 }
 
