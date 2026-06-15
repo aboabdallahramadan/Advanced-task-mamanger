@@ -228,7 +228,12 @@ export class SyncEngine implements SyncBridge {
           this.stop();
           return replayed;
         case 'retry5xx':
-          // exhausted in-cycle retries; persist attempts, abort phase, resume next trigger
+          // Exhausted in-cycle retries: persist the accumulated attempts/lastError
+          // once (deferred off the hot path), abort the phase, resume next trigger.
+          await this.store.ops.update(head.seq!, {
+            attempts: head.attempts,
+            lastError: head.lastError,
+          });
           return replayed;
         case 'park':
           await this.parkOp(head);
@@ -267,10 +272,13 @@ export class SyncEngine implements SyncBridge {
     }
 
     if (s >= 500) {
-      const attempts = (op.attempts ?? 0) + 1;
-      await this.store.ops.update(op.seq!, { attempts, lastError: `HTTP ${s}` });
-      op.attempts = attempts;
-      return attempts >= PARK_THRESHOLD ? { kind: 'park' } : { kind: 'retry5xx' };
+      // Account attempts in memory only on the hot retry path; pushPhase persists
+      // once when the in-cycle ladder settles (abort/park). Persisting on every send
+      // would interleave a real Dexie write (fake-indexeddb runs on setImmediate)
+      // between the fake-timer backoff sleeps and deadlock vi.advanceTimersByTimeAsync.
+      op.attempts = (op.attempts ?? 0) + 1;
+      op.lastError = `HTTP ${s}`;
+      return op.attempts >= PARK_THRESHOLD ? { kind: 'park' } : { kind: 'retry5xx' };
     }
 
     // Definitive 4xx (400/404-on-non-delete/403/etc., except the 401 path).

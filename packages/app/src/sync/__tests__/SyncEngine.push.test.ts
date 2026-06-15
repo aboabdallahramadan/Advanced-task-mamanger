@@ -219,3 +219,85 @@ describe('push loop — FIFO drain + network abort (spec §3.3)', () => {
     expect(await store.ops.count()).toBe(0);
   });
 });
+
+describe('5xx policy — in-cycle retry/backoff + parking (spec §3.3)', () => {
+  it('retries a 5xx within the cycle up to CYCLE_5XX_RETRIES with backoff, then aborts the phase', async () => {
+    vi.useFakeTimers();
+    const store = freshStore();
+    let attempts = 0;
+    // Always 503: the op is sent 1 + CYCLE_5XX_RETRIES times within one cycle.
+    const t = spyTransport(() => {
+      attempts++;
+      return { status: 503, body: { title: 'unavailable' } };
+    });
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' }, entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    const cycle = engine.syncNow();
+    // 1 immediate + 3 retries = 4 sends, gated behind 1s/2s/4s backoff.
+    await vi.advanceTimersByTimeAsync(1000 + 2000 + 4000 + 10);
+    await cycle;
+
+    expect(attempts).toBe(1 + 3); // CYCLE_5XX_RETRIES = 3
+    const head = await store.ops.orderBy('seq').first();
+    expect(head).toBeDefined();           // op survived (phase aborted)
+    expect(head!.attempts).toBeGreaterThanOrEqual(3); // attempts persisted
+    expect(head!.lastError).toContain('503');
+  });
+
+  it('parks an op once attempts reach PARK_THRESHOLD (moved to issues, removed from ops)', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 500, body: { title: 'boom' } }));
+    // Pre-seed attempts so a single 500 pushes it to the threshold.
+    await store.ops.add(op({
+      method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' },
+      entityKeys: ['tasks:a'], attempts: 9, // +1 this send → 10 = PARK_THRESHOLD
+    }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(await store.ops.count()).toBe(0); // parked → off the queue
+    const issues = await store.issues.toArray();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('parked');
+    expect(issues[0].op.path).toBe('/api/v1/tasks/a');
+  });
+
+  it('retryIssue re-queues a parked op with attempts reset and clears the issue', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 200 }));
+    await store.issues.add({
+      at: new Date().toISOString(),
+      op: op({ method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' }, entityKeys: ['tasks:a'], attempts: 10, lastError: 'HTTP 500' }),
+      reason: 'parked', status: 'parked',
+    });
+    const issue = (await store.issues.toArray())[0];
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.retryIssue(issue.id!);
+
+    expect(await store.issues.count()).toBe(0);
+    const requeued = await store.ops.orderBy('seq').first();
+    expect(requeued!.path).toBe('/api/v1/tasks/a');
+    expect(requeued!.attempts).toBe(0);          // reset
+    expect(requeued!.lastError).toBeUndefined();
+  });
+
+  it('discardIssue removes a parked op and schedules rejection recovery', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 200 }));
+    await store.issues.add({
+      at: new Date().toISOString(),
+      op: op({ method: 'POST', path: '/api/v1/projects', body: { id: 'p1', name: 'X' }, entityKeys: ['projects:p1'], kind: 'create', attempts: 10 }),
+      reason: 'parked', status: 'parked',
+    });
+    const issue = (await store.issues.toArray())[0];
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.discardIssue(issue.id!);
+
+    expect(await store.issues.count()).toBe(0);
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true); // recovery scheduled (R4 honors)
+  });
+});
