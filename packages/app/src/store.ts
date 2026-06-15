@@ -84,6 +84,11 @@ export function applyLoadedSettings(
 // in normal flow) and throws a clear message.
 let _dataClient: DataClient | null = null;
 
+// Rollover runs at most once per app session (C9.3). AppRoot calls runRolloverOnce()
+// either when the engine's first cycle settles (online start) or right after
+// initialLoad() (offline start). reset() re-arms it for the next session.
+let _rolloverDone = false;
+
 /** Inject the DataClient. Called once by AppRoot after the client is built. */
 export function setDataClient(client: DataClient): void {
   _dataClient = client;
@@ -400,6 +405,10 @@ interface AppState {
   reset: () => void;
   /** Load all data from the server (tasks, projects, notes, settings). Called once after auth. */
   initialLoad: () => Promise<void>;
+  /** Re-read collections from the seam after a remote pull. NO rollover, NO ensureInstances (C9.1). */
+  refreshFromLocal: () => Promise<void>;
+  /** Run the auto-rollover pass once per session (idempotent; re-armed by reset()) (C9.3). */
+  runRolloverOnce: () => Promise<void>;
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -469,65 +478,12 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       const tasks = await dc().tasks.getAll();
       const today = format(new Date(), 'yyyy-MM-dd');
+      // C9.3: rollover moved out of loadTasks into runRolloverOnce (AppRoot schedules it
+      // after the first sync cycle settles, or immediately when the session starts offline).
+      set({ tasks, loading: false });
 
-      // Auto-rollover: move past unfinished tasks to today
-      // For recurring instances, archive past missed ones instead of rolling forward
-      const rolloverActions: Array<() => Promise<unknown>> = [];
-      const updatedTasks = tasks.map((task: Task) => {
-        if (
-          task.plannedDate &&
-          task.plannedDate < today &&
-          task.status !== 'done' &&
-          task.status !== 'archived' &&
-          task.status !== 'backlog'
-        ) {
-          // Recurring instances: archive past missed ones
-          if (task.recurrenceRuleId && task.recurrenceOriginalDate) {
-            rolloverActions.push(() => dc().tasks.update(task.id, { status: 'archived' }));
-            return { ...task, status: 'archived' as Task['status'] };
-          }
-
-          const updates: Partial<Task> = {
-            plannedDate: today,
-            scheduledStart: null,
-            scheduledEnd: null,
-          };
-          // If task was scheduled, unschedule it (the old time slot is in the past)
-          if (task.status === 'scheduled') {
-            updates.status = 'planned';
-          }
-          rolloverActions.push(() => dc().tasks.update(task.id, updates));
-          return {
-            ...task,
-            ...updates,
-            status: (task.status === 'scheduled' ? 'planned' : task.status) as Task['status'],
-          };
-        }
-        return task;
-      });
-
-      // Run rollover updates in the background (don't block UI) with BOUNDED concurrency,
-      // and SURFACE any failure via the online-error banner (spec §7: no silent fire-and-forget).
-      if (rolloverActions.length > 0) {
-        void (async () => {
-          const CHUNK = 5;
-          const failures: unknown[] = [];
-          for (let i = 0; i < rolloverActions.length; i += CHUNK) {
-            const results = await Promise.allSettled(rolloverActions.slice(i, i + CHUNK).map((fn) => fn()));
-            for (const r of results) if (r.status === 'rejected') failures.push(r.reason);
-          }
-          if (failures.length > 0) {
-            console.error('Rollover update failed:', failures);
-            get().setOnlineError(
-              `Couldn’t sync ${failures.length} rolled-over task${failures.length === 1 ? '' : 's'} to the server — check your connection.`,
-            );
-          }
-        })();
-      }
-
-      set({ tasks: updatedTasks, loading: false });
-
-      // Ensure recurring task instances are generated for the next 2 weeks
+      // Ensure recurring task instances are generated for the next 2 weeks. Read-through:
+      // online → server call; offline → returns [] (coast on the horizon, spec §6).
       try {
         const twoWeeks = format(addDays(new Date(), 14), 'yyyy-MM-dd');
         const newInstances = await dc().recurrence.ensureInstances(today, twoWeeks);
@@ -544,6 +500,78 @@ export const useStore = create<AppState>((set, get) => ({
     } catch (e) {
       console.error('Failed to load tasks:', e);
       set({ loading: false });
+    }
+  },
+
+  refreshFromLocal: async () => {
+    // C9.1: re-read collections from the seam with NO side effects — no rollover,
+    // no ensureInstances. Driven by the engine after a remote pull (changesApplied).
+    try {
+      const [tasks, projects, noteGroups] = await Promise.all([
+        dc().tasks.getAll(),
+        dc().projects.getAll(),
+        dc().noteGroups.getAll(),
+      ]);
+      set({ tasks, projects, noteGroups });
+      // Synced settings are local rows now; re-read them via the existing action
+      // (its local-prefs half is cheap and idempotent).
+      await get().loadSettings();
+    } catch (e) {
+      console.error('Failed to refresh from local:', e);
+    }
+  },
+
+  runRolloverOnce: async () => {
+    // C9.3: idempotent per session. Operates on tasks ALREADY in store state (seeded
+    // by initialLoad/refreshFromLocal), so it never re-reads or races a pull.
+    if (_rolloverDone) return;
+    _rolloverDone = true;
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const rolloverActions: Array<() => Promise<unknown>> = [];
+    const updatedTasks = get().tasks.map((task: Task) => {
+      if (
+        task.plannedDate &&
+        task.plannedDate < today &&
+        task.status !== 'done' &&
+        task.status !== 'archived' &&
+        task.status !== 'backlog'
+      ) {
+        // Recurring instances: archive past missed ones instead of rolling forward.
+        if (task.recurrenceRuleId && task.recurrenceOriginalDate) {
+          rolloverActions.push(() => dc().tasks.update(task.id, { status: 'archived' }));
+          return { ...task, status: 'archived' as Task['status'] };
+        }
+        const updates: Partial<Task> = {
+          plannedDate: today,
+          scheduledStart: null,
+          scheduledEnd: null,
+        };
+        if (task.status === 'scheduled') {
+          updates.status = 'planned';
+        }
+        rolloverActions.push(() => dc().tasks.update(task.id, updates));
+        return {
+          ...task,
+          ...updates,
+          status: (task.status === 'scheduled' ? 'planned' : task.status) as Task['status'],
+        };
+      }
+      return task;
+    });
+    set({ tasks: updatedTasks });
+    // Apply the rollover updates locally with BOUNDED concurrency. These now hit the
+    // LocalDataClient (instant local write + enqueue), so banner surfacing is dropped
+    // (C9.4): a failed local write is a programming error, logged not bannered.
+    if (rolloverActions.length > 0) {
+      const CHUNK = 5;
+      for (let i = 0; i < rolloverActions.length; i += CHUNK) {
+        const results = await Promise.allSettled(
+          rolloverActions.slice(i, i + CHUNK).map((fn) => fn()),
+        );
+        for (const r of results) {
+          if (r.status === 'rejected') console.error('Rollover update failed:', r.reason);
+        }
+      }
     }
   },
 
@@ -676,7 +704,10 @@ export const useStore = create<AppState>((set, get) => ({
   updateRecurrenceSeries: async (ruleId, updates) => {
     try {
       await dc().recurrence.updateSeries(ruleId, updates);
-      await get().loadTasks();
+      // C9.2: refreshFromLocal (NOT loadTasks) — the local approximation already
+      // updated Dexie; loadTasks would re-run rollover + an ensure-instances upsert
+      // that can transiently resurrect just-deleted instances.
+      await get().refreshFromLocal();
     } catch (e) {
       console.error('Failed to update recurrence series:', e);
     }
@@ -685,7 +716,7 @@ export const useStore = create<AppState>((set, get) => ({
   deleteRecurrenceSeries: async (ruleId) => {
     try {
       await dc().recurrence.deleteSeries(ruleId);
-      await get().loadTasks();
+      await get().refreshFromLocal();
     } catch (e) {
       console.error('Failed to delete recurrence series:', e);
     }
@@ -694,7 +725,7 @@ export const useStore = create<AppState>((set, get) => ({
   deleteRecurrenceSeriesFuture: async (ruleId, fromDate) => {
     try {
       await dc().recurrence.deleteSeriesFuture(ruleId, fromDate);
-      await get().loadTasks();
+      await get().refreshFromLocal();
     } catch (e) {
       console.error('Failed to delete future recurrence instances:', e);
     }
@@ -1172,8 +1203,8 @@ export const useStore = create<AppState>((set, get) => ({
       if (applied.timeZoneId) updates.timeZoneId = applied.timeZoneId;
       set(updates);
     } catch (e) {
+      // C9.4: settings are local rows now — a read failure is logged, not bannered.
       console.error('Failed to load synced settings:', e);
-      get().setOnlineError?.('Couldn’t load your settings from the server.');
     }
   },
 
@@ -1188,8 +1219,8 @@ export const useStore = create<AppState>((set, get) => ({
     try {
       await dc().settings.save(settings, tz);
     } catch (e) {
+      // C9.4: settings save is a local write + enqueue now — logged, not bannered.
       console.error('Failed to save synced settings:', e);
-      get().setOnlineError?.('Couldn’t save your settings to the server.');
     }
   },
 
@@ -1503,6 +1534,8 @@ export const useStore = create<AppState>((set, get) => ({
   reset: () => {
     // Clear the module-level DataClient reference so stale calls fail loudly.
     _dataClient = null;
+    // Re-arm rollover for the next session (C9.3).
+    _rolloverDone = false;
     set({
       tasks: [],
       loading: false,
