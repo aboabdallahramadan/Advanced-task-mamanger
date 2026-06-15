@@ -7,7 +7,7 @@
  */
 
 import type { LocalStore } from '../data/local/LocalStore';
-import type { TaskSyncRow } from '../data/local/rows';
+import type { TaskSyncRow, SyncChanges } from '../data/local/rows';
 import type { SyncTransport } from './SyncTransport';
 import { applyPullPage } from '../data/local/applyPull';
 import type { SyncBridge } from '../data/local/LocalDataClient';
@@ -477,29 +477,50 @@ export class SyncEngine implements SyncBridge {
 
   // ── pull phase (spec §4) ───────────────────────────────────
   /**
-   * Paged pull (spec §4). First page of the cycle re-reads from
-   * since = max(0, cursor − CURSOR_OVERLAP) (overlap mitigation, §4.1); pages
-   * chain nextSince while hasMore. Each page is applied via applyPullPage; the
-   * cursor advances to max(prior, nextSince) and never regresses. changesApplied
+   * Pull phase (spec §4), in order (plan line 141/146):
+   *   1. Drain the post-push ensure-instances buffer (`pendingEnsureRows`) through
+   *      applyPull BEFORE the delta pull, then null it (§4.3 — makes an offline-created
+   *      series' instances visible on reconnect).
+   *   2. Delta pull, paged from the overlap floor (§4.1). The first cycle that runs this
+   *      loop to completion (hasMore=false, uninterrupted) sets `initialSyncComplete`.
+   *   3. Rejection recovery: if `pendingRecovery` is set (R3 scheduleRecovery / discardIssue),
+   *      consume+clear it and run an extra paged pull from since=0 (§3.3) — snaps local
+   *      state back to server truth incl. shadow-skipped tombstones lost past the cursor.
+   * The stored cursor advances to max(prior, nextSince) and never regresses. changesApplied
    * fires once per cycle if any page applied rows; lastSyncedAt is stamped at the end.
    */
   protected async pullPhase(): Promise<void> {
-    const prior = (await this.store.getMeta<number>('syncCursor')) ?? 0;
-    let since = Math.max(0, prior - CURSOR_OVERLAP);
-    let cursor = prior;
     let anyApplied = false;
-    let hasMore = true;
 
-    while (hasMore) {
-      const page = await this.transport.pull(since, PULL_LIMIT);
-      const applied = await applyPullPage(this.store, page.changes);
+    // 1. Drain buffered post-push ensure-instances rows before the delta pull (§4.3).
+    if (this.pendingEnsureRows && this.pendingEnsureRows.length > 0) {
+      const applied = await applyPullPage(this.store, this.toChanges(this.pendingEnsureRows));
       anyApplied = anyApplied || applied;
-      // nextSince is int64 (typed number | string by the generator) — coerce.
-      const nextSince = Number(page.nextSince);
-      cursor = Math.max(cursor, nextSince);
-      await this.store.setMeta('syncCursor', cursor);
-      since = nextSince;
-      hasMore = page.hasMore;
+    }
+    this.pendingEnsureRows = null;
+
+    // 2. Delta pull from the overlap floor. `reachedEnd` is true only if the paged loop
+    //    terminated naturally at hasMore=false (a network throw would propagate, leaving it
+    //    false → the initialSyncComplete gate stays closed on an interrupted initial sync).
+    const prior = (await this.store.getMeta<number>('syncCursor')) ?? 0;
+    const delta = await this.pullPaged(Math.max(0, prior - CURSOR_OVERLAP), prior);
+    anyApplied = anyApplied || delta.applied;
+
+    // §4.1 — set the bootstrap-completeness gate once, the first time a full delta pass
+    //   reaches hasMore=false. Cursor presence is NOT the signal (a crash mid-initial-sync
+    //   leaves a partial prefix); reaching the end of the paged loop is. Read the
+    //   authoritative store value (not the cache, which may be mid-refresh) so the write is
+    //   idempotent and never depends on emit ordering.
+    if (delta.reachedEnd && !(await this.store.getMeta<boolean>('initialSyncComplete'))) {
+      await this.store.setMeta('initialSyncComplete', true);
+      this.cachedInitialSyncComplete = true;
+    }
+
+    // 3. Rejection recovery (§3.3): consume+clear the persisted flag, then re-pull from 0.
+    if (await this.store.getMeta<boolean>('pendingRecovery')) {
+      await this.store.setMeta('pendingRecovery', false);
+      const recovery = await this.pullPaged(0, delta.cursor);
+      anyApplied = anyApplied || recovery.applied;
     }
 
     await this.store.setMeta('lastSyncedAt', new Date().toISOString());
@@ -507,6 +528,42 @@ export class SyncEngine implements SyncBridge {
     if (anyApplied) {
       for (const cb of this.changesAppliedCbs) cb();
     }
+  }
+
+  /**
+   * Run one paged pull starting at `since`, chaining nextSince while hasMore. Each page is
+   * applied via applyPullPage; the cursor advances to max(startCursor, nextSince) and is
+   * persisted after every page (never regresses). Returns whether any page applied rows, the
+   * final cursor, and whether the loop terminated at hasMore=false (vs. throwing).
+   */
+  private async pullPaged(
+    since: number,
+    startCursor: number,
+  ): Promise<{ applied: boolean; cursor: number; reachedEnd: boolean }> {
+    let cursor = startCursor;
+    let applied = false;
+    let hasMore = true;
+    while (hasMore) {
+      const page = await this.transport.pull(since, PULL_LIMIT);
+      const pageApplied = await applyPullPage(this.store, page.changes);
+      applied = applied || pageApplied;
+      // nextSince is int64 (typed number | string by the generator) — coerce.
+      const nextSince = Number(page.nextSince);
+      cursor = Math.max(cursor, nextSince);
+      await this.store.setMeta('syncCursor', cursor);
+      since = nextSince;
+      hasMore = page.hasMore;
+    }
+    return { applied, cursor, reachedEnd: true };
+  }
+
+  /** Wrap a flat list of pulled TaskSyncRows as a SyncChanges page (only the tasks field). */
+  private toChanges(tasks: TaskSyncRow[]): SyncChanges {
+    return {
+      tasks,
+      subtasks: [], projects: [], noteGroups: [], notes: [],
+      recurrenceRules: [], focusSessions: [], dailyPlans: [], settings: [],
+    } as SyncChanges;
   }
 
   // ── status + notifications ─────────────────────────────────

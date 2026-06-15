@@ -2,8 +2,10 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { LocalStore } from '../../data/local/LocalStore';
 import { SyncEngine } from '../SyncEngine';
+import { FakeSyncServer } from './fakeSyncServer';
 import { CURSOR_OVERLAP, PULL_LIMIT } from '../constants';
 import type { SyncTransport } from '../SyncTransport';
+import type { SyncOp } from '../types';
 import type { SyncResponse, SyncChanges, TaskSyncRow } from '../../data/local/rows';
 
 let nextUser = 0;
@@ -154,5 +156,155 @@ describe('SyncEngine pull — pagination + cursor protocol', () => {
     engine.onChangesApplied(applied2);
     await engine.syncNow();
     expect(applied2).not.toHaveBeenCalled();
+  });
+});
+
+describe('SyncEngine pull — initialSyncComplete gate (spec §4.1)', () => {
+  it('sets meta.initialSyncComplete only when the first sync reaches hasMore=false', async () => {
+    const store = openFresh();
+    // since=0 (no prior cursor). First cycle: one page that still hasMore → NOT complete yet.
+    const p1 = { changes: emptyChanges(), nextSince: 500, hasMore: true } as SyncResponse;
+    p1.changes.tasks = [taskRow('t1', 500)];
+    const p2 = { changes: emptyChanges(), nextSince: 800, hasMore: false } as SyncResponse;
+    p2.changes.tasks = [taskRow('t2', 800)];
+    const { transport } = scriptedTransport([p1, p2]);
+    const engine = new SyncEngine({ store, transport });
+
+    await engine.syncNow();
+
+    // The full paged sync reached hasMore=false within this cycle → gate clears.
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBe(true);
+    expect(engine.getStatus().initialSyncComplete).toBe(true);
+  });
+
+  it('does NOT set initialSyncComplete while the first sync is still paging (hasMore stays true)', async () => {
+    const store = openFresh();
+    const only = { changes: emptyChanges(), nextSince: 500, hasMore: true } as SyncResponse;
+    only.changes.tasks = [taskRow('t1', 500)];
+    // scriptedTransport falls back to an empty hasMore:false page after the scripted ones —
+    // so to keep hasMore=true we script a page that loops; instead inject a transport that
+    // always reports hasMore=true for the first two pulls then is torn down.
+    let calls = 0;
+    const transport: SyncTransport = {
+      send: vi.fn(),
+      ensureInstances: vi.fn().mockResolvedValue([]),
+      pull: vi.fn(async (since: number) => {
+        calls += 1;
+        if (calls > 50) return { changes: emptyChanges(), nextSince: since, hasMore: false };
+        const page = { changes: emptyChanges(), nextSince: since + 10, hasMore: true } as SyncResponse;
+        page.changes.tasks = [taskRow(`t${calls}`, since + 10)];
+        // Stop the unbounded loop after 3 pages by throwing — simulates an interrupted
+        // initial sync that never reached hasMore=false.
+        if (calls >= 3) throw Object.assign(new TypeError('offline'), { name: 'TypeError' });
+        return page;
+      }),
+    };
+    const engine = new SyncEngine({ store, transport });
+
+    await engine.syncNow();
+
+    // The sync was interrupted before hasMore=false → gate must remain false.
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBeFalsy();
+    expect(engine.getStatus().initialSyncComplete).toBe(false);
+  });
+});
+
+describe('SyncEngine pull — pendingEnsureRows drain before delta pull (spec §4.3)', () => {
+  it('applies buffered post-push ensure-instances rows even when the delta pull never returns them', async () => {
+    const store = openFresh();
+    await store.setMeta('syncCursor', 0);
+
+    // ensureInstances returns an instance row that the delta `pull` deliberately NEVER
+    // returns (empty pages only). The only way this row reaches the local store is via
+    // the pendingEnsureRows buffer being drained through applyPull in the pull phase —
+    // so this isolates the dead-field fix from the ordinary delta-pull path.
+    const instance = taskRow('r1:2026-06-12', 7);
+    instance.isRecurrenceTemplate = false;
+    instance.recurrenceRuleId = 'r1';
+    const transport: SyncTransport = {
+      send: vi.fn().mockResolvedValue({ status: 200 }),
+      ensureInstances: vi.fn().mockResolvedValue([instance]),
+      pull: vi.fn(async (since: number) => (
+        { changes: emptyChanges(), nextSince: since, hasMore: false } as SyncResponse
+      )),
+    };
+
+    await store.ops.add({
+      method: 'POST', path: '/api/v1/recurrence',
+      body: { task: { id: 'tmpl' }, rule: { id: 'r1', frequency: 'Daily' } },
+      entityKeys: ['tasks:tmpl', 'recurrenceRules:r1'],
+      kind: 'create', regenAfterPush: true, attempts: 0,
+    } as SyncOp);
+
+    const engine = new SyncEngine({ store, transport });
+    await engine.syncNow();
+
+    // The buffered instance row landed in local tasks via the drain (delta pull was empty).
+    expect(await store.tasks.get('r1:2026-06-12')).toBeDefined();
+  });
+});
+
+describe('SyncEngine pull — rejection recovery pull from since=0 (spec §3.3, §4.2)', () => {
+  it('consumes meta.pendingRecovery: runs an extra pull from since=0 and clears the flag', async () => {
+    const store = openFresh();
+    await store.setMeta('syncCursor', 9000);
+    await store.setMeta('pendingRecovery', true); // a prior cycle scheduled recovery
+
+    const pullSinces: number[] = [];
+    const transport: SyncTransport = {
+      send: vi.fn(),
+      ensureInstances: vi.fn().mockResolvedValue([]),
+      pull: vi.fn(async (since: number) => {
+        pullSinces.push(since);
+        return { changes: emptyChanges(), nextSince: since, hasMore: false } as SyncResponse;
+      }),
+    };
+    const engine = new SyncEngine({ store, transport });
+
+    await engine.syncNow();
+
+    // The delta pull ran (overlap from 9000) AND a recovery pull from since=0 ran.
+    expect(pullSinces).toContain(0);
+    // Flag cleared so the next cycle does not re-run recovery.
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBeFalsy();
+  });
+
+  it('re-delivers a shadow-skipped tombstone after a definitive rejection (edit-vs-delete)', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    const transport = server.transport();
+
+    // Server has a task that another device deletes.
+    server.seed('tasks', {
+      id: 'x', title: 'Shared', isRecurrenceTemplate: false, recurrenceRuleId: null,
+      plannedDate: '2026-06-11', status: 'Planned', rank: 'a0',
+    });
+    // Local cycle 1: pull the live row down.
+    await store.setMeta('syncCursor', 0);
+    let engine = new SyncEngine({ store, transport });
+    await engine.syncNow();
+    expect(await store.tasks.get('x')).toBeDefined();
+
+    // Remote device deletes 'x' (tombstone bumps change_seq).
+    server.tombstone('tasks', 'x');
+
+    // Locally we had a queued PATCH against 'x' (edit) that the server now 404s
+    // (edit-vs-delete). The push drops it + schedules recovery. The shadow rule means
+    // the tombstone pulled in the SAME cycle is skipped while the op is still queued —
+    // so only the since=0 recovery pull re-delivers the tombstone and removes the row.
+    await store.tasks.update('x', { title: 'edited locally' });
+    await store.ops.add({
+      method: 'PATCH', path: '/api/v1/tasks/x', body: { title: 'edited locally' },
+      entityKeys: ['tasks:x'], kind: 'other', attempts: 0,
+    } as SyncOp);
+
+    engine = new SyncEngine({ store, transport });
+    await engine.syncNow();
+
+    // The op was dropped (issue recorded), recovery ran, and the tombstone removed 'x'.
+    expect(await store.ops.count()).toBe(0);
+    expect((await store.issues.toArray()).length).toBeGreaterThan(0);
+    expect(await store.tasks.get('x')).toBeUndefined(); // delete wins
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBeFalsy();
   });
 });

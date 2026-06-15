@@ -328,7 +328,10 @@ describe('definitive rejection — drop + ghost-row recovery (spec §3.3, §3.2)
     expect(issues).toHaveLength(1);
     expect(issues[0].status).toBe('dropped');
     expect(issues[0].op.method).toBe('PATCH');
-    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true);
+    // R4 honors the scheduled recovery within the SAME cycle: the pull phase runs the
+    // delta pull AND a since=0 recovery pull (2 pulls), then consumes/clears the flag.
+    expect(t.pulls).toBe(2);
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(false);
   });
 
   it('400 on a rejected CREATE deletes the ghost local row + drops dependent queued ops', async () => {
@@ -357,7 +360,10 @@ describe('definitive rejection — drop + ghost-row recovery (spec §3.3, §3.2)
     expect(issues.length).toBe(2);
     expect(issues.some((i) => i.op.method === 'POST')).toBe(true);
     expect(issues.some((i) => i.op.method === 'PATCH')).toBe(true);
-    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true);
+    // R4 honors the scheduled recovery within the SAME cycle (delta pull + since=0 recovery
+    // pull = 2 pulls), then consumes/clears the flag.
+    expect(t.pulls).toBe(2);
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(false);
   });
 });
 
