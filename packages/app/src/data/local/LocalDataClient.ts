@@ -23,6 +23,7 @@ import type {
   ReportData,
   RecurrenceRule,
 } from '../../types';
+import type { Table } from 'dexie';
 import type { DataClient, ReorderInput, RecurrenceRuleInput } from '../DataClient';
 import type { LocalStore } from './LocalStore';
 import type {
@@ -33,7 +34,7 @@ import type {
   NoteSyncRow,
 } from './rows';
 import { entityKey } from '../../sync/types';
-import { rankAfter } from '../ranking';
+import { rankAfter, rankBetween } from '../ranking';
 import {
   toTask,
   toSubtask,
@@ -167,6 +168,89 @@ export class LocalDataClient implements DataClient {
     return result;
   }
 
+  /**
+   * Port of HttpDataClient.computeReorder against LOCAL rows, with §5.1 tie repair.
+   * Returns the minimal [{id, rank}] payload AND mutates `ranks` to the post-move state
+   * so the caller can persist the same ranks to the rows in one transaction.
+   */
+  private computeReorderLocal(
+    ranks: Map<string, string>,
+    items: ReorderInput[],
+  ): { id: string; rank: string }[] {
+    const ordered = [...items].sort((a, b) => a.order - b.order);
+    const result: { id: string; rank: string }[] = [];
+    const working = new Map(ranks);
+    let prevRank: string | null = null;
+
+    for (let i = 0; i < ordered.length; i++) {
+      const cur = ordered[i];
+      const curRank = working.get(cur.id) ?? null;
+
+      // Upper bound = nearest later item whose current rank sorts strictly above prevRank.
+      let nextRank: string | null = null;
+      for (let j = i + 1; j < ordered.length; j++) {
+        const r = working.get(ordered[j].id) ?? null;
+        if (r !== null && (prevRank === null || r > prevRank)) {
+          nextRank = r;
+          break;
+        }
+      }
+
+      const inOrder =
+        curRank !== null &&
+        (prevRank === null || prevRank < curRank) &&
+        (nextRank === null || curRank < nextRank);
+
+      if (inOrder) {
+        prevRank = curRank;
+        continue;
+      }
+
+      // §5.1 tie repair: rankBetween(prev, next) with prev === next sorts after BOTH.
+      // When the bounding neighbors tie (or prev would equal next), append after prev so
+      // the fresh rank is strictly greater than prevRank and below the next distinct rank.
+      let newRank: string;
+      if (prevRank !== null && nextRank !== null && prevRank >= nextRank) {
+        newRank = rankAfter(prevRank);
+      } else {
+        newRank = rankBetween(prevRank, nextRank);
+      }
+      working.set(cur.id, newRank);
+      ranks.set(cur.id, newRank);
+      result.push({ id: cur.id, rank: newRank });
+      prevRank = newRank;
+    }
+    return result;
+  }
+
+  /** Shared reorder driver for every rank-bearing table. */
+  private async reorderTable<R extends { id: string; rank: string }>(
+    table: Table<R, string>,
+    keyTable: Parameters<typeof entityKey>[0],
+    path: string,
+    items: ReorderInput[],
+  ): Promise<void> {
+    const rows = await table.toArray();
+    const ranks = new Map(rows.map((r) => [r.id, r.rank]));
+    const payload = this.computeReorderLocal(ranks, items);
+    if (payload.length === 0) return;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    await this.writeTx([table], async () => {
+      for (const { id, rank } of payload) {
+        const row = byId.get(id);
+        if (row) await table.put({ ...row, rank });
+      }
+      await this.store.ops.add({
+        method: 'PATCH',
+        path,
+        body: payload,
+        entityKeys: payload.map((e) => entityKey(keyTable, e.id)),
+        kind: 'other',
+        attempts: 0,
+      });
+    });
+  }
+
   // ── tasks ──────────────────────────────────────────────────
   tasks = {
     getAll: async (): Promise<Task[]> => {
@@ -276,8 +360,8 @@ export class LocalDataClient implements DataClient {
         });
       });
     },
-    reorder: async (_items: ReorderInput[]): Promise<void> => {
-      throw new Error('not implemented in R2-1');
+    reorder: async (items: ReorderInput[]): Promise<void> => {
+      await this.reorderTable(this.store.tasks, 'tasks', '/api/v1/tasks/reorder', items);
     },
   };
 
@@ -380,8 +464,8 @@ export class LocalDataClient implements DataClient {
         },
       );
     },
-    reorder: async (_items: ReorderInput[]): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    reorder: async (items: ReorderInput[]): Promise<void> => {
+      await this.reorderTable(this.store.projects, 'projects', '/api/v1/projects/reorder', items);
     },
   };
 
@@ -475,8 +559,13 @@ export class LocalDataClient implements DataClient {
         });
       });
     },
-    reorder: async (_items: ReorderInput[]): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    reorder: async (items: ReorderInput[]): Promise<void> => {
+      await this.reorderTable(
+        this.store.noteGroups,
+        'noteGroups',
+        '/api/v1/note-groups/reorder',
+        items,
+      );
     },
   };
 
@@ -591,8 +680,8 @@ export class LocalDataClient implements DataClient {
         });
       });
     },
-    reorder: async (_items: ReorderInput[]): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    reorder: async (items: ReorderInput[]): Promise<void> => {
+      await this.reorderTable(this.store.notes, 'notes', '/api/v1/notes/reorder', items);
     },
   };
 
