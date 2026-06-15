@@ -301,3 +301,62 @@ describe('5xx policy — in-cycle retry/backoff + parking (spec §3.3)', () => {
     expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true); // recovery scheduled (R4 honors)
   });
 });
+
+describe('definitive rejection — drop + ghost-row recovery (spec §3.3, §3.2)', () => {
+  it('404 on a DELETE op is treated as success: op removed, no issue', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 404, body: { title: 'Not found' } }));
+    await store.ops.add(op({ method: 'DELETE', path: '/api/v1/tasks/gone', entityKeys: ['tasks:gone'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(await store.ops.count()).toBe(0);   // dequeued as done
+    expect(await store.issues.count()).toBe(0); // no issue (§3.2)
+  });
+
+  it('404 on a PATCH (edit-vs-delete) drops the op, records an issue, schedules recovery', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 404, body: { title: 'Not found' } }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/x', body: { title: 'edited' }, entityKeys: ['tasks:x'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(await store.ops.count()).toBe(0);
+    const issues = await store.issues.toArray();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('dropped');
+    expect(issues[0].op.method).toBe('PATCH');
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true);
+  });
+
+  it('400 on a rejected CREATE deletes the ghost local row + drops dependent queued ops', async () => {
+    const store = freshStore();
+    // The create gets a 400; later PATCH against the same ghost id must be dropped too.
+    const t = spyTransport((o) => (o.method === 'POST' ? { status: 400, body: { title: 'Bad' } } : { status: 200 }));
+    // Ghost local row that the create produced:
+    await store.tasks.put({
+      id: 'ghost', title: 'Ghost', notes: '', projectId: null, labels: [], source: 'manual',
+      status: 'Inbox', plannedDate: null, scheduledStart: null, scheduledEnd: null,
+      durationMinutes: 0, actualTimeMinutes: 0, priority: null, reminderMinutes: null,
+      rank: 'a0', dueDate: null, recurrenceRuleId: null, isRecurrenceTemplate: false,
+      recurrenceDetached: false, recurrenceOriginalDate: null, completedAt: null,
+      createdAt: 'a', updatedAt: 'b', changeSeq: 0, deletedAt: null,
+    } as never);
+    await store.ops.add(op({ method: 'POST', path: '/api/v1/tasks', body: { id: 'ghost' }, entityKeys: ['tasks:ghost'], kind: 'create' }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/ghost', body: { title: 'edit' }, entityKeys: ['tasks:ghost'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(await store.tasks.get('ghost')).toBeUndefined(); // ghost row deleted
+    expect(await store.ops.count()).toBe(0);                // both ops gone
+    const issues = await store.issues.toArray();
+    // one for the create, one for the dependent PATCH (each recorded)
+    expect(issues.length).toBe(2);
+    expect(issues.some((i) => i.op.method === 'POST')).toBe(true);
+    expect(issues.some((i) => i.op.method === 'PATCH')).toBe(true);
+    expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true);
+  });
+});

@@ -301,13 +301,19 @@ export class SyncEngine implements SyncBridge {
   }
 
   // ── definitive rejection: drop + ghost-row recovery (spec §3.3) ─────────
+  /**
+   * A definitive 4xx drops the op, records a `dropped` issue, and ALWAYS schedules
+   * a recovery pull (the server diverged — e.g. edit-vs-delete on a PATCH — so we
+   * must converge from since=0). The `recover` flag (true only for creates) gates
+   * the additional ghost-row deletion + dependent-op dropping.
+   */
   private async dropOp(op: SyncOp, recover: boolean): Promise<void> {
     await this.recordIssue(op, 'dropped', op.lastError ?? `HTTP rejection`);
-    if (op.kind === 'create') {
+    if (recover) {
       await this.recoverGhostRows(op);
     }
     await this.store.ops.delete(op.seq!);
-    if (recover) await this.scheduleRecovery();
+    await this.scheduleRecovery();
   }
 
   /** Delete local rows a rejected create produced + drop queued ops referencing them. */
