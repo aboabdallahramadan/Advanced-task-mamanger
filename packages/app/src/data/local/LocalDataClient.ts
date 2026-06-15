@@ -25,14 +25,24 @@ import type {
 } from '../../types';
 import type { DataClient, ReorderInput, RecurrenceRuleInput } from '../DataClient';
 import type { LocalStore } from './LocalStore';
-import type { TaskSyncRow, SubtaskSyncRow } from './rows';
+import type {
+  TaskSyncRow,
+  SubtaskSyncRow,
+  ProjectSyncRow,
+  NoteGroupSyncRow,
+  NoteSyncRow,
+} from './rows';
+import { entityKey } from '../../sync/types';
+import { rankAfter } from '../ranking';
 import {
   toTask,
+  toSubtask,
   toProject,
   toNoteGroup,
   toNote,
   toDailyPlan,
   parseSettings,
+  toServerStatus,
 } from '../mappers';
 
 /** Ordinal (byte) string compare — never the locale collator. */
@@ -50,6 +60,49 @@ function stripRank<T extends { _rank?: string }>(v: T): Omit<T, '_rank'> {
   const { _rank, ...rest } = v;
   void _rank;
   return rest;
+}
+
+/** crypto.randomUUID with a safe fallback (used for client-provided ids — mirrors HttpDataClient). */
+function newId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/** The max rank across a container's local rows (null when empty → rankAfter seeds 'n'). */
+function maxRank(rows: { rank: string }[]): string | null {
+  let max: string | null = null;
+  for (const r of rows) {
+    if (max === null || r.rank > max) max = r.rank;
+  }
+  return max;
+}
+
+/** ISO timestamp for synthesized rows (server re-stamps on push; advisory locally). */
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+/**
+ * fromTask for the CREATE path — mirrors HttpDataClient.tasks.create: maps the domain
+ * partial to the wire body. mappers.fromTask only forwards present keys and case-folds
+ * status; the create endpoint defaults the rest server-side. We add id + rank at the call site.
+ */
+function fromTaskCreate(t: Partial<Task>): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+  const { order: _order, id: _id, ...rest } = t as Record<string, unknown>;
+  void _order;
+  void _id;
+  for (const [k, v] of Object.entries(rest)) {
+    if (k === 'status' && typeof v === 'string') body[k] = toServerStatus(v as Task['status']);
+    else body[k] = v;
+  }
+  return body;
 }
 
 /** The SyncEngine surface LocalDataClient needs at enqueue/read-through time. */
@@ -80,6 +133,16 @@ export class LocalDataClient implements DataClient {
     return this.store.subtasks.where('taskId').equals(taskId).toArray();
   }
 
+  /** Run `fn` in one rw-transaction over the named entity tables + the ops table, then nudge. */
+  private async writeTx<T>(
+    tables: Parameters<LocalStore['transaction']>[1][],
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const result = await this.store.transaction('rw', [...tables, this.store.ops], fn);
+    this.bridge.nudge();
+    return result;
+  }
+
   // ── tasks ──────────────────────────────────────────────────
   tasks = {
     getAll: async (): Promise<Task[]> => {
@@ -104,8 +167,51 @@ export class LocalDataClient implements DataClient {
         })),
       );
     },
-    create: async (_t: Partial<Task>): Promise<Task> => {
-      throw new Error('not implemented in R2-1');
+    create: async (t: Partial<Task>): Promise<Task> => {
+      const id = t.id ?? newId();
+      const existing = await this.store.tasks.toArray();
+      const rank = rankAfter(maxRank(existing));
+      const row: TaskSyncRow = {
+        id,
+        title: t.title ?? '',
+        notes: t.notes ?? '',
+        projectId: t.projectId ?? null,
+        labels: t.labels ?? [],
+        source: t.source ?? 'manual',
+        status: toServerStatus(t.status ?? 'planned'),
+        plannedDate: t.plannedDate ?? null,
+        scheduledStart: t.scheduledStart ?? null,
+        scheduledEnd: t.scheduledEnd ?? null,
+        durationMinutes: t.durationMinutes ?? 30,
+        actualTimeMinutes: t.actualTimeMinutes ?? 0,
+        priority: t.priority ?? null,
+        reminderMinutes: t.reminderMinutes ?? null,
+        rank,
+        dueDate: null,
+        recurrenceRuleId: t.recurrenceRuleId ?? null,
+        isRecurrenceTemplate: t.isRecurrenceTemplate ?? false,
+        recurrenceDetached: t.recurrenceDetached ?? false,
+        recurrenceOriginalDate: t.recurrenceOriginalDate ?? null,
+        completedAt: t.completedAt ?? null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      // Wire body identical to HttpDataClient.tasks.create (fromTask(t) + explicit id + rank).
+      const body = { ...fromTaskCreate(t), id, rank };
+      await this.writeTx([this.store.tasks], async () => {
+        await this.store.tasks.add(row);
+        await this.store.ops.add({
+          method: 'POST',
+          path: '/api/v1/tasks',
+          body,
+          entityKeys: [entityKey('tasks', id)],
+          kind: 'create',
+          attempts: 0,
+        });
+      });
+      return this.mapTask(row, []);
     },
     update: async (_id: string, _u: Partial<Task>): Promise<Task> => {
       throw new Error('not implemented in R2-1');
@@ -124,8 +230,37 @@ export class LocalDataClient implements DataClient {
       const rows = byRankId(await this.store.projects.toArray());
       return rows.map((r, i) => stripRank({ ...toProject(r), order: i }));
     },
-    create: async (_i: { name: string; color?: string; emoji?: string }): Promise<Project> => {
-      throw new Error('not implemented in R2-2');
+    create: async (i: { name: string; color?: string; emoji?: string }): Promise<Project> => {
+      const id = newId();
+      const existing = await this.store.projects.toArray();
+      const rank = rankAfter(maxRank(existing));
+      const color = i.color ?? '#6366f1';
+      const emoji = i.emoji ?? '📁';
+      const row: ProjectSyncRow = {
+        id,
+        name: i.name,
+        color,
+        emoji,
+        rank,
+        actualTimeMinutes: 0,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      const body = { name: i.name, color, emoji, rank, id };
+      await this.writeTx([this.store.projects], async () => {
+        await this.store.projects.add(row);
+        await this.store.ops.add({
+          method: 'POST',
+          path: '/api/v1/projects',
+          body,
+          entityKeys: [entityKey('projects', id)],
+          kind: 'create',
+          attempts: 0,
+        });
+      });
+      return stripRank({ ...toProject(row), order: 0 });
     },
     update: async (_id: string, _u: Partial<Project>): Promise<Project> => {
       throw new Error('not implemented in R2-2');
@@ -151,12 +286,36 @@ export class LocalDataClient implements DataClient {
       const rows = byRankId(all.filter((g) => g.projectId === projectId));
       return rows.map((r, i) => stripRank({ ...toNoteGroup(r, i) }));
     },
-    create: async (_i: {
-      name: string;
-      emoji?: string;
-      projectId?: string;
-    }): Promise<NoteGroup> => {
-      throw new Error('not implemented in R2-2');
+    create: async (i: { name: string; emoji?: string; projectId?: string }): Promise<NoteGroup> => {
+      const id = newId();
+      const existing = await this.store.noteGroups.toArray();
+      const rank = rankAfter(maxRank(existing));
+      const emoji = i.emoji ?? null;
+      const projectId = i.projectId ?? null;
+      const row: NoteGroupSyncRow = {
+        id,
+        name: i.name,
+        emoji: emoji ?? '',
+        projectId,
+        rank,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      const body = { name: i.name, emoji, projectId, rank, id };
+      await this.writeTx([this.store.noteGroups], async () => {
+        await this.store.noteGroups.add(row);
+        await this.store.ops.add({
+          method: 'POST',
+          path: '/api/v1/note-groups',
+          body,
+          entityKeys: [entityKey('noteGroups', id)],
+          kind: 'create',
+          attempts: 0,
+        });
+      });
+      return stripRank({ ...toNoteGroup(row) });
     },
     update: async (_id: string, _u: Partial<NoteGroup>): Promise<NoteGroup> => {
       throw new Error('not implemented in R2-2');
@@ -187,13 +346,44 @@ export class LocalDataClient implements DataClient {
       const row = await this.store.notes.get(id);
       return row ? stripRank({ ...toNote(row) }) : null;
     },
-    create: async (_i: {
+    create: async (i: {
       groupId?: string;
       projectId?: string;
       title?: string;
       content?: string;
     }): Promise<Note> => {
-      throw new Error('not implemented in R2-2');
+      const id = newId();
+      const existing = await this.store.notes.toArray();
+      const rank = rankAfter(maxRank(existing));
+      const groupId = i.groupId ?? null;
+      const projectId = i.projectId ?? null;
+      const title = i.title ?? '';
+      const content = i.content ?? null;
+      const row: NoteSyncRow = {
+        id,
+        groupId,
+        projectId,
+        title,
+        content: content ?? '',
+        rank,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      const body = { groupId, projectId, title, content, rank, id };
+      await this.writeTx([this.store.notes], async () => {
+        await this.store.notes.add(row);
+        await this.store.ops.add({
+          method: 'POST',
+          path: '/api/v1/notes',
+          body,
+          entityKeys: [entityKey('notes', id)],
+          kind: 'create',
+          attempts: 0,
+        });
+      });
+      return stripRank({ ...toNote(row) });
     },
     update: async (
       _id: string,
@@ -244,8 +434,49 @@ export class LocalDataClient implements DataClient {
     },
   };
 
+  // ── subtasks ───────────────────────────────────────────────
+  subtasks = {
+    create: async (taskId: string, title: string): Promise<Subtask> => {
+      const id = newId();
+      const existing = await this.store.subtasks.where('taskId').equals(taskId).toArray();
+      const sortOrder = existing.reduce((m, s) => Math.max(m, Number(s.sortOrder) + 1), 0);
+      const row: SubtaskSyncRow = {
+        id,
+        taskId,
+        title,
+        completed: false,
+        sortOrder,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      const body = { id, title };
+      await this.writeTx([this.store.subtasks], async () => {
+        await this.store.subtasks.add(row);
+        await this.store.ops.add({
+          method: 'POST',
+          path: `/api/v1/tasks/${taskId}/subtasks`,
+          body,
+          entityKeys: [entityKey('subtasks', id)],
+          kind: 'create',
+          attempts: 0,
+        });
+      });
+      return toSubtask(row as never, sortOrder);
+    },
+    update: async (
+      _id: string,
+      _u: { title?: string; completed?: boolean; order?: number },
+    ): Promise<void> => {
+      throw new Error('not implemented in R2-4');
+    },
+    delete: async (_id: string): Promise<void> => {
+      throw new Error('not implemented in R2-5');
+    },
+  };
+
   // Still placeholders (filled in by later R2 tasks):
-  subtasks!: DataClient['subtasks'];
   recurrence!: DataClient['recurrence'];
   focusSessions!: DataClient['focusSessions'];
   reports!: DataClient['reports'];
