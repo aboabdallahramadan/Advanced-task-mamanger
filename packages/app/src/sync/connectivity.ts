@@ -38,7 +38,10 @@ export function createConnectivity(deps: ConnectivityDeps = {}): Connectivity {
 
   return {
     online(): boolean {
-      return nav ? nav.onLine : true;
+      // Node 21+ exposes a global `navigator` whose `onLine` is undefined (it is a
+      // browser-only property). Treat a non-boolean reading as online — connectivity
+      // only gates whether the engine *attempts* a cycle, never offline-first reads.
+      return nav && typeof nav.onLine === 'boolean' ? nav.onLine : true;
     },
     subscribe(cb: (online: boolean) => void): () => void {
       if (!win) return () => {};
