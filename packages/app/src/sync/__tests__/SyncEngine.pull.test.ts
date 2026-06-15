@@ -7,6 +7,7 @@ import { LocalDataClient } from '../../data/local/LocalDataClient';
 import { CURSOR_OVERLAP, PULL_LIMIT } from '../constants';
 import type { SyncTransport } from '../SyncTransport';
 import type { SyncOp } from '../types';
+import { entityKey } from '../types';
 import type { SyncResponse, SyncChanges, TaskSyncRow } from '../../data/local/rows';
 
 let nextUser = 0;
@@ -558,5 +559,48 @@ describe('SyncEngine — onFirstCycleSettled (fires once per start(), success or
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('SyncEngine — post-push ensure-instances rows applied via applyPull (§4.3)', () => {
+  it('upserts returned ensure rows before the pull phase, honoring the shadow rule', async () => {
+    const store = openFresh();
+    await store.setMeta('syncCursor', 0);
+
+    const ensureRows: TaskSyncRow[] = [
+      taskRow('inst-1', 100),
+      taskRow('inst-2', 101),
+    ];
+    // Shadow inst-2 with a pending op — ensure-application must skip it.
+    await store.ops.add({
+      method: 'PATCH',
+      path: '/api/v1/tasks/inst-2',
+      body: { title: 'local' },
+      entityKeys: [entityKey('tasks', 'inst-2')],
+      kind: 'other',
+      attempts: 0,
+    });
+    await store.tasks.put(taskRow('inst-2', 1)); // the local (shadowed) version
+    await store.tasks.update('inst-2', { title: 'LOCAL OWNS THIS' });
+
+    const transport: SyncTransport = {
+      // The shadow op stays queued (network-abort keeps the queue intact) so it still
+      // shadows inst-2; the push aborts cleanly and the pull phase still runs (C5).
+      send: vi.fn().mockRejectedValue(Object.assign(new TypeError('offline'), { name: 'NetworkError' })),
+      ensureInstances: vi.fn().mockResolvedValue(ensureRows),
+      pull: vi.fn().mockResolvedValue({ changes: emptyChanges(), nextSince: 0, hasMore: false }),
+    };
+    const engine = new SyncEngine({ store, transport });
+
+    // Simulate R3's post-push hook having buffered the ensure rows for this cycle.
+    // (Internal field per the engine-internals contract-gap note.)
+    (engine as unknown as { pendingEnsureRows: TaskSyncRow[] | null }).pendingEnsureRows = ensureRows;
+
+    await engine.syncNow();
+
+    expect((await store.tasks.get('inst-1'))!.title).toBe('Task inst-1'); // ensure row applied
+    expect((await store.tasks.get('inst-2'))!.title).toBe('LOCAL OWNS THIS'); // shadowed → not clobbered
+    // The buffer is cleared after application so a later cycle does not re-apply stale rows.
+    expect((engine as unknown as { pendingEnsureRows: TaskSyncRow[] | null }).pendingEnsureRows).toBeNull();
   });
 });
