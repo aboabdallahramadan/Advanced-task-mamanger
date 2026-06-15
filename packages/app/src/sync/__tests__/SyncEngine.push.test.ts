@@ -360,3 +360,90 @@ describe('definitive rejection — drop + ghost-row recovery (spec §3.3, §3.2)
     expect(await store.getMeta<boolean>('pendingRecovery')).toBe(true);
   });
 });
+
+describe('409 adopt-existing — ghost→existing id rewrite (spec §3.3)', () => {
+  it('project name collision: adopts existing id across local rows + queued ops, drops the create', async () => {
+    const store = freshStore();
+    // Server says the ghost project name already exists as 'existing-proj'.
+    const t = spyTransport((o) => {
+      if (o.method === 'POST' && o.path === '/api/v1/projects') {
+        return { status: 409, body: { title: 'Duplicate name', extensions: { existingId: 'existing-proj' } } };
+      }
+      return { status: 200 };
+    });
+
+    // Local ghost project row + a task filed under it.
+    await store.projects.put({
+      id: 'ghost-proj', name: 'Inbox-Zero', color: '#fff', emoji: '📁',
+      rank: 'a0', createdAt: 'a', updatedAt: 'b', changeSeq: 0, deletedAt: null,
+    } as never);
+    await store.tasks.put({
+      id: 'task-1', title: 'filed', notes: '', projectId: 'ghost-proj', labels: [], source: 'manual',
+      status: 'Inbox', plannedDate: null, scheduledStart: null, scheduledEnd: null,
+      durationMinutes: 0, actualTimeMinutes: 0, priority: null, reminderMinutes: null,
+      rank: 'a0', dueDate: null, recurrenceRuleId: null, isRecurrenceTemplate: false,
+      recurrenceDetached: false, recurrenceOriginalDate: null, completedAt: null,
+      createdAt: 'a', updatedAt: 'b', changeSeq: 0, deletedAt: null,
+    } as never);
+
+    // Queued: the project create (ghost) + a task create whose body references the ghost projectId.
+    await store.ops.add(op({
+      method: 'POST', path: '/api/v1/projects',
+      body: { id: 'ghost-proj', name: 'Inbox-Zero', color: '#fff', emoji: '📁', rank: 'a0' },
+      entityKeys: ['projects:ghost-proj'], kind: 'create',
+    }));
+    await store.ops.add(op({
+      method: 'POST', path: '/api/v1/tasks',
+      body: { id: 'task-1', title: 'filed', projectId: 'ghost-proj', rank: 'a0' },
+      entityKeys: ['tasks:task-1'], kind: 'create',
+    }));
+
+    const engine = new SyncEngine({ store, transport: t });
+    await engine.syncNow();
+
+    // Ghost project row is gone; the task is repointed to the existing project.
+    expect(await store.projects.get('ghost-proj')).toBeUndefined();
+    expect((await store.tasks.get('task-1'))!.projectId).toBe('existing-proj');
+
+    // The task create op had its body.projectId rewritten and was replayed (no ghost reference).
+    const sentTaskCreate = t.sent.find((o) => o.path === '/api/v1/tasks');
+    expect((sentTaskCreate!.body as { projectId: string }).projectId).toBe('existing-proj');
+
+    // The project create op was dropped; an informational issue recorded.
+    expect(await store.ops.count()).toBe(0);
+    const issues = await store.issues.toArray();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].reason).toContain('existing-proj');
+    expect(issues[0].op.path).toBe('/api/v1/projects');
+  });
+
+  it('rewrites a queued op path + entityKeys that reference the ghost id', async () => {
+    const store = freshStore();
+    const t = spyTransport((o) => {
+      if (o.method === 'POST' && o.path === '/api/v1/projects') {
+        return { status: 409, body: { extensions: { existingId: 'P-real' } } };
+      }
+      return { status: 200 };
+    });
+    await store.projects.put({
+      id: 'P-ghost', name: 'Dup', color: '#fff', emoji: '📁',
+      rank: 'a0', createdAt: 'a', updatedAt: 'b', changeSeq: 0, deletedAt: null,
+    } as never);
+    await store.ops.add(op({
+      method: 'POST', path: '/api/v1/projects',
+      body: { id: 'P-ghost', name: 'Dup' }, entityKeys: ['projects:P-ghost'], kind: 'create',
+    }));
+    // A later PATCH against the ghost project's own path + entityKey.
+    await store.ops.add(op({
+      method: 'PATCH', path: '/api/v1/projects/P-ghost',
+      body: { color: '#123' }, entityKeys: ['projects:P-ghost'],
+    }));
+
+    const engine = new SyncEngine({ store, transport: t });
+    await engine.syncNow();
+
+    const sentPatch = t.sent.find((o) => o.method === 'PATCH');
+    expect(sentPatch!.path).toBe('/api/v1/projects/P-real');         // path rewritten
+    expect(sentPatch!.entityKeys).toEqual(['projects:P-real']);      // entityKeys rewritten
+  });
+});
