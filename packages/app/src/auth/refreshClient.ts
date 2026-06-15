@@ -92,11 +92,13 @@ export function createRefreshClient({
   function ensureRefresh(): Promise<AuthTokenResponse | null> {
     if (refreshPromise) return refreshPromise;
 
-    refreshPromise = refresh()
-      .catch(() => null)
-      .finally(() => {
-        refreshPromise = null;
-      });
+    // NOTE (C8.1): do NOT swallow a thrown refresh into null. A throw means a
+    // transient failure (network drop / 5xx during refresh) — it must propagate so
+    // the caller re-throws it WITHOUT logging out. Only a *resolved* null is a true
+    // 401 (dead session). The in-flight slot is cleared either way via finally.
+    refreshPromise = refresh().finally(() => {
+      refreshPromise = null;
+    });
 
     return refreshPromise;
   }
@@ -131,11 +133,18 @@ export function createRefreshClient({
       throw new Error('Unauthorized after token refresh');
     }
 
-    // Await the single shared refresh.
-    const newAuth = await ensureRefresh();
+    // Await the single shared refresh. A THROW here is a transient failure
+    // (network/5xx during refresh): re-throw it verbatim, NO logout — the engine
+    // aborts the cycle like a push network error and the queue stays intact (C8.1).
+    let newAuth: AuthTokenResponse | null;
+    try {
+      newAuth = await ensureRefresh();
+    } catch (e) {
+      throw e;
+    }
 
     if (!newAuth) {
-      // refresh returned null or threw — session is dead.
+      // refresh RESOLVED null === a true 401 from the refresh endpoint: session is dead.
       doLogout();
       throw new Error('Session expired — refresh failed');
     }

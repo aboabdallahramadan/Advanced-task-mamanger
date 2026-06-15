@@ -98,16 +98,31 @@ describe('createRefreshClient', () => {
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
-  it('never recurses: a refresh that throws logs out exactly once', async () => {
-    fakeClient = buildClient(99);
+  it('transient refresh failure (refresh throws) re-throws WITHOUT logout (C8.1)', async () => {
+    // A network drop / 5xx DURING refresh must NOT be conflated with a dead session.
+    // The error propagates so the sync cycle aborts like a push network error; the
+    // queue + keychain token survive; no logout.
+    fakeClient = buildClient(99); // first GET is 401 → triggers refresh
+    const transient = new TypeError('Failed to fetch');
     refresh = vi.fn(async () => {
-      throw new Error('refresh endpoint 401');
+      throw transient;
     });
     onLogout = vi.fn();
     const rc = createRefreshClient({ client: fakeClient, refresh, onLogout });
 
-    await expect(rc.GET('/api/v1/tasks', {})).rejects.toThrow();
+    await expect(rc.GET('/api/v1/tasks', {})).rejects.toBe(transient); // same error object, verbatim
     expect(refresh).toHaveBeenCalledTimes(1); // no recursion
+    expect(onLogout).not.toHaveBeenCalled(); // NO logout on a transient failure
+  });
+
+  it('true 401 from refresh (resolves null) logs out once and throws the session-expired error (C8.1)', async () => {
+    fakeClient = buildClient(99); // always 401
+    refresh = vi.fn(async () => null); // resolved null === a real 401 from the refresh endpoint
+    onLogout = vi.fn();
+    const rc = createRefreshClient({ client: fakeClient, refresh, onLogout });
+
+    await expect(rc.GET('/api/v1/tasks', {})).rejects.toThrow('Session expired — refresh failed');
+    expect(refresh).toHaveBeenCalledTimes(1);
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 
