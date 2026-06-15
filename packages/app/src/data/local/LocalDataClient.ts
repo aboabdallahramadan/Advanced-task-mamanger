@@ -261,8 +261,20 @@ export class LocalDataClient implements DataClient {
       });
       return { ...this.mapTask(next, subs), order: 0 };
     },
-    delete: async (_id: string): Promise<void> => {
-      throw new Error('not implemented in R2-1');
+    delete: async (id: string): Promise<void> => {
+      const subs = await this.store.subtasks.where('taskId').equals(id).toArray();
+      const keys = [entityKey('tasks', id), ...subs.map((s) => entityKey('subtasks', s.id))];
+      await this.writeTx([this.store.tasks, this.store.subtasks], async () => {
+        await this.store.tasks.delete(id);
+        await this.store.subtasks.where('taskId').equals(id).delete();
+        await this.store.ops.add({
+          method: 'DELETE',
+          path: `/api/v1/tasks/${id}`,
+          entityKeys: keys,
+          kind: 'other',
+          attempts: 0,
+        });
+      });
     },
     reorder: async (_items: ReorderInput[]): Promise<void> => {
       throw new Error('not implemented in R2-1');
@@ -339,8 +351,34 @@ export class LocalDataClient implements DataClient {
       });
       return stripRank({ ...toProject(next), order: 0 });
     },
-    delete: async (_id: string): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    delete: async (id: string): Promise<void> => {
+      // tasks/noteGroups have no projectId index (contract C3), so filter in-memory
+      // (mirrors noteGroups.getByProject); notes IS indexed on projectId.
+      const tasks = (await this.store.tasks.toArray()).filter((t) => t.projectId === id);
+      const notes = await this.store.notes.where('projectId').equals(id).toArray();
+      const groups = (await this.store.noteGroups.toArray()).filter((g) => g.projectId === id);
+      const keys = [
+        entityKey('projects', id),
+        ...tasks.map((t) => entityKey('tasks', t.id)),
+        ...notes.map((n) => entityKey('notes', n.id)),
+        ...groups.map((g) => entityKey('noteGroups', g.id)),
+      ];
+      await this.writeTx(
+        [this.store.projects, this.store.tasks, this.store.notes, this.store.noteGroups],
+        async () => {
+          await this.store.projects.delete(id);
+          for (const t of tasks) await this.store.tasks.put({ ...t, projectId: null });
+          for (const n of notes) await this.store.notes.put({ ...n, projectId: null });
+          for (const g of groups) await this.store.noteGroups.put({ ...g, projectId: null });
+          await this.store.ops.add({
+            method: 'DELETE',
+            path: `/api/v1/projects/${id}`,
+            entityKeys: keys,
+            kind: 'other',
+            attempts: 0,
+          });
+        },
+      );
     },
     reorder: async (_items: ReorderInput[]): Promise<void> => {
       throw new Error('not implemented in R2-2');
@@ -422,8 +460,20 @@ export class LocalDataClient implements DataClient {
       });
       return stripRank({ ...toNoteGroup(next) });
     },
-    delete: async (_id: string): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    delete: async (id: string): Promise<void> => {
+      const notes = await this.store.notes.where('groupId').equals(id).toArray();
+      const keys = [entityKey('noteGroups', id), ...notes.map((n) => entityKey('notes', n.id))];
+      await this.writeTx([this.store.noteGroups, this.store.notes], async () => {
+        await this.store.noteGroups.delete(id);
+        await this.store.notes.where('groupId').equals(id).delete();
+        await this.store.ops.add({
+          method: 'DELETE',
+          path: `/api/v1/note-groups/${id}`,
+          entityKeys: keys,
+          kind: 'other',
+          attempts: 0,
+        });
+      });
     },
     reorder: async (_items: ReorderInput[]): Promise<void> => {
       throw new Error('not implemented in R2-2');
@@ -529,8 +579,17 @@ export class LocalDataClient implements DataClient {
       });
       return stripRank({ ...toNote(next) });
     },
-    delete: async (_id: string): Promise<void> => {
-      throw new Error('not implemented in R2-2');
+    delete: async (id: string): Promise<void> => {
+      await this.writeTx([this.store.notes], async () => {
+        await this.store.notes.delete(id);
+        await this.store.ops.add({
+          method: 'DELETE',
+          path: `/api/v1/notes/${id}`,
+          entityKeys: [entityKey('notes', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
     },
     reorder: async (_items: ReorderInput[]): Promise<void> => {
       throw new Error('not implemented in R2-2');
@@ -622,8 +681,17 @@ export class LocalDataClient implements DataClient {
         });
       });
     },
-    delete: async (_id: string): Promise<void> => {
-      throw new Error('not implemented in R2-5');
+    delete: async (id: string): Promise<void> => {
+      await this.writeTx([this.store.subtasks], async () => {
+        await this.store.subtasks.delete(id);
+        await this.store.ops.add({
+          method: 'DELETE',
+          path: `/api/v1/subtasks/${id}`,
+          entityKeys: [entityKey('subtasks', id)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
     },
   };
 
