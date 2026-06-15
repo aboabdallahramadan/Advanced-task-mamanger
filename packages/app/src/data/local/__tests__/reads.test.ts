@@ -2,6 +2,7 @@ import 'fake-indexeddb/auto';
 import { describe, it, expect, afterEach } from 'vitest';
 import { LocalDataClient } from '../LocalDataClient';
 import { openStore, closeAll, fakeBridge, taskRow, subtaskRow } from './helpers';
+import { projectRow, noteGroupRow, noteRow, planRow, settingRow } from './helpers';
 
 afterEach(closeAll);
 
@@ -46,5 +47,85 @@ describe('LocalDataClient.tasks reads', () => {
     const dc = new LocalDataClient(store, fakeBridge());
     const got = await dc.tasks.getByDate('2026-06-11');
     expect(got.map((t) => t.id)).toEqual(['t1', 't3']);
+  });
+});
+
+describe('LocalDataClient.projects/noteGroups/notes reads', () => {
+  it('projects.getAll orders by (rank, id) and assigns sequential order', async () => {
+    const store = openStore();
+    await store.projects.bulkPut([
+      projectRow('p-c', { rank: 'a0' }),
+      projectRow('p-a', { rank: 'a0' }),
+      projectRow('p-b', { rank: 'm' }),
+    ]);
+    const dc = new LocalDataClient(store, fakeBridge());
+    const got = await dc.projects.getAll();
+    // (rank, id) ordinal order: 'a0' rows before 'm'; within the 'a0' tie 'p-a' < 'p-c' by id.
+    expect(got.map((p) => p.id)).toEqual(['p-a', 'p-c', 'p-b']);
+    expect(got.map((p) => p.order)).toEqual([0, 1, 2]);
+    expect((got[0] as Record<string, unknown>)._rank).toBeUndefined();
+  });
+
+  it('noteGroups.getAll / getByProject filter + order', async () => {
+    const store = openStore();
+    await store.noteGroups.bulkPut([
+      noteGroupRow('g1', { projectId: 'P', rank: 'b' }),
+      noteGroupRow('g2', { projectId: null, rank: 'a' }),
+      noteGroupRow('g3', { projectId: 'P', rank: 'c' }),
+    ]);
+    const dc = new LocalDataClient(store, fakeBridge());
+    expect((await dc.noteGroups.getAll()).map((g) => g.id)).toEqual(['g2', 'g1', 'g3']);
+    expect((await dc.noteGroups.getByProject('P')).map((g) => g.id)).toEqual(['g1', 'g3']);
+  });
+
+  it('notes.getAll / getByGroup / getByProject / getById', async () => {
+    const store = openStore();
+    await store.notes.bulkPut([
+      noteRow('n1', { groupId: 'G', rank: 'b' }),
+      noteRow('n2', { projectId: 'P', rank: 'a' }),
+      noteRow('n3', { groupId: 'G', rank: 'c' }),
+    ]);
+    const dc = new LocalDataClient(store, fakeBridge());
+    expect((await dc.notes.getAll()).map((n) => n.id)).toEqual(['n2', 'n1', 'n3']);
+    expect((await dc.notes.getByGroup('G')).map((n) => n.id)).toEqual(['n1', 'n3']);
+    expect((await dc.notes.getByProject('P')).map((n) => n.id)).toEqual(['n2']);
+    expect((await dc.notes.getById('n2'))?.id).toBe('n2');
+    expect(await dc.notes.getById('absent')).toBeNull();
+  });
+});
+
+describe('LocalDataClient.settings.get + dailyPlans.get', () => {
+  it('settings.get parses synced numeric keys and reads timeZoneId from meta.lastUser', async () => {
+    const store = openStore();
+    await store.settings.bulkPut([
+      settingRow('workStartHour', '8'),
+      settingRow('workEndHour', '18'),
+      settingRow('timeIncrement', '15'),
+    ]);
+    await store.setMeta('lastUser', { id: 'u1', email: 'a@b.c', timeZoneId: 'America/New_York' });
+    const dc = new LocalDataClient(store, fakeBridge());
+    const { settings, timeZoneId } = await dc.settings.get();
+    expect(settings).toEqual({ workStartHour: 8, workEndHour: 18, timeIncrement: 15 });
+    expect(timeZoneId).toBe('America/New_York');
+  });
+
+  it('settings.get defaults timeZoneId to UTC when meta.lastUser is absent', async () => {
+    const store = openStore();
+    const dc = new LocalDataClient(store, fakeBridge());
+    expect((await dc.settings.get()).timeZoneId).toBe('UTC');
+  });
+
+  it('dailyPlans.get returns the mapped plan or null', async () => {
+    const store = openStore();
+    await store.dailyPlans.put(planRow('2026-06-11', { plannedMinutes: 120, plannedTaskIds: ['t1'] }));
+    const dc = new LocalDataClient(store, fakeBridge());
+    const plan = await dc.dailyPlans.get('2026-06-11');
+    expect(plan).toEqual({
+      date: '2026-06-11',
+      committedAt: '2026-06-11T08:00:00Z',
+      plannedTaskIds: ['t1'],
+      plannedMinutes: 120,
+    });
+    expect(await dc.dailyPlans.get('2026-06-12')).toBeNull();
   });
 });
