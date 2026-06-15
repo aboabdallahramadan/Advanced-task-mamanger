@@ -32,6 +32,7 @@ import type {
   ProjectSyncRow,
   NoteGroupSyncRow,
   NoteSyncRow,
+  RecurrenceRuleSyncRow,
 } from './rows';
 import { entityKey } from '../../sync/types';
 import { rankAfter, rankBetween } from '../ranking';
@@ -43,6 +44,9 @@ import {
   toNote,
   toDailyPlan,
   toFocusSession,
+  toRecurrenceRule,
+  toServerFrequency,
+  toServerEndType,
   parseSettings,
   toServerStatus,
 } from '../mappers';
@@ -88,6 +92,11 @@ function maxRank(rows: { rank: string }[]): string | null {
 /** ISO timestamp for synthesized rows (server re-stamps on push; advisory locally). */
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+/** Today's date as YYYY-MM-DD in UTC (mirrors the server's DateOnly.FromDateTime(DateTime.UtcNow)). */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -901,8 +910,266 @@ export class LocalDataClient implements DataClient {
     },
   };
 
+  // ── recurrence ─────────────────────────────────────────────
+  recurrence = {
+    create: async (task: Partial<Task>, rule: RecurrenceRuleInput): Promise<Task[]> => {
+      const taskId = task.id ?? newId();
+      const ruleId = newId();
+      const startDate = task.plannedDate ?? todayIso();
+      const ruleRowVal: RecurrenceRuleSyncRow = {
+        id: ruleId,
+        frequency: toServerFrequency(rule.frequency),
+        interval: rule.interval < 1 ? 1 : rule.interval,
+        daysOfWeek: rule.daysOfWeek,
+        endType: toServerEndType(rule.endType),
+        endCount: rule.endType === 'count' ? (rule.endCount ?? null) : null,
+        endDate: rule.endType === 'date' ? (rule.endDate ?? null) : null,
+        generatedUntil: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      const templateRow: TaskSyncRow = {
+        id: taskId,
+        title: task.title ?? '',
+        notes: task.notes ?? '',
+        projectId: task.projectId ?? null,
+        labels: task.labels ?? [],
+        source: task.source ?? 'manual',
+        status: 'Planned',
+        plannedDate: startDate,
+        scheduledStart: null,
+        scheduledEnd: null,
+        durationMinutes: task.durationMinutes && task.durationMinutes > 0 ? task.durationMinutes : 30,
+        actualTimeMinutes: 0,
+        priority: task.priority ?? null,
+        reminderMinutes: task.reminderMinutes ?? 0,
+        rank: 'a0',
+        dueDate: null,
+        recurrenceRuleId: ruleId,
+        isRecurrenceTemplate: true,
+        recurrenceDetached: false,
+        recurrenceOriginalDate: startDate,
+        completedAt: null,
+        createdAt: nowIso(),
+        updatedAt: nowIso(),
+        changeSeq: 0,
+        deletedAt: null,
+      };
+      // Wire body mirrors HttpDataClient.recurrence.create + the C7.4 rule id touch-up.
+      const body = {
+        task: {
+          title: task.title ?? '',
+          notes: task.notes ?? '',
+          projectId: task.projectId ?? null,
+          labels: task.labels ?? [],
+          source: task.source ?? 'manual',
+          plannedDate: task.plannedDate ?? null,
+          durationMinutes: task.durationMinutes ?? 30,
+          priority: task.priority ?? null,
+          reminderMinutes: task.reminderMinutes ?? null,
+          id: taskId,
+        },
+        rule: {
+          frequency: toServerFrequency(rule.frequency),
+          interval: rule.interval,
+          daysOfWeek: rule.daysOfWeek,
+          endType: toServerEndType(rule.endType),
+          endCount: rule.endCount ?? null,
+          endDate: rule.endDate ?? null,
+          id: ruleId,
+        },
+      };
+      await this.writeTx([this.store.tasks, this.store.recurrenceRules], async () => {
+        await this.store.recurrenceRules.add(ruleRowVal);
+        await this.store.tasks.add(templateRow);
+        await this.store.ops.add({
+          method: 'POST',
+          path: '/api/v1/recurrence',
+          body,
+          entityKeys: [entityKey('tasks', taskId), entityKey('recurrenceRules', ruleId)],
+          kind: 'create',
+          regenAfterPush: true,
+          attempts: 0,
+        });
+      });
+      // §6 store contract (store.ts:667): return the full local task list.
+      return this.tasks.getAll();
+    },
+
+    updateSeries: async (ruleId: string, u: Partial<Task>): Promise<void> => {
+      const today = todayIso();
+      const all = await this.store.tasks.where('recurrenceRuleId').equals(ruleId).toArray();
+      const targets = all.filter(
+        (t) =>
+          t.isRecurrenceTemplate ||
+          (!t.recurrenceDetached &&
+            t.status !== 'Done' &&
+            t.plannedDate != null &&
+            t.plannedDate >= today),
+      );
+      // Apply the same fields the server's UpdateSeries propagates (non-null only).
+      const body = {
+        title: u.title ?? null,
+        notes: u.notes ?? null,
+        projectId: u.projectId === undefined ? null : u.projectId,
+        labels: u.labels ?? null,
+        durationMinutes: u.durationMinutes ?? null,
+        priority: u.priority ?? null,
+        reminderMinutes: u.reminderMinutes ?? null,
+      };
+      await this.writeTx([this.store.tasks], async () => {
+        for (const t of targets) {
+          const next = { ...t };
+          if (u.title !== undefined) next.title = u.title;
+          if (u.notes !== undefined) next.notes = u.notes;
+          if (u.projectId !== undefined) next.projectId = u.projectId;
+          if (u.labels !== undefined) next.labels = u.labels;
+          if (u.durationMinutes !== undefined) next.durationMinutes = u.durationMinutes;
+          if (u.priority !== undefined) next.priority = u.priority;
+          if (u.reminderMinutes !== undefined) next.reminderMinutes = u.reminderMinutes;
+          next.updatedAt = nowIso();
+          await this.store.tasks.put(next);
+        }
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/recurrence/rules/${ruleId}/series`,
+          body,
+          entityKeys: targets.map((t) => entityKey('tasks', t.id)),
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+    },
+
+    deleteSeries: async (ruleId: string): Promise<void> => {
+      const tasks = await this.store.tasks.where('recurrenceRuleId').equals(ruleId).toArray();
+      const keys = [
+        entityKey('recurrenceRules', ruleId),
+        ...tasks.map((t) => entityKey('tasks', t.id)),
+      ];
+      await this.writeTx([this.store.recurrenceRules, this.store.tasks], async () => {
+        await this.store.recurrenceRules.delete(ruleId);
+        await this.store.tasks.where('recurrenceRuleId').equals(ruleId).delete();
+        await this.store.ops.add({
+          method: 'DELETE',
+          path: `/api/v1/recurrence/rules/${ruleId}`,
+          entityKeys: keys,
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+    },
+
+    deleteSeriesFuture: async (ruleId: string, from: string): Promise<void> => {
+      const all = await this.store.tasks.where('recurrenceRuleId').equals(ruleId).toArray();
+      // §6 pinned: future, not-done, NON-template instances — detached included.
+      const victims = all.filter(
+        (t) =>
+          !t.isRecurrenceTemplate &&
+          t.status !== 'Done' &&
+          t.plannedDate != null &&
+          t.plannedDate >= from,
+      );
+      await this.writeTx([this.store.tasks], async () => {
+        for (const t of victims) await this.store.tasks.delete(t.id);
+        await this.store.ops.add({
+          method: 'POST',
+          path: `/api/v1/recurrence/rules/${ruleId}/delete-future`,
+          body: { fromDate: from },
+          entityKeys: victims.map((t) => entityKey('tasks', t.id)),
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+    },
+
+    updateRule: async (ruleId: string, u: RecurrenceRuleInput): Promise<void> => {
+      const today = todayIso();
+      const rule = await this.store.recurrenceRules.get(ruleId);
+      const all = await this.store.tasks.where('recurrenceRuleId').equals(ruleId).toArray();
+      // Mirror server UpdateRule: tombstone future, non-detached, not-done, non-template instances.
+      const victims = all.filter(
+        (t) =>
+          !t.isRecurrenceTemplate &&
+          !t.recurrenceDetached &&
+          t.status !== 'Done' &&
+          t.plannedDate != null &&
+          t.plannedDate >= today,
+      );
+      const body = {
+        frequency: toServerFrequency(u.frequency),
+        interval: u.interval,
+        daysOfWeek: u.daysOfWeek,
+        endType: toServerEndType(u.endType),
+        endCount: u.endCount ?? null,
+        endDate: u.endDate ?? null,
+      };
+      await this.writeTx([this.store.recurrenceRules, this.store.tasks], async () => {
+        if (rule) {
+          await this.store.recurrenceRules.put({
+            ...rule,
+            frequency: toServerFrequency(u.frequency),
+            interval: u.interval,
+            daysOfWeek: u.daysOfWeek,
+            endType: toServerEndType(u.endType),
+            endCount: u.endType === 'count' ? (u.endCount ?? null) : null,
+            endDate: u.endType === 'date' ? (u.endDate ?? null) : null,
+            generatedUntil: null,
+            updatedAt: nowIso(),
+          });
+        }
+        for (const t of victims) await this.store.tasks.delete(t.id);
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/recurrence/rules/${ruleId}`,
+          body,
+          entityKeys: [
+            entityKey('recurrenceRules', ruleId),
+            ...victims.map((t) => entityKey('tasks', t.id)),
+          ],
+          kind: 'other',
+          regenAfterPush: true,
+          attempts: 0,
+        });
+      });
+    },
+
+    detachInstance: async (taskId: string): Promise<void> => {
+      const row = await this.store.tasks.get(taskId);
+      await this.writeTx([this.store.tasks], async () => {
+        if (row) {
+          await this.store.tasks.put({ ...row, recurrenceDetached: true, updatedAt: nowIso() });
+        }
+        await this.store.ops.add({
+          method: 'PATCH',
+          path: `/api/v1/recurrence/instances/${taskId}/detach`,
+          entityKeys: [entityKey('tasks', taskId)],
+          kind: 'other',
+          attempts: 0,
+        });
+      });
+    },
+
+    ensureInstances: async (start: string, end: string): Promise<Task[]> => {
+      if (!this.bridge.online()) return [];
+      const rows = await this.bridge.ensureInstances(start, end);
+      if (rows.length > 0) {
+        await this.store.tasks.bulkPut(rows);
+      }
+      const subsByTask = new Map<string, SubtaskSyncRow[]>();
+      // Generated instances carry no subtasks; map each row with an empty subtask list.
+      return rows.map((r) => this.mapTask(r, subsByTask.get(r.id) ?? []));
+    },
+
+    getRule: async (ruleId: string): Promise<RecurrenceRule | null> => {
+      const row = await this.store.recurrenceRules.get(ruleId);
+      return row ? toRecurrenceRule(row as never) : null;
+    },
+  };
+
   // Still placeholders (filled in by later R2 tasks):
-  recurrence!: DataClient['recurrence'];
   reports!: DataClient['reports'];
 }
 
