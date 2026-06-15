@@ -256,8 +256,11 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle('secureStore:refreshAndGetAccess', async () => {
+    // C8.2: discriminated result. Only a TRUE 401 clears the keychain token; a 5xx
+    // or a network error is `transient` and KEEPS the token so a desktop offline
+    // cold start can re-render authed-offline and retry on reconnect (spec §7.3).
     const refreshToken = readRefreshToken();
-    if (!refreshToken) return null;
+    if (!refreshToken) return { ok: false, reason: 'unauthorized' as const };
     try {
       const res = await fetch(`${API_BASE_URL}/api/v1/auth/refresh`, {
         method: 'POST',
@@ -266,13 +269,13 @@ function registerIpcHandlers() {
         body: JSON.stringify({ refreshToken }),
       });
       if (res.status === 401) {
-        // Refresh token rejected/rotated-away → forget it; renderer logs out.
+        // Refresh token rejected/rotated-away → forget it; renderer goes anonymous.
         clearRefreshToken();
-        return null;
+        return { ok: false, reason: 'unauthorized' as const };
       }
       if (!res.ok) {
-        // Network/5xx — do NOT destroy a possibly-valid token; signal "couldn't refresh".
-        return null;
+        // 5xx / other transport failure — do NOT destroy a possibly-valid token.
+        return { ok: false, reason: 'transient' as const };
       }
       const data = (await res.json()) as {
         accessToken: string;
@@ -283,13 +286,15 @@ function registerIpcHandlers() {
       // Rotation: store the new refresh token if one was returned.
       if (data.refreshToken) persistRefreshToken(data.refreshToken);
       return {
+        ok: true as const,
         accessToken: data.accessToken,
         expiresIn: data.expiresIn,
         user: data.user,
       };
     } catch (e) {
+      // Network error (DNS down, offline, connection refused) — transient, keep token.
       console.error('refreshAndGetAccess failed:', e);
-      return null;
+      return { ok: false, reason: 'transient' as const };
     }
   });
 

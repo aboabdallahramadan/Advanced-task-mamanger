@@ -22,8 +22,18 @@ export class DesktopPlatform implements Platform {
 
   readonly auth = {
     refreshAndGetAccess: async (): Promise<AuthTokenResponse | null> => {
+      // C8.2 mapping to the SF-3 contract WebPlatform already honours:
+      //   ok           → AuthTokenResponse
+      //   unauthorized → null (bootstrap clears the keychain token via platform.auth.clear)
+      //   transient    → throw NetworkError (bootstrap's network branch keeps the token + DB)
       const res = await window.api.secureStore.refreshAndGetAccess();
-      return res;
+      if (res.ok) {
+        return { accessToken: res.accessToken, expiresIn: res.expiresIn, user: res.user };
+      }
+      if (res.reason === 'transient') {
+        throw Object.assign(new Error('refresh transient failure'), { name: 'NetworkError' });
+      }
+      return null; // unauthorized
     },
     clear: async (): Promise<void> => {
       await window.api.secureStore.clear();

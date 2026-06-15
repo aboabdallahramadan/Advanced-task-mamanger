@@ -21,11 +21,10 @@ export interface DesktopApi {
     setRefreshToken(token: string): Promise<void>;
     clear(): Promise<void>;
     logout(): Promise<void>;
-    refreshAndGetAccess(): Promise<{
-      accessToken: string;
-      expiresIn: number;
-      user: { id: string; email: string; timeZoneId: string };
-    } | null>;
+    refreshAndGetAccess(): Promise<
+      | { ok: true; accessToken: string; expiresIn: number; user: { id: string; email: string; timeZoneId: string } }
+      | { ok: false; reason: 'unauthorized' | 'transient' }
+    >;
   };
   focus: {
     showWidget(): void;

@@ -27,12 +27,15 @@ const api = {
     clear: (): Promise<void> => ipcRenderer.invoke('secureStore:clear'),
     /** Revokes the stored refresh token server-side (POST /auth/logout in main), then clears it. */
     logout: (): Promise<void> => ipcRenderer.invoke('secureStore:logout'),
-    /** Performs POST /auth/refresh in main using the stored refresh token. */
-    refreshAndGetAccess: (): Promise<{
-      accessToken: string;
-      expiresIn: number;
-      user: { id: string; email: string; timeZoneId: string };
-    } | null> => ipcRenderer.invoke('secureStore:refreshAndGetAccess'),
+    /**
+     * Performs POST /auth/refresh in main using the stored refresh token. Returns a
+     * discriminated result (C8.2): the keychain token is cleared in main ONLY on a
+     * true 401 (`unauthorized`); 5xx / network failures are `transient` and keep it.
+     */
+    refreshAndGetAccess: (): Promise<
+      | { ok: true; accessToken: string; expiresIn: number; user: { id: string; email: string; timeZoneId: string } }
+      | { ok: false; reason: 'unauthorized' | 'transient' }
+    > => ipcRenderer.invoke('secureStore:refreshAndGetAccess'),
   },
 
   focus: {
