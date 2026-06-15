@@ -308,3 +308,56 @@ describe('SyncEngine pull — rejection recovery pull from since=0 (spec §3.3, 
     expect(await store.getMeta<boolean>('pendingRecovery')).toBeFalsy();
   });
 });
+
+describe('SyncEngine pull — initialSyncComplete gate flag', () => {
+  it('stays false through paged pages and is set true only when hasMore reaches false', async () => {
+    const store = openFresh();
+    await store.setMeta('syncCursor', 0);
+    const p1 = { changes: emptyChanges(), nextSince: 500, hasMore: true } as SyncResponse;
+    const p2 = { changes: emptyChanges(), nextSince: 900, hasMore: false } as SyncResponse;
+    const { transport } = scriptedTransport([p1, p2]);
+    const engine = new SyncEngine({ store, transport });
+
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBeUndefined();
+    await engine.syncNow();
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBe(true);
+  });
+
+  it('leaves the flag false when the initial page chain is interrupted before hasMore=false', async () => {
+    const store = openFresh();
+    await store.setMeta('syncCursor', 0);
+    const transport: SyncTransport = {
+      send: vi.fn(),
+      ensureInstances: vi.fn().mockResolvedValue([]),
+      pull: vi
+        .fn()
+        // first page says hasMore, then the second page throws (interrupted initial sync)
+        .mockResolvedValueOnce({ changes: emptyChanges(), nextSince: 500, hasMore: true })
+        .mockRejectedValueOnce(Object.assign(new TypeError('network down'), { name: 'NetworkError' })),
+    };
+    const engine = new SyncEngine({ store, transport });
+
+    await engine.syncNow(); // the engine swallows the cycle error; the flag must stay unset
+
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBeFalsy();
+  });
+
+  it('never unsets the flag once set, and exposes it in subscribe() status', async () => {
+    const store = openFresh();
+    await store.setMeta('syncCursor', 0);
+    await store.setMeta('initialSyncComplete', true); // already complete from a prior session
+    const { transport } = scriptedTransport([
+      { changes: emptyChanges(), nextSince: 0, hasMore: false },
+    ]);
+    const engine = new SyncEngine({ store, transport });
+
+    const seen: boolean[] = [];
+    engine.subscribe((s) => seen.push(s.initialSyncComplete));
+    await engine.syncNow();
+
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBe(true); // still true
+    // emitStatus refreshes the status cache asynchronously; wait for it to land.
+    await vi.waitFor(() => expect(seen.some((v) => v === true)).toBe(true)); // status reflects it
+    expect(engine.getStatus().initialSyncComplete).toBe(true); // synchronous getStatus too
+  });
+});
