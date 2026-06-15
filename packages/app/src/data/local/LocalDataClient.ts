@@ -35,6 +35,7 @@ import type {
   RecurrenceRuleSyncRow,
 } from './rows';
 import { entityKey } from '../../sync/types';
+import { buildReportData } from './localReports';
 import { rankAfter, rankBetween } from '../ranking';
 import {
   toTask,
@@ -1169,8 +1170,18 @@ export class LocalDataClient implements DataClient {
     },
   };
 
-  // Still placeholders (filled in by later R2 tasks):
-  reports!: DataClient['reports'];
+  // ── reports ────────────────────────────────────────────────
+  reports = {
+    getData: async (start: string, end: string): Promise<ReportData> => {
+      const [tasks, focusSessions, dailyPlans, projects] = await Promise.all([
+        this.store.tasks.toArray(),
+        this.store.focusSessions.toArray(),
+        this.store.dailyPlans.toArray(),
+        this.store.projects.toArray(),
+      ]);
+      return buildReportData({ tasks, focusSessions, dailyPlans, projects }, start, end);
+    },
+  };
 }
 
 /** Subtasks sort by (sortOrder, id) — the server's join order (TasksEndpoints.cs:114). */
