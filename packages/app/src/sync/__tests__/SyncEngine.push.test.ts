@@ -500,3 +500,51 @@ describe('post-push ensure-instances trigger (spec §4.3)', () => {
     expect(t.pulls).toBe(1);           // pull still ran (§3.3)
   });
 });
+
+describe('401 handling — terminal vs transient (spec §7.3)', () => {
+  it('a terminal refresh failure stops the engine; the op stays queued', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => { throw new Error('Session expired — refresh failed'); });
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' }, entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(await store.ops.count()).toBe(1); // op intact — re-login can push it later
+    // Engine is terminal: a further syncNow is a no-op (no more sends).
+    const sentBefore = t.sent.length;
+    await engine.syncNow();
+    expect(t.sent.length).toBe(sentBefore);
+  });
+
+  it('a surfaced 401 status (refresh wrapper exhausted) is terminal too', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 401, body: { title: 'Unauthorized' } }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' }, entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    expect(await store.ops.count()).toBe(1);
+    const sentBefore = t.sent.length;
+    await engine.syncNow();
+    expect(t.sent.length).toBe(sentBefore); // terminal → no further sends
+  });
+
+  it('a transient NetworkError from refresh is a network abort, not terminal', async () => {
+    const store = freshStore();
+    let fail = true;
+    const t = spyTransport(() => {
+      if (fail) throw Object.assign(new Error('refresh transient failure'), { name: 'NetworkError' });
+      return { status: 200 };
+    });
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: { title: 'x' }, entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();                 // transient → abort, op intact, NOT terminal
+    expect(await store.ops.count()).toBe(1);
+    fail = false;
+    await engine.syncNow();                 // engine still alive → drains now
+    expect(await store.ops.count()).toBe(0);
+  });
+});
