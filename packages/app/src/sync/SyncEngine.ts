@@ -286,6 +286,9 @@ export class SyncEngine implements SyncBridge {
 
     // Definitive 4xx (400/404-on-non-delete/403/etc., except the 401 path).
     if (s === 401) return { kind: 'terminal' };
+    // Stamp the status so the dropped issue's reason carries it (C2 — "HTTP status
+    // + ProblemDetails title"); e.g. an edit-vs-delete PATCH 404 surfaces as 'HTTP 404'.
+    op.lastError = `HTTP ${s}`;
     return { kind: 'drop', recover: op.kind === 'create' };
   }
 

@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { LocalStore } from '../../data/local/LocalStore';
 import { SyncEngine } from '../SyncEngine';
 import { FakeSyncServer } from './fakeSyncServer';
+import { LocalDataClient } from '../../data/local/LocalDataClient';
 import { CURSOR_OVERLAP, PULL_LIMIT } from '../constants';
 import type { SyncTransport } from '../SyncTransport';
 import type { SyncOp } from '../types';
@@ -359,5 +360,90 @@ describe('SyncEngine pull — initialSyncComplete gate flag', () => {
     // emitStatus refreshes the status cache asynchronously; wait for it to land.
     await vi.waitFor(() => expect(seen.some((v) => v === true)).toBe(true)); // status reflects it
     expect(engine.getStatus().initialSyncComplete).toBe(true); // synchronous getStatus too
+  });
+});
+
+describe('SyncEngine pull — recovery pull (since=0) after a dropped op (§3.3, §4.2)', () => {
+  it("a 400-dropped op's ghost edit is reverted by the recovery pull", async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    const engine = new SyncEngine({ store, transport: server.transport() });
+    const client = new LocalDataClient(store, {
+      nudge: () => {},
+      online: () => true,
+      ensureInstances: (s: string, e: string) => engine.ensureInstances(s, e),
+    });
+
+    // A clean task exists on both server and local.
+    const created = await client.tasks.create({ title: 'Clean' });
+    await engine.syncNow(); // create lands; pull is a no-op for own write
+
+    // Force a definitive rejection: the fake server fails the next PATCH with 400.
+    // We drive the edit through the client so the local ghost edit exists too.
+    await client.tasks.update(created.id, { title: 'ghost edit' });
+    server.failNext((o) => o.method === 'PATCH', { status: 400, body: { title: 'bad request' } });
+
+    await engine.syncNow(); // op dropped + pendingRecovery → since=0 recovery snaps the title back
+
+    const back = (await client.tasks.getAll()).find((t) => t.id === created.id);
+    expect(back!.title).toBe('Clean'); // server truth restored — the ghost edit is gone
+    const issues = await store.issues.toArray();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].status).toBe('dropped');
+  });
+
+  it('a shadow-skipped tombstone is delivered by the recovery pull after its pending op is dropped (spec §4.2)', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    const engine = new SyncEngine({ store, transport: server.transport() });
+    const client = new LocalDataClient(store, {
+      nudge: () => {},
+      online: () => true,
+      ensureInstances: (s: string, e: string) => engine.ensureInstances(s, e),
+    });
+
+    const created = await client.tasks.create({ title: 'DoomedRemotely' });
+    await engine.syncNow(); // create lands on the server
+
+    // Remote device deletes the task (server tombstones it, advancing changeSeq).
+    server.tombstone('tasks', created.id);
+
+    // This device edits the same task offline → a pending op now shadows tasks:<id>,
+    // so the tombstone pulled this cycle is shadow-skipped (the row survives locally).
+    await client.tasks.update(created.id, { title: 'edited while deleted remotely' });
+    // The edit pushes as a PATCH → server 404 (tombstoned) → drop op + pendingRecovery.
+    await engine.syncNow();
+
+    // The since=0 recovery, run with the op already dropped (no shadow), deletes the row.
+    const after = (await client.tasks.getAll()).find((t) => t.id === created.id);
+    expect(after).toBeUndefined(); // delete wins via recovery (§3.3, §4.2)
+    const issues = await store.issues.toArray();
+    expect(issues.some((i) => i.reason.includes('404'))).toBe(true);
+  });
+
+  it('clears pendingRecovery after the recovery pull so the next clean cycle does not re-run since=0', async () => {
+    const store = openFresh();
+    const server = new FakeSyncServer();
+    const engine = new SyncEngine({ store, transport: server.transport() });
+    const client = new LocalDataClient(store, {
+      nudge: () => {},
+      online: () => true,
+      ensureInstances: (s: string, e: string) => engine.ensureInstances(s, e),
+    });
+    const created = await client.tasks.create({ title: 'X' });
+    await engine.syncNow();
+    await client.tasks.update(created.id, { title: 'ghost' });
+    server.failNext((o) => o.method === 'PATCH', { status: 400, body: { title: 'bad' } });
+    await engine.syncNow(); // recovery runs once
+
+    const pullSpy = vi.spyOn(server, 'pullCount'); // harness: total pull() invocations counter
+    const before = server.pullCount();
+    await engine.syncNow(); // clean cycle — must NOT trigger a second since=0 recovery
+    const delta = server.pullCount() - before;
+    // A clean cycle pulls exactly one chain (1+ pages); a lingering recovery would double it
+    // by re-pulling from since=0. With a tiny dataset both are single-page, so assert the
+    // recovery is not re-armed by checking the flag indirectly: exactly one normal pull chain.
+    expect(delta).toBe(1);
+    pullSpy.mockRestore();
   });
 });
