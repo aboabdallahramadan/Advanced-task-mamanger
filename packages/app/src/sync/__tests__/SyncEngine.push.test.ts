@@ -154,3 +154,68 @@ describe('SyncEngine skeleton — lifecycle, triggers, single-flight, cycle shap
     engine.stop();
   });
 });
+
+describe('push loop — FIFO drain + network abort (spec §3.3)', () => {
+  it('replays ops in strict seq (FIFO) order', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => ({ status: 200 }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: {}, entityKeys: ['tasks:a'] }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/b', body: {}, entityKeys: ['tasks:b'] }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/c', body: {}, entityKeys: ['tasks:c'] }));
+    const engine = new SyncEngine({ store, transport: t });
+    await engine.syncNow();
+    expect(t.sent.map((o) => o.path)).toEqual([
+      '/api/v1/tasks/a', '/api/v1/tasks/b', '/api/v1/tasks/c',
+    ]);
+    expect(await store.ops.count()).toBe(0);
+  });
+
+  it('a network throw aborts the push phase: the failing op and its successors stay queued', async () => {
+    const store = freshStore();
+    const t = spyTransport((o) => {
+      if (o.path === '/api/v1/tasks/b') {
+        throw Object.assign(new TypeError('Failed to fetch'), { name: 'TypeError' });
+      }
+      return { status: 200 };
+    });
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: {}, entityKeys: ['tasks:a'] }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/b', body: {}, entityKeys: ['tasks:b'] }));
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/c', body: {}, entityKeys: ['tasks:c'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();
+
+    // 'a' drained; 'b' (network) + 'c' remain, in order.
+    const remaining = await store.ops.orderBy('seq').toArray();
+    expect(remaining.map((o) => o.path)).toEqual(['/api/v1/tasks/b', '/api/v1/tasks/c']);
+  });
+
+  it('pull still runs even when push aborted on a network error (§3.3)', async () => {
+    const store = freshStore();
+    const t = spyTransport(() => {
+      throw Object.assign(new TypeError('offline'), { name: 'TypeError' });
+    });
+    await store.ops.add(op({ method: 'DELETE', path: '/api/v1/tasks/a', entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+    await engine.syncNow();
+    expect(t.pulls).toBe(1);                 // pull phase ran despite push abort
+    expect(await store.ops.count()).toBe(1); // op intact for the next trigger
+  });
+
+  it('the engine recovers on the next trigger after a transient network failure', async () => {
+    const store = freshStore();
+    let offline = true;
+    const t = spyTransport(() => {
+      if (offline) throw Object.assign(new TypeError('offline'), { name: 'TypeError' });
+      return { status: 200 };
+    });
+    await store.ops.add(op({ method: 'PATCH', path: '/api/v1/tasks/a', body: {}, entityKeys: ['tasks:a'] }));
+    const engine = new SyncEngine({ store, transport: t });
+
+    await engine.syncNow();                 // fails: op intact
+    expect(await store.ops.count()).toBe(1);
+    offline = false;
+    await engine.syncNow();                 // succeeds now
+    expect(await store.ops.count()).toBe(0);
+  });
+});
