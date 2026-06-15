@@ -447,3 +447,116 @@ describe('SyncEngine pull — recovery pull (since=0) after a dropped op (§3.3,
     pullSpy.mockRestore();
   });
 });
+
+describe('SyncEngine — onFirstCycleSettled (fires once per start(), success or failure)', () => {
+  it('fires once after a successful first cycle and not on later cycles', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = openFresh();
+      await store.setMeta('syncCursor', 0);
+      const { transport } = scriptedTransport([
+        { changes: emptyChanges(), nextSince: 0, hasMore: false },
+        { changes: emptyChanges(), nextSince: 0, hasMore: false },
+      ]);
+      const engine = new SyncEngine({ store, transport });
+      const settled = vi.fn();
+      engine.onFirstCycleSettled(settled);
+
+      engine.start(); // online (connectivity defaults online in node fake-idb env)
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(settled).toHaveBeenCalledTimes(1);
+
+      // A second explicit cycle must not re-fire.
+      await engine.syncNow();
+      expect(settled).toHaveBeenCalledTimes(1);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fires once when the first cycle fails terminally (pull throws)', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = openFresh();
+      await store.setMeta('syncCursor', 0);
+      const transport: SyncTransport = {
+        send: vi.fn(),
+        ensureInstances: vi.fn().mockResolvedValue([]),
+        pull: vi.fn().mockRejectedValue(Object.assign(new TypeError('down'), { name: 'NetworkError' })),
+      };
+      const engine = new SyncEngine({ store, transport });
+      const settled = vi.fn();
+      engine.onFirstCycleSettled(settled);
+
+      engine.start();
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(settled).toHaveBeenCalledTimes(1); // a failed cycle still settles
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fires once when started offline and the cycle cannot even begin (§7.1.3)', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = openFresh();
+      const { transport } = scriptedTransport([
+        { changes: emptyChanges(), nextSince: 0, hasMore: false },
+      ]);
+      const engine = new SyncEngine({ store, transport });
+      // Force offline for this engine instance.
+      vi.spyOn(engine, 'online').mockReturnValue(false);
+      const settled = vi.fn();
+      engine.onFirstCycleSettled(settled);
+
+      engine.start(); // offline → no cycle runs, but the hook must still settle
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+      await vi.runOnlyPendingTimersAsync();
+
+      expect(settled).toHaveBeenCalledTimes(1);
+      engine.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('re-arms on a fresh start() so the hook can fire again next session', async () => {
+    vi.useFakeTimers();
+    try {
+      const store = openFresh();
+      await store.setMeta('syncCursor', 0);
+      const { transport } = scriptedTransport([
+        { changes: emptyChanges(), nextSince: 0, hasMore: false },
+        { changes: emptyChanges(), nextSince: 0, hasMore: false },
+      ]);
+      const engine = new SyncEngine({ store, transport });
+      const settled = vi.fn();
+      engine.onFirstCycleSettled(settled);
+
+      engine.start();
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+      await vi.runOnlyPendingTimersAsync();
+      engine.stop();
+      expect(settled).toHaveBeenCalledTimes(1);
+
+      engine.start(); // new session
+      await vi.runOnlyPendingTimersAsync();
+      await Promise.resolve();
+      await vi.runOnlyPendingTimersAsync();
+      engine.stop();
+      expect(settled).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

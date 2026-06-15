@@ -100,11 +100,12 @@ export class SyncEngine implements SyncBridge {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.firstCycleSettled = false; // re-arm the settle guard per start() session
     this.unsubConnectivity = this.connectivity.subscribe((online) => {
       if (online) void this.syncNow();
     });
     this.armPeriodic();
-    void this.syncNow(); // first cycle
+    void this.syncNow(); // first cycle — runCycle's finally settles onFirstCycleSettled once
   }
 
   stop(): void {
@@ -175,6 +176,12 @@ export class SyncEngine implements SyncBridge {
     this.syncing = true;
     this.emitStatus();
     try {
+      // Offline → the cycle cannot even begin (spec §7.1.3): skip the network push/pull
+      // phases entirely and fall through to the `finally`, which still settles
+      // onFirstCycleSettled once so the rollover-deferral hook fires against local rows.
+      // (With a real transport an offline cycle aborts on the first network throw; this
+      // explicit guard makes the same "can't-start" outcome hold without touching the wire.)
+      if (!this.online()) return;
       const replayed = await this.pushPhase();
       if (this.terminal) return; // 401 killed the engine mid-push
       if (replayed.some((o) => o.regenAfterPush)) {
@@ -505,22 +512,31 @@ export class SyncEngine implements SyncBridge {
     // 2. Delta pull from the overlap floor. `reachedEnd` is true only if the paged loop
     //    terminated naturally at hasMore=false (a network throw would propagate, leaving it
     //    false → the initialSyncComplete gate stays closed on an interrupted initial sync).
-    const prior = (await this.store.getMeta<number>('syncCursor')) ?? 0;
+    //    Read syncCursor together with the two gate flags in one parallel batch so the cycle
+    //    reaches its settle (runCycle's finally → onFirstCycleSettled) in fewer serial Dexie
+    //    roundtrips — important under fake timers, where fake-indexeddb runs on real
+    //    setImmediate and each serial getMeta/setMeta costs an event-loop turn.
+    const [priorRaw, alreadyComplete, recoveryPending] = await Promise.all([
+      this.store.getMeta<number>('syncCursor'),
+      this.store.getMeta<boolean>('initialSyncComplete'),
+      this.store.getMeta<boolean>('pendingRecovery'),
+    ]);
+    const prior = priorRaw ?? 0;
     const delta = await this.pullPaged(Math.max(0, prior - CURSOR_OVERLAP), prior);
     anyApplied = anyApplied || delta.applied;
 
     // §4.1 — set the bootstrap-completeness gate once, the first time a full delta pass
     //   reaches hasMore=false. Cursor presence is NOT the signal (a crash mid-initial-sync
-    //   leaves a partial prefix); reaching the end of the paged loop is. Read the
-    //   authoritative store value (not the cache, which may be mid-refresh) so the write is
-    //   idempotent and never depends on emit ordering.
-    if (delta.reachedEnd && !(await this.store.getMeta<boolean>('initialSyncComplete'))) {
+    //   leaves a partial prefix); reaching the end of the paged loop is. The authoritative
+    //   pre-pull `alreadyComplete` read (not the cache, which may be mid-refresh) keeps the
+    //   write idempotent and independent of emit ordering.
+    if (delta.reachedEnd && !alreadyComplete) {
       await this.store.setMeta('initialSyncComplete', true);
       this.cachedInitialSyncComplete = true;
     }
 
     // 3. Rejection recovery (§3.3): consume+clear the persisted flag, then re-pull from 0.
-    if (await this.store.getMeta<boolean>('pendingRecovery')) {
+    if (recoveryPending) {
       await this.store.setMeta('pendingRecovery', false);
       const recovery = await this.pullPaged(0, delta.cursor);
       anyApplied = anyApplied || recovery.applied;
@@ -552,8 +568,15 @@ export class SyncEngine implements SyncBridge {
       applied = applied || pageApplied;
       // nextSince is int64 (typed number | string by the generator) — coerce.
       const nextSince = Number(page.nextSince);
-      cursor = Math.max(cursor, nextSince);
-      await this.store.setMeta('syncCursor', cursor);
+      const advanced = Math.max(cursor, nextSince);
+      // Persist the cursor only when it actually advances (it never regresses). An
+      // empty/no-progress page (steady state) skips the write, trimming a serial Dexie
+      // roundtrip so the cycle settles within the event-loop turns tests pump under fake
+      // timers; the meta value is unchanged, so this is behavior-preserving.
+      if (advanced !== cursor) {
+        cursor = advanced;
+        await this.store.setMeta('syncCursor', cursor);
+      }
       since = nextSince;
       hasMore = page.hasMore;
     }

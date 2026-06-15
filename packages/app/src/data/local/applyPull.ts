@@ -50,6 +50,15 @@ const TABLE_SPECS: ReadonlyArray<{
 ];
 
 export async function applyPullPage(store: LocalStore, changes: SyncChanges): Promise<boolean> {
+  // Fast path: a page with no rows in any table applies nothing — return without
+  // opening the rw transaction (and its ops shadow scan). Besides avoiding a needless
+  // Dexie roundtrip per empty delta page, this keeps the common empty-cycle short enough
+  // that runCycle's settle (onFirstCycleSettled) lands within the few event-loop turns
+  // tests pump under fake timers (fake-indexeddb runs on real setImmediate).
+  let total = 0;
+  for (const spec of TABLE_SPECS) total += changes[spec.field]?.length ?? 0;
+  if (total === 0) return false;
+
   // All nine entity tables + ops (the shadow read) in one rw transaction.
   // Array overload (matches the repo convention in LocalDataClient/SyncEngine);
   // the variadic form caps at 6 typed args under Dexie's declarations.
