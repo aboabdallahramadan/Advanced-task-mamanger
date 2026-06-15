@@ -9,6 +9,7 @@
 import type { LocalStore } from '../data/local/LocalStore';
 import type { TaskSyncRow } from '../data/local/rows';
 import type { SyncTransport } from './SyncTransport';
+import { applyPullPage } from '../data/local/applyPull';
 import type { SyncBridge } from '../data/local/LocalDataClient';
 import type { SyncIssue, SyncOp, SyncStatus, SyncTable } from './types';
 import { entityKey } from './types';
@@ -20,6 +21,8 @@ import {
   PARK_THRESHOLD,
   PERIODIC_SYNC_MS,
   PUSH_DEBOUNCE_MS,
+  PULL_LIMIT,
+  CURSOR_OVERLAP,
 } from './constants';
 
 export interface SyncEngineDeps {
@@ -472,13 +475,38 @@ export class SyncEngine implements SyncBridge {
     }
   }
 
-  // ── pull phase (R4) ────────────────────────────────────────
-  /** NO-OP STUB — R4 implements cursor + applyPull + recovery + initialSyncComplete. */
+  // ── pull phase (spec §4) ───────────────────────────────────
+  /**
+   * Paged pull (spec §4). First page of the cycle re-reads from
+   * since = max(0, cursor − CURSOR_OVERLAP) (overlap mitigation, §4.1); pages
+   * chain nextSince while hasMore. Each page is applied via applyPullPage; the
+   * cursor advances to max(prior, nextSince) and never regresses. changesApplied
+   * fires once per cycle if any page applied rows; lastSyncedAt is stamped at the end.
+   */
   protected async pullPhase(): Promise<void> {
-    await this.transport.pull(0, 0).then(
-      () => {},
-      () => {},
-    );
+    const prior = (await this.store.getMeta<number>('syncCursor')) ?? 0;
+    let since = Math.max(0, prior - CURSOR_OVERLAP);
+    let cursor = prior;
+    let anyApplied = false;
+    let hasMore = true;
+
+    while (hasMore) {
+      const page = await this.transport.pull(since, PULL_LIMIT);
+      const applied = await applyPullPage(this.store, page.changes);
+      anyApplied = anyApplied || applied;
+      // nextSince is int64 (typed number | string by the generator) — coerce.
+      const nextSince = Number(page.nextSince);
+      cursor = Math.max(cursor, nextSince);
+      await this.store.setMeta('syncCursor', cursor);
+      since = nextSince;
+      hasMore = page.hasMore;
+    }
+
+    await this.store.setMeta('lastSyncedAt', new Date().toISOString());
+
+    if (anyApplied) {
+      for (const cb of this.changesAppliedCbs) cb();
+    }
   }
 
   // ── status + notifications ─────────────────────────────────
