@@ -162,7 +162,16 @@ export class FakeSyncServer {
       const tid = String(b.task.id);
       const existed = this.tables.tasks.get(tid);
       if (existed && existed.deletedAt === null) return { status: 200, body: existed };
-      this.tables.tasks.set(tid, { ...b.task, id: tid, changeSeq: this.next(), deletedAt: null } as Row);
+      // Stamp the template server-side exactly as RecurrenceEndpoints.Create does (the
+      // request body's `task` carries only client fields — title/notes/… — NOT the
+      // server-derived recurrenceRuleId / isRecurrenceTemplate / status / rank). Without
+      // this, ensure() can't find the template and materializes zero instances.
+      const startDate = (b.task.plannedDate as string | null) ?? null;
+      this.tables.tasks.set(tid, {
+        ...b.task, id: tid, recurrenceRuleId: ruleId, isRecurrenceTemplate: true,
+        recurrenceDetached: false, recurrenceOriginalDate: startDate, status: 'Planned',
+        rank: 'a0', changeSeq: this.next(), deletedAt: null,
+      } as Row);
       return { status: 201, body: this.tables.tasks.get(tid) };
     }
 
