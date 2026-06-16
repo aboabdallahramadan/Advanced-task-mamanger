@@ -21,6 +21,7 @@ using Tmap.Api.Features.Tasks;
 using Tmap.Api.Infrastructure.Identity;
 using Tmap.Api.Infrastructure.Jwt;
 using Tmap.Api.Infrastructure.Persistence;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -102,11 +103,26 @@ builder.Services.AddOpenApi("v1", options =>
     options.AddSchemaTransformer<OptionalSchemaTransformer>();
 });
 
+// Reverse-proxy (Traefik/Coolify): trust the single proxy hop for the real scheme and client IP.
+// ForwardLimit=1 + cleared KnownNetworks/KnownProxies = trust exactly one upstream hop and never
+// trust arbitrary proxies (which would let a client spoof X-Forwarded-For and evade the IP rate cap).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
 // HSTS: clear the default localhost exclusion so integration tests (which hit https://localhost
 // via the in-process test server) can assert the header is present in Production.
 builder.Services.AddHsts(options => options.ExcludedHosts.Clear());
 
 var app = builder.Build();
+
+// FIRST middleware: rewrite scheme + RemoteIpAddress from the trusted proxy's forwarded headers
+// before HSTS (needs the https scheme) and the rate limiter (keys on RemoteIpAddress) observe them.
+app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {

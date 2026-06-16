@@ -33,4 +33,25 @@ public sealed class TransportSecurityTests : IntegrationTestBase
         var response = await Client.GetAsync("/openapi/v1.json");
         response.Headers.Contains("Strict-Transport-Security").Should().BeFalse();
     }
+
+    [Fact]
+    public async Task Forwarded_proto_https_over_proxied_http_emits_hsts()
+    {
+        // Behind Traefik the in-container request arrives over http with X-Forwarded-Proto=https.
+        // UseForwardedHeaders (run before UseHsts) must rewrite the scheme so HSTS is emitted.
+        using var factory = Factory.WithWebHostBuilder(b => b.UseEnvironment(Environments.Production));
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            BaseAddress = new Uri("http://localhost"),
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/openapi/v1.json");
+        request.Headers.Add("X-Forwarded-Proto", "https");
+        request.Headers.Add("X-Forwarded-For", "1.2.3.4");
+
+        var response = await client.SendAsync(request);
+
+        response.Headers.Contains("Strict-Transport-Security").Should().BeTrue(
+            "UseForwardedHeaders should honor X-Forwarded-Proto=https so HSTS is emitted over a proxied http request");
+    }
 }
