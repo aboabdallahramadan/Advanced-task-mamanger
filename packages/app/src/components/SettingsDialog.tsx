@@ -5,7 +5,7 @@ import { clsx } from 'clsx';
 import { usePlatform, useEngine } from '../AppRoot';
 import { getAuthStore } from '../auth';
 import { LocalStore, getLastUserId, setLastUserId } from '../data/local/LocalStore';
-import { shouldConfirmSignOut, signOutWarning } from './signOutConfirm';
+import { shouldConfirmSignOut, signOutWarning, performSignOut } from './signOutConfirm';
 
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   value: i,
@@ -35,19 +35,22 @@ export function SettingsDialog() {
   // SyncStatus snapshot — read pendingOps directly, no `as any`/`?.()` cast.
   const engine = useEngine();
 
-  // Wipe the local DB + clear the global pointer, THEN drive the store logout
-  // (which stops the engine + closes the store via AppRoot.onLoggedOut). C10/§7.2.
+  // Clear the global pointer, drive the store logout (which stops the engine + closes
+  // the store via AppRoot.onLoggedOut), THEN wipe the local DB. The engine MUST be
+  // stopped BEFORE the wipe — otherwise a periodic tick / online event in the gap would
+  // re-open the deleted Dexie DB and resurrect pulled rows. C10/§7.2; order in
+  // performSignOut().
   const doSignOut = async () => {
     const userId = getLastUserId();
-    try {
-      if (userId) await LocalStore.wipe(userId);
-    } catch {
-      /* best-effort — sign-out proceeds regardless */
-    }
-    setLastUserId(null);
     setConfirmSignOut(false);
     setSettingsOpen(false);
-    await getAuthStore().getState().logout();
+    await performSignOut({
+      clearPointer: () => setLastUserId(null),
+      logout: () => getAuthStore().getState().logout(),
+      wipe: async () => {
+        if (userId) await LocalStore.wipe(userId);
+      },
+    });
   };
 
   const onSignOutClick = () => {
@@ -70,7 +73,10 @@ export function SettingsDialog() {
       setEnd(workEndHour);
       setIncrement(timeIncrement);
       if (autoLaunchSupported) {
-        platform.autoLaunch!.get().then(setAutoLaunch).catch(() => {});
+        platform
+          .autoLaunch!.get()
+          .then(setAutoLaunch)
+          .catch(() => {});
       }
     }
   }, [settingsOpen, workStartHour, workEndHour, timeIncrement, autoLaunchSupported, platform]);
