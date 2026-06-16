@@ -46,7 +46,7 @@ export function SyncStatusPill() {
       <Popover.Trigger asChild>
         <button
           className={clsx(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors no-drag',
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors titlebar-no-drag',
             tone,
           )}
           title="Sync status"
