@@ -125,7 +125,10 @@ public static class AuthEndpoints
     }
 
     private static async Task<IResult> Refresh(
-        RefreshRequest body,
+        // Optional/nullable: the WEB client sends NO body (it uses the tmap_rt cookie +
+        // X-Tmap-Refresh header), so the body must bind from an empty request without a
+        // 500. Only the NATIVE client puts the refresh token in the body.
+        RefreshRequest? body,
         HttpContext http,
         AppDbContext db,
         IJwtService jwt,
@@ -134,13 +137,13 @@ public static class AuthEndpoints
     {
         // Web path (no body token): require the CSRF sentinel header.
         // Native path (body token present): header not required.
-        var isWebPath = string.IsNullOrEmpty(body.RefreshToken);
+        var isWebPath = string.IsNullOrEmpty(body?.RefreshToken);
         if (isWebPath && !http.Request.Headers.ContainsKey("X-Tmap-Refresh"))
         {
             return GenericUnauthorized();
         }
 
-        var raw = RefreshCookie.Resolve(http.Request, body.RefreshToken);
+        var raw = RefreshCookie.Resolve(http.Request, body?.RefreshToken);
         if (string.IsNullOrEmpty(raw))
         {
             return GenericUnauthorized();

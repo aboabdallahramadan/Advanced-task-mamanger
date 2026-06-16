@@ -393,6 +393,23 @@ public class AuthTests(PostgresFixture fixture) : IntegrationTestBase(fixture)
         cookieLower.Should().NotContain("path=/api/v1/auth;");
     }
 
+    // The web client calls POST /auth/refresh with NO request body — it uses the httpOnly
+    // tmap_rt cookie + the X-Tmap-Refresh CSRF header (see WebPlatform.refreshAndGetAccess).
+    // The endpoint must therefore bind an EMPTY/absent body (optional) and run its web-path
+    // logic, never throw a body-binding 500. With no cookie attached it resolves to a generic
+    // 401; the regression is that an empty body must never produce a 500.
+    [Fact]
+    public async Task Refresh_web_path_with_no_body_does_not_500()
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, "/api/v1/auth/refresh");
+        req.Headers.Add("X-Tmap-Refresh", "1");
+
+        var resp = await Client.SendAsync(req);
+
+        resp.StatusCode.Should().Be(System.Net.HttpStatusCode.Unauthorized);
+        resp.StatusCode.Should().NotBe(System.Net.HttpStatusCode.InternalServerError);
+    }
+
     // Local DTO for the new contract; placed at bottom of AuthTests.cs
     private sealed record AuthTokenResponseDto(
         string AccessToken,
