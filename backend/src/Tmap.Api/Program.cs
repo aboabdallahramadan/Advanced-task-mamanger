@@ -126,8 +126,10 @@ app.UseForwardedHeaders();
 
 if (!app.Environment.IsDevelopment())
 {
+    // Traefik terminates TLS and does the http->https redirect at the edge. An in-container
+    // UseHttpsRedirection would redirect to a port the container does not expose (redirect loop).
+    // Keep HSTS only; with UseForwardedHeaders above, the app knows the scheme is https.
     app.UseHsts();
-    app.UseHttpsRedirection();
 }
 
 app.MapOpenApi();
