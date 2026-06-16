@@ -87,6 +87,15 @@ builder.Services.AddTmapRateLimiting();
 // explicitly named origins (never combined with AllowAnyOrigin).
 builder.Services.AddTmapCors(builder.Configuration);
 
+// Readiness: a DB-reachability health check (Npgsql SELECT 1) on the runtime connection.
+// The probe runs as app_user and touches no RLS table, so it is safe (no tenant context).
+// Mapped at /health/ready (S0-4 HealthEndpoints); /health stays pure liveness.
+builder.Services
+    .AddHealthChecks()
+    .AddNpgSql(
+        _ => builder.Configuration.GetConnectionString("Postgres") ?? string.Empty,
+        name: "postgres");
+
 // OpenAPI 3.1 document with stable Info and JWT Bearer security scheme.
 builder.Services.AddOpenApi("v1", options =>
 {

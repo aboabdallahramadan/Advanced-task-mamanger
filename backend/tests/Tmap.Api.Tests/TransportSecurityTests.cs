@@ -54,4 +54,20 @@ public sealed class TransportSecurityTests : IntegrationTestBase
         response.Headers.Contains("Strict-Transport-Security").Should().BeTrue(
             "UseForwardedHeaders should honor X-Forwarded-Proto=https so HSTS is emitted over a proxied http request");
     }
+
+    [Fact]
+    public async Task Health_ready_returns_200_when_database_reachable()
+    {
+        // Readiness probe runs Npgsql SELECT 1 against ConnectionStrings:Postgres (the
+        // Testcontainers app_user connection in tests) -> 200 Healthy.
+        var response = await Client.GetAsync("/health/ready");
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Health_liveness_returns_200_without_db_dependency()
+    {
+        var response = await Client.GetAsync("/health");
+        response.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
+    }
 }

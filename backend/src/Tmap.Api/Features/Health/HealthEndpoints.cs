@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 
@@ -12,6 +13,14 @@ public static class HealthEndpoints
         // Excluded from the OpenAPI document so All_paths_are_under_api_v1 stays green.
         app.MapGet("/health", () => TypedResults.Ok(new HealthResponse("ok")))
             .WithName("Health")
+            .AllowAnonymous()
+            .ExcludeFromDescription();
+
+        // Readiness probe. Runs the registered health checks (Postgres SELECT 1). The
+        // Dockerfile HEALTHCHECK (C10) curls this from inside the container so a deploy only
+        // goes healthy once Postgres is reachable and migrations have run. Anonymous + hidden.
+        app.MapHealthChecks("/health/ready", new HealthCheckOptions())
+            .WithName("HealthReady")
             .AllowAnonymous()
             .ExcludeFromDescription();
 
