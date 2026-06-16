@@ -134,8 +134,17 @@ export default function App() {
       <div className="h-screen flex bg-surface-950 select-none">
         {/* Title bar drag region */}
         <div className="fixed top-0 left-0 right-0 h-10 titlebar-drag-region z-50" />
-        {/* Sync-status pill (§8), top-right of the titlebar chrome. */}
-        <div className="fixed top-1.5 right-3 z-[60]">
+        {/* Sync-status pill (§8), top-right of the titlebar chrome. On desktop the
+            Windows Controls Overlay (titleBarOverlay) paints native min/max/close in
+            the top-right over the web content, so offset the pill left of the controls
+            via the WCO env(titlebar-area-*) vars. On web (no overlay) the fallbacks
+            resolve to right: 0.75rem, identical to the old right-3. */}
+        <div
+          className="fixed top-1.5 z-[60]"
+          style={{
+            right: 'calc(100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px) + 0.75rem)',
+          }}
+        >
           <SyncStatusPill />
         </div>
         <OnlineErrorBanner />
