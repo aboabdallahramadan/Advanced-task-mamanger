@@ -17,6 +17,10 @@ public static class AuthEndpoints
     {
         var group = app.MapGroup("auth").WithTags("Auth");
 
+        // NOTE: the aggregate per-IP cap (RateLimitPolicies.AuthByIp, C7) is NOT chained here as a
+        // second named policy — a second .RequireRateLimiting would OVERRIDE AuthByIpAndEmail, not
+        // compose with it. It is enforced by the GlobalLimiter (scoped to these auth paths) in
+        // RateLimitPolicies.AddTmapRateLimiting, which runs IN ADDITION to the named policy below.
         group.MapPost("/register", Register)
             .AddEndpointFilter<ValidationFilter<RegisterRequest>>()
             .RequireRateLimiting(RateLimitPolicies.AuthByIpAndEmail)
