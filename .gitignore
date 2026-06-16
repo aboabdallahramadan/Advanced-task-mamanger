@@ -23,7 +23,8 @@ packages/app/dist-types/
 
 # git worktrees (subagent-driven execution workspaces)
 .claude/worktrees/
-.sp3-plan-parts/
+# scratch plan-authoring staging dirs
+.sp*-plan-parts/
 
 # --- .NET backend (P0) ---
 backend/**/bin/
