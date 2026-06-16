@@ -29,6 +29,7 @@ import { useStore } from './store';
 import { usePlatform } from './AppRoot';
 import { startReminderScheduler } from './reminders/reminderScheduler';
 import { OnlineErrorBanner } from './components/OnlineErrorBanner';
+import { SyncStatusPill } from './components/SyncStatusPill';
 import { Task } from './types';
 import { addMinutes, format } from 'date-fns';
 import { GripVertical, Clock, Plus } from 'lucide-react';
@@ -133,6 +134,10 @@ export default function App() {
       <div className="h-screen flex bg-surface-950 select-none">
         {/* Title bar drag region */}
         <div className="fixed top-0 left-0 right-0 h-10 titlebar-drag-region z-50" />
+        {/* Sync-status pill (§8), top-right of the titlebar chrome. */}
+        <div className="fixed top-1.5 right-3 z-[60]">
+          <SyncStatusPill />
+        </div>
         <OnlineErrorBanner />
 
         {/* Sidebar */}

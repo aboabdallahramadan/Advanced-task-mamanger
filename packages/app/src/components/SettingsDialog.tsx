@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store';
-import { X, Save, Clock, Power } from 'lucide-react';
+import { X, Save, Clock, Power, LogOut } from 'lucide-react';
 import { clsx } from 'clsx';
-import { usePlatform } from '../AppRoot';
+import { usePlatform, useEngine } from '../AppRoot';
+import { getAuthStore } from '../auth';
+import { LocalStore, getLastUserId, setLastUserId } from '../data/local/LocalStore';
+import { shouldConfirmSignOut, signOutWarning } from './signOutConfirm';
 
 const TIME_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
   value: i,
@@ -25,8 +28,41 @@ export function SettingsDialog() {
   const [end, setEnd] = useState(workEndHour);
   const [increment, setIncrement] = useState(timeIncrement);
   const [autoLaunch, setAutoLaunch] = useState(false);
+  const [confirmSignOut, setConfirmSignOut] = useState(false);
 
   const autoLaunchSupported = platform.capabilities.autoLaunch && !!platform.autoLaunch;
+  // C5: useEngine() returns the typed SyncEngine surface; getStatus() is a synchronous
+  // SyncStatus snapshot — read pendingOps directly, no `as any`/`?.()` cast.
+  const engine = useEngine();
+
+  // Wipe the local DB + clear the global pointer, THEN drive the store logout
+  // (which stops the engine + closes the store via AppRoot.onLoggedOut). C10/§7.2.
+  const doSignOut = async () => {
+    const userId = getLastUserId();
+    try {
+      if (userId) await LocalStore.wipe(userId);
+    } catch {
+      /* best-effort — sign-out proceeds regardless */
+    }
+    setLastUserId(null);
+    setConfirmSignOut(false);
+    setSettingsOpen(false);
+    await getAuthStore().getState().logout();
+  };
+
+  const onSignOutClick = () => {
+    // C10: the Sign-out confirm reads engine.getStatus().pendingOps to decide whether
+    // to warn. The only guard is a null engine (signed-out shell); the engine ALWAYS
+    // provides getStatus() synchronously when present (C5).
+    const pending = engine ? engine.getStatus().pendingOps : 0;
+    if (shouldConfirmSignOut(pending)) {
+      setConfirmSignOut(true);
+    } else {
+      void doSignOut();
+    }
+  };
+
+  const pendingForWarning = engine ? engine.getStatus().pendingOps : 0;
 
   useEffect(() => {
     if (settingsOpen) {
@@ -182,7 +218,20 @@ export function SettingsDialog() {
               ))}
             </div>
           </div>
-          {/* Data export/import section intentionally removed in SP2 (online-only; spec §6/§7). */}
+
+          {/* Account / Sign out (SP3 §7.2). */}
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
+              Account
+            </h3>
+            <button
+              onClick={onSignOutClick}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium border border-danger-500/40 text-danger-300 hover:bg-danger-600/15 transition-colors"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign out
+            </button>
+          </div>
         </div>
 
         {/* Footer */}
@@ -202,6 +251,37 @@ export function SettingsDialog() {
           </button>
         </div>
       </div>
+
+      {confirmSignOut && (
+        <div
+          className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setConfirmSignOut(false);
+          }}
+        >
+          <div className="w-full max-w-sm bg-surface-900 border border-danger-500/40 rounded-2xl shadow-2xl p-6 animate-scale-in">
+            <div className="flex items-center gap-2 mb-3">
+              <LogOut className="w-5 h-5 text-danger-400" />
+              <h3 className="text-base font-semibold text-surface-100">Sign out?</h3>
+            </div>
+            <p className="text-sm text-surface-300 mb-5">{signOutWarning(pendingForWarning)}</p>
+            <div className="flex items-center justify-end gap-3">
+              <button
+                onClick={() => setConfirmSignOut(false)}
+                className="px-4 py-2 text-sm text-surface-300 hover:text-surface-100 rounded-lg hover:bg-surface-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => void doSignOut()}
+                className="px-4 py-2 text-sm font-medium rounded-lg bg-danger-600 hover:bg-danger-500 text-white transition-colors"
+              >
+                Sign out &amp; erase
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
