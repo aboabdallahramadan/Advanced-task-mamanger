@@ -6,7 +6,9 @@ public sealed class CreateNoteValidator : AbstractValidator<CreateNoteRequest>
 {
     public CreateNoteValidator()
     {
-        RuleFor(x => x.Title).NotEmpty().MaximumLength(500);
+        // Notes may be UNTITLED: the client creates them empty (title "") and the editor
+        // fills in a title/body later — so Title must be present but may be empty.
+        RuleFor(x => x.Title).NotNull().MaximumLength(500);
         RuleFor(x => x.Content).MaximumLength(100_000).When(x => x.Content is not null);
         RuleFor(x => x.Rank).NotEmpty().MaximumLength(255).When(x => x.Rank is not null);
     }
@@ -16,7 +18,8 @@ public sealed class UpdateNoteValidator : AbstractValidator<UpdateNoteRequest>
 {
     public UpdateNoteValidator()
     {
-        RuleFor(x => x.Title).NotEmpty().MaximumLength(500).When(x => x.Title is not null);
+        // Title null = leave unchanged; "" = clear back to untitled (both valid).
+        RuleFor(x => x.Title).MaximumLength(500).When(x => x.Title is not null);
         RuleFor(x => x.Content).MaximumLength(100_000).When(x => x.Content is not null);
         RuleFor(x => x.Rank).NotEmpty().MaximumLength(255).When(x => x.Rank is not null);
     }

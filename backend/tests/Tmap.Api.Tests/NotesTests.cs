@@ -296,4 +296,31 @@ public sealed class NotesTests(PostgresFixture fixture) : IntegrationTestBase(fi
         var tied = list!.Where(n => n.Id == idLo || n.Id == idHi).Select(n => n.Id).ToList();
         tied.Should().Equal(idLo, idHi);
     }
+
+    // The app creates UNTITLED notes (createNote passes no title → ""), to be filled in
+    // by the editor afterwards; clearing the title back to empty is also valid. The server
+    // must therefore accept an empty Title on both create and update (a note may have only
+    // a body). Regression: an empty-title create previously 400'd, breaking note sync.
+    [Fact]
+    public async Task Create_and_patch_allow_empty_title_for_untitled_notes()
+    {
+        var authed = await RegisterAsync();
+
+        var createResp = await authed.Client.PostAsJsonAsync(
+            "/api/v1/notes",
+            new CreateNoteRequest(GroupId: null, ProjectId: null, Title: "", Content: null, Rank: "a0"));
+        createResp.StatusCode.Should().Be(HttpStatusCode.Created);
+        var created = await createResp.Content.ReadFromJsonAsync<NoteResponse>();
+        created!.Title.Should().Be("");
+        created.Id.Should().NotBe(Guid.Empty);
+
+        // The editor fills in a body (and may leave the title empty).
+        var patchResp = await authed.Client.PatchAsJsonAsync(
+            $"/api/v1/notes/{created.Id}",
+            new UpdateNoteRequest(GroupId: null, ProjectId: null, Title: "", Content: "typed body", Rank: null));
+        patchResp.StatusCode.Should().Be(HttpStatusCode.OK);
+        var patched = await patchResp.Content.ReadFromJsonAsync<NoteResponse>();
+        patched!.Title.Should().Be("");
+        patched.Content.Should().Be("typed body");
+    }
 }
