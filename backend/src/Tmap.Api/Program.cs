@@ -132,7 +132,11 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 
-app.MapOpenApi();
+// OpenAPI document is dev/test tooling — never expose the API surface publicly in Production.
+if (!app.Environment.IsProduction())
+{
+    app.MapOpenApi();
+}
 
 app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
