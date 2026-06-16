@@ -14,8 +14,8 @@ const platform = new DesktopPlatform();
 // Raw typed client. The access token is injected per-request from the in-memory
 // authStore; the refresh token lives in the main process (safeStorage) and never
 // enters the renderer, so no `credentials:'include'` is needed on desktop.
-// AppRoot wraps this once with the 401→refresh layer and builds the HttpDataClient
-// over that wrapped client — one shared refresh path for all data calls.
+// AppRoot wraps this once with the 401→refresh layer; the SyncEngine pushes/pulls
+// over that wrapped client — one shared refresh path for all replayed ops.
 const tmapClient = createTmapClient({
   baseUrl: API_BASE_URL,
   getAccessToken: () => {

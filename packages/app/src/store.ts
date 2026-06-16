@@ -78,7 +78,7 @@ export function applyLoadedSettings(
 }
 
 // ── DataClient injection seam ───────────────────────────────
-// The host (AppRoot, built per app entry) injects the concrete HttpDataClient
+// The host (AppRoot, built per app entry) injects the concrete LocalDataClient
 // after auth. Every data action reads it via dc(); calling a data action before
 // injection is a programming error (auth gates the app, so this never happens
 // in normal flow) and throws a clear message.
@@ -105,7 +105,7 @@ function dc(): DataClient {
 /**
  * Public accessor for components that need ad-hoc reads outside a store action
  * (e.g. NoteEditorView loading a note body, TaskDetailDialog loading a recurrence
- * rule). Data IPC is gone — these reach the same injected HttpDataClient the store
+ * rule). Data IPC is gone — these reach the same injected DataClient the store
  * uses, not `window.api`.
  */
 export function getDataClient(): DataClient {
@@ -691,7 +691,7 @@ export const useStore = create<AppState>((set, get) => ({
   // ─── Recurrence Actions ─────────────────────────────────
   createRecurringTask: async (task, rule) => {
     try {
-      // HttpDataClient returns the full task list (targeted reload) after create.
+      // The DataClient returns the full task list after create (recurrence contract, spec §6).
       const tasks = await dc().recurrence.create(task, rule);
       set({ tasks });
       return null;

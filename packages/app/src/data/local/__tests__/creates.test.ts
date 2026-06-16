@@ -47,7 +47,7 @@ describe('LocalDataClient.tasks.create', () => {
 });
 
 describe('LocalDataClient.projects.create', () => {
-  it('synthesizes defaults (color/emoji) matching HttpDataClient and queues the create', async () => {
+  it('synthesizes defaults (color/emoji) matching the server and queues the create', async () => {
     const store = openStore();
     await store.projects.put(projectRow('seed', { rank: 'n' }));
     const bridge = fakeBridge();

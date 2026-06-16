@@ -27,9 +27,9 @@ export interface RecurrenceRuleInput {
 }
 
 /**
- * The data seam the Zustand store talks to. SP2 has exactly one implementation
- * (HttpDataClient over @tmap/api-client). SP3 will wrap it in a CachingDataClient
- * without changing the store. Only methods the store actually calls are present.
+ * The data seam the Zustand store talks to. SP3 has exactly one implementation
+ * (LocalDataClient over Dexie/IndexedDB); a background SyncEngine replays queued
+ * ops to the REST API. Only methods the store actually calls are present.
  */
 export interface DataClient {
   tasks: {

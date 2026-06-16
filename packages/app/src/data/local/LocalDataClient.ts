@@ -9,7 +9,7 @@
  * (diff-at-enqueue, spec §3.1). Deletes apply the same cascades the server applies.
  *
  * mappers.ts / ranking.ts are reused verbatim — they are byte-compatible with the server.
- * HttpDataClient.ts is mirrored (its mapper usage + wire bodies), never imported.
+ * Wire bodies match the REST request DTOs the SyncEngine replays to the API.
  */
 
 import type {
@@ -62,14 +62,14 @@ function byRankId<T extends { id: string; rank: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) => ordinal(a.rank, b.rank) || ordinal(a.id, b.id));
 }
 
-/** Drop the `_rank` the to* mappers attach (HttpDataClient strips it the same way). */
+/** Drop the `_rank` the to* mappers attach (it never goes on the wire body). */
 function stripRank<T extends { _rank?: string }>(v: T): Omit<T, '_rank'> {
   const { _rank, ...rest } = v;
   void _rank;
   return rest;
 }
 
-/** crypto.randomUUID with a safe fallback (used for client-provided ids — mirrors HttpDataClient). */
+/** crypto.randomUUID with a safe fallback (used for client-provided ids on create ops). */
 function newId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -125,8 +125,8 @@ function valueEqual(a: unknown, b: unknown): boolean {
 }
 
 /**
- * fromTask for the CREATE path — mirrors HttpDataClient.tasks.create: maps the domain
- * partial to the wire body. mappers.fromTask only forwards present keys and case-folds
+ * fromTask for the CREATE path — maps the domain partial to the POST /tasks wire body.
+ * mappers.fromTask only forwards present keys and case-folds
  * status; the create endpoint defaults the rest server-side. We add id + rank at the call site.
  */
 function fromTaskCreate(t: Partial<Task>): Record<string, unknown> {
@@ -180,7 +180,7 @@ export class LocalDataClient implements DataClient {
   }
 
   /**
-   * Port of HttpDataClient.computeReorder against LOCAL rows, with §5.1 tie repair.
+   * Minimal-rank reorder computation against LOCAL rows, with §5.1 tie repair.
    * Returns the minimal [{id, rank}] payload AND mutates `ranks` to the post-move state
    * so the caller can persist the same ranks to the rows in one transaction.
    */
@@ -317,7 +317,7 @@ export class LocalDataClient implements DataClient {
         changeSeq: 0,
         deletedAt: null,
       };
-      // Wire body identical to HttpDataClient.tasks.create (fromTask(t) + explicit id + rank).
+      // Wire body for POST /tasks: fromTask(t) + explicit id + rank.
       const body = { ...fromTaskCreate(t), id, rank };
       await this.writeTx([this.store.tasks], async () => {
         await this.store.tasks.add(row);
@@ -958,7 +958,7 @@ export class LocalDataClient implements DataClient {
         changeSeq: 0,
         deletedAt: null,
       };
-      // Wire body mirrors HttpDataClient.recurrence.create + the C7.4 rule id touch-up.
+      // Wire body for POST /recurrence + the C7.4 rule id touch-up.
       const body = {
         task: {
           title: task.title ?? '',

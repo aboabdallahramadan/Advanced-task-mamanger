@@ -16,8 +16,8 @@ const platform = new WebPlatform(API_BASE_URL);
 
 // Raw typed client. `credentials:'include'` lets the browser send the httpOnly
 // refresh cookie on the refresh call; the access token is injected per-request from
-// the in-memory authStore. AppRoot wraps this once with the 401→refresh layer and
-// builds the HttpDataClient over that wrapped client — one shared refresh path.
+// the in-memory authStore. AppRoot wraps this once with the 401→refresh layer; the
+// SyncEngine pushes/pulls over that wrapped client — one shared refresh path.
 const tmapClient = createTmapClient({
   baseUrl: API_BASE_URL,
   credentials: 'include',
