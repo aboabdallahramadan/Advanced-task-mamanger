@@ -11,7 +11,6 @@
 
 stages:
   - test
-  - verify
 
 # Avoid duplicate pipelines: run on merge requests and on push to main (plus tags).
 workflow:
@@ -76,22 +75,8 @@ test:frontend:
     - npm test --workspace @tmap/web
     - npm run build:web
 
-# ---------------------------------------------------------------------------
-# Verify both production images build (no push — Coolify builds + deploys them). Runs on
-# main only, so a broken Dockerfile is caught here instead of at the Coolify deploy.
-# ---------------------------------------------------------------------------
-verify:images:
-  stage: verify
-  image: docker:27
-  services:
-    - docker:27-dind
-  variables:
-    DOCKER_HOST: "tcp://docker:2376"
-    DOCKER_TLS_CERTDIR: "/certs"
-    DOCKER_TLS_VERIFY: "1"
-    DOCKER_CERT_PATH: "/certs/client"
-  script:
-    - docker build -f backend/Dockerfile -t tmap-api:ci backend
-    - docker build -f apps/web/Dockerfile --build-arg VITE_API_BASE_URL=https://api-tasks.qmindtech.net -t tmap-web:ci .
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "main" && $CI_PIPELINE_SOURCE == "push"'
+# NOTE: image builds are intentionally NOT done in CI. Coolify builds the backend + web
+# Dockerfiles on every deploy from main (so they're verified there), and a `docker build` nested
+# in GitLab-SaaS dind is slow + network-fragile (NuGet/registry timeouts from the nested build).
+# If image-build verification in CI is ever wanted, do it with Kaniko (GitLab's dind-free builder,
+# which runs in the job container with direct network) rather than docker:dind.
