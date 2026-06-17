@@ -128,7 +128,31 @@ public static class SyncEndpoints
             .Select(s => new SettingSyncRow(s.Key, s.Value, s.ChangeSeq, s.DeletedAt))
             .ToListAsync(ct);
 
+        // C8 — purge-horizon full-resync enforcement. Read the single-row watermark and the
+        // tenant's global high-water change_seq inside the same snapshot so the directive's
+        // NextSince is consistent with the page view. sync_purge_state is non-tenant-scoped
+        // and not soft-deletable; SoftDelete is irrelevant there. The high-water max spans the
+        // same nine pulled tables (tombstones included), defaulting to `since` when empty.
+        var watermark = await db.SyncPurgeState
+            .Select(s => s.PurgedBelowChangeSeq)
+            .FirstOrDefaultAsync(ct);
+
+        var highWaterSeq = Math.Max(
+            since,
+            await MaxChangeSeqAsync(db, ct));
+
         await tx.CommitAsync(ct);
+
+        // since=0 is always a complete sync and can never be < watermark while > 0, so this
+        // never trips on a first sync. Below the watermark, a delta would miss purged
+        // tombstones → hand back the directive with empty changes and the high-water cursor.
+        if (since > 0 && since < watermark)
+        {
+            var emptyChanges = new SyncChanges(
+                Tasks: [], Subtasks: [], Projects: [], NoteGroups: [], Notes: [],
+                RecurrenceRules: [], FocusSessions: [], DailyPlans: [], Settings: []);
+            return TypedResults.Ok(new SyncResponse(emptyChanges, highWaterSeq, HasMore: false, FullResyncRequired: true));
+        }
 
         // Global merge by change_seq, then cut at pageSize. Track each row's seq so the cut
         // is decided once across every table; HasMore = any table had a row beyond the cut.
@@ -174,6 +198,34 @@ public static class SyncEndpoints
             Settings: settingRows.Where(r => r.ChangeSeq <= cutSeq).ToList());
 
         var nextSince = kept.Count > 0 ? cutSeq : since;
-        return TypedResults.Ok(new SyncResponse(changes, nextSince, hasMore));
+        return TypedResults.Ok(new SyncResponse(changes, nextSince, hasMore, FullResyncRequired: false));
+    }
+
+    // Global max change_seq across the nine pulled tables (tombstones included; Tenant filter
+    // ON). The full-resync directive adopts this as the client's new post-resync cursor.
+    // Sequential awaits: EF Core forbids concurrent operations on one DbContext.
+    private static async Task<long> MaxChangeSeqAsync(AppDbContext db, CancellationToken ct)
+    {
+        var max = 0L;
+
+        async Task AccumulateAsync(IQueryable<long> seqs)
+        {
+            // Nullable-cast MAX: an empty table yields SQL NULL → 0. The DefaultIfEmpty(0).Max()
+            // form does not translate in EF Core; mirror TombstonePurgeService's (long?) pattern.
+            var m = await seqs.Select(s => (long?)s).MaxAsync(ct) ?? 0;
+            if (m > max) max = m;
+        }
+
+        await AccumulateAsync(db.Tasks.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(t => t.ChangeSeq));
+        await AccumulateAsync(db.Subtasks.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(s => s.ChangeSeq));
+        await AccumulateAsync(db.Projects.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(p => p.ChangeSeq));
+        await AccumulateAsync(db.NoteGroups.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(g => g.ChangeSeq));
+        await AccumulateAsync(db.Notes.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(n => n.ChangeSeq));
+        await AccumulateAsync(db.RecurrenceRules.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(r => r.ChangeSeq));
+        await AccumulateAsync(db.FocusSessions.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(f => f.ChangeSeq));
+        await AccumulateAsync(db.DailyPlans.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(p => p.ChangeSeq));
+        await AccumulateAsync(db.UserSettings.IgnoreQueryFilters([AppDbContext.SoftDeleteFilter]).Select(s => s.ChangeSeq));
+
+        return max;
     }
 }
