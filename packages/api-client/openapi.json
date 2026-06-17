@@ -83,11 +83,17 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RefreshRequest"
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/RefreshRequest"
+                  }
+                ]
               }
             }
-          },
-          "required": true
+          }
         },
         "responses": {
           "200": {
@@ -3593,6 +3599,10 @@
           },
           "hasMore": {
             "type": "boolean"
+          },
+          "fullResyncRequired": {
+            "type": "boolean",
+            "default": false
           }
         }
       },

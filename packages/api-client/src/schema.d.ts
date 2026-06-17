@@ -98,9 +98,9 @@ export interface paths {
                 path?: never;
                 cookie?: never;
             };
-            requestBody: {
+            requestBody?: {
                 content: {
-                    "application/json": components["schemas"]["RefreshRequest"];
+                    "application/json": null | components["schemas"]["RefreshRequest"];
                 };
             };
             responses: {
@@ -1834,6 +1834,8 @@ export interface components {
             /** Format: int64 */
             nextSince: number | string;
             hasMore: boolean;
+            /** @default false */
+            fullResyncRequired: boolean;
         };
         TaskResponse: {
             /** Format: uuid */
