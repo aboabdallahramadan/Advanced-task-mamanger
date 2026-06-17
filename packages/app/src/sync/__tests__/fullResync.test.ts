@@ -98,4 +98,33 @@ describe('SyncEngine full-resync enforcement (C9)', () => {
     expect(await store.tasks.get('stale')).toBeDefined();
     expect(await store.getMeta<number>('syncCursor')).toBe(9999);
   });
+
+  it('converges (no infinite loop) when >PULL_LIMIT live rows sit below an advanced watermark', async () => {
+    const store = freshStore();
+    const server = new FakeSyncServer();
+    // More than PULL_LIMIT (500) live rows, all with change_seq below the watermark — the exact
+    // shape that, before the fix, made the from-0 re-pull's page 2 re-trip the directive forever.
+    for (let i = 0; i < 600; i++) server.seed('tasks', { id: `t${i}`, rank: 'a0' });
+    server.setWatermark(100000); // a global purge watermark far above this tenant's rows
+
+    // A stale client whose COMMITTED cursor sits below the watermark.
+    await store.setMeta('syncCursor', 300);
+    await store.setMeta('lastUser', { id: 'u1', email: 'a@b.c', timeZoneId: 'UTC' });
+
+    const resetSpy = vi.fn(() => new LocalDataClient(store, inertBridge).resetForFullResync());
+    const engine = new SyncEngine({ store, transport: server.transport(), resetForFullResync: resetSpy });
+
+    await engine.syncNow(); // directive → reset + re-pull from 0, which MUST complete past page 1
+
+    // The whole store was rebuilt (all 600 rows) and the bootstrap gate opened.
+    expect(await store.tasks.count()).toBe(600);
+    expect(await store.getMeta<boolean>('initialSyncComplete')).toBe(true);
+    // Cursor adopted AT/ABOVE the watermark → the next delta can never re-trip the directive.
+    expect((await store.getMeta<number>('syncCursor'))!).toBeGreaterThanOrEqual(100000);
+
+    // A second cycle must NOT reset again — convergence, not an every-cycle wipe-and-redownload loop.
+    await engine.syncNow();
+    expect(resetSpy).toHaveBeenCalledTimes(1);
+    expect(await store.tasks.count()).toBe(600);
+  });
 });

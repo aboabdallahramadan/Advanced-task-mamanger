@@ -2433,6 +2433,7 @@ export interface operations {
         parameters: {
             query?: {
                 since?: number | string;
+                cursor?: number | string;
                 limit?: number | string;
             };
             header?: never;

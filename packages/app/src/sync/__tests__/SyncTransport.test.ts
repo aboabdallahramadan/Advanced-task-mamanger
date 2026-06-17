@@ -67,8 +67,18 @@ describe('HttpSyncTransport.pull / ensureInstances — query in the concrete pat
     });
     const t = new HttpSyncTransport(client);
     const res = await t.pull(7, 500);
-    expect(calls[0].path).toBe('/api/v1/sync?since=7&limit=500');
+    // cursor defaults to `since` when the caller omits it (legacy/2-arg shape).
+    expect(calls[0].path).toBe('/api/v1/sync?since=7&cursor=7&limit=500');
     expect(res).toBe(env);
+  });
+
+  it('pull sends the committed cursor when provided (full-resync directive key)', async () => {
+    const env = { changes: {}, nextSince: 42, hasMore: false };
+    const { client, calls } = fakeClient(() => ({ data: env, response: { status: 200 } }));
+    const t = new HttpSyncTransport(client);
+    await t.pull(0, 500, 0);
+    // A from-0 re-pull carries cursor=0 so the server never refuses an intermediate page.
+    expect(calls[0].path).toBe('/api/v1/sync?since=0&cursor=0&limit=500');
   });
 
   it('ensureInstances issues POST /api/v1/recurrence/ensure-instances?start=&end=', async () => {

@@ -532,7 +532,7 @@ export class SyncEngine implements SyncBridge {
       this.store.getMeta<boolean>('pendingRecovery'),
     ]);
     const prior = priorRaw ?? 0;
-    const delta = await this.pullPaged(Math.max(0, prior - CURSOR_OVERLAP), prior);
+    const delta = await this.pullPaged(Math.max(0, prior - CURSOR_OVERLAP), prior, prior);
     anyApplied = anyApplied || delta.applied;
 
     // C9 — full-resync directive: the server's delta would miss purged tombstones.
@@ -541,9 +541,14 @@ export class SyncEngine implements SyncBridge {
     if (delta.fullResyncRequired) {
       if ((await this.store.ops.count()) === 0) {
         await this.resetForFullResync();
-        // Re-pull from since=0, which repopulates the store and re-sets the gate.
-        const refill = await this.pullPaged(0, 0);
+        // Re-pull from since=0 with committedCursor=0 (so the server never refuses an intermediate
+        // page below the watermark), repopulating the store and re-setting the gate.
+        const refill = await this.pullPaged(0, 0, 0);
         anyApplied = anyApplied || refill.applied;
+        // Adopt a cursor AT/ABOVE the watermark (the directive echoed it via resyncCursor). The
+        // from-0 refill alone leaves the cursor at the tenant's max row seq, which for an inactive
+        // tenant can sit below the global purge watermark and would re-trip the directive forever.
+        await this.store.setMeta('syncCursor', Math.max(refill.cursor, delta.resyncCursor));
         if (refill.reachedEnd) {
           await this.store.setMeta('initialSyncComplete', true);
           this.cachedInitialSyncComplete = true;
@@ -571,7 +576,7 @@ export class SyncEngine implements SyncBridge {
     // 3. Rejection recovery (§3.3): consume+clear the persisted flag, then re-pull from 0.
     if (recoveryPending) {
       await this.store.setMeta('pendingRecovery', false);
-      const recovery = await this.pullPaged(0, delta.cursor);
+      const recovery = await this.pullPaged(0, delta.cursor, 0);
       anyApplied = anyApplied || recovery.applied;
     }
 
@@ -591,16 +596,21 @@ export class SyncEngine implements SyncBridge {
   private async pullPaged(
     since: number,
     startCursor: number,
-  ): Promise<{ applied: boolean; cursor: number; reachedEnd: boolean; fullResyncRequired: boolean }> {
+    committedCursor: number,
+  ): Promise<{ applied: boolean; cursor: number; reachedEnd: boolean; fullResyncRequired: boolean; resyncCursor: number }> {
     let cursor = startCursor;
     let applied = false;
     let hasMore = true;
     while (hasMore) {
-      const page = await this.transport.pull(since, PULL_LIMIT);
-      // C9 — purge-horizon directive: the server refused a delta below the watermark.
-      // Stop paging immediately and let pullPhase decide (reset+re-pull, or defer).
+      // Send the client's COMMITTED cursor (constant across the loop) so the server keys the
+      // full-resync directive on real progress, not the overlap-reduced `since`. A from-0 re-pull
+      // (full-resync refill / recovery) passes committedCursor=0, so the server never refuses its
+      // intermediate pages below the watermark.
+      const page = await this.transport.pull(since, PULL_LIMIT, committedCursor);
+      // C9 — purge-horizon directive: the server refused a delta below the watermark. Stop paging
+      // and surface the echoed resync cursor (>= watermark) so pullPhase can adopt it after re-pull.
       if (page.fullResyncRequired === true) {
-        return { applied, cursor, reachedEnd: false, fullResyncRequired: true };
+        return { applied, cursor, reachedEnd: false, fullResyncRequired: true, resyncCursor: Number(page.nextSince) };
       }
       const pageApplied = await applyPullPage(this.store, page.changes);
       applied = applied || pageApplied;
@@ -618,7 +628,7 @@ export class SyncEngine implements SyncBridge {
       since = nextSince;
       hasMore = page.hasMore;
     }
-    return { applied, cursor, reachedEnd: true, fullResyncRequired: false };
+    return { applied, cursor, reachedEnd: true, fullResyncRequired: false, resyncCursor: 0 };
   }
 
   /** Wrap a flat list of pulled TaskSyncRows as a SyncChanges page (only the tasks field). */

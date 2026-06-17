@@ -16,8 +16,13 @@ import type { SyncResponse, TaskSyncRow } from '../data/local/rows';
 export interface SyncTransport {
   /** Replay one op. Returns {status, body}; THROWS on network failure / terminal 401. */
   send(op: SyncOp): Promise<{ status: number; body?: unknown }>;
-  /** GET /api/v1/sync?since=&limit= — one page of remote changes. */
-  pull(since: number, limit: number): Promise<SyncResponse>;
+  /**
+   * GET /api/v1/sync?since=&cursor=&limit= — one page of remote changes. `cursor` is the client's
+   * COMMITTED sync cursor (its real progress); the server keys the full-resync directive on it
+   * (independently of the overlap-reduced `since`), and a from-0 re-pull passes cursor=0 so it is
+   * never refused below the purge watermark.
+   */
+  pull(since: number, limit: number, cursor?: number): Promise<SyncResponse>;
   /** POST /api/v1/recurrence/ensure-instances?start=&end= — materialize instances. */
   ensureInstances(start: string, end: string): Promise<TaskSyncRow[]>;
 }
@@ -47,9 +52,9 @@ export class HttpSyncTransport implements SyncTransport {
     return { status: res.response.status, body: res.error ?? res.data };
   }
 
-  async pull(since: number, limit: number): Promise<SyncResponse> {
+  async pull(since: number, limit: number, cursor?: number): Promise<SyncResponse> {
     const res = (await this.client.GET(
-      `/api/v1/sync?since=${since}&limit=${limit}`,
+      `/api/v1/sync?since=${since}&cursor=${cursor ?? since}&limit=${limit}`,
       {},
     )) as Result;
     if (res.error) throw res.error;

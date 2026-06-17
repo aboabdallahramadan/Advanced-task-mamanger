@@ -49,6 +49,8 @@ export class FakeSyncServer {
   private pulls = 0;
   /** One-shot: the next pull() returns the full-resync directive (C9), then clears. */
   private directiveOnce = false;
+  /** Persistent purge watermark: a pull whose committed cursor is in (0, watermark) gets the directive. */
+  private watermark = 0;
 
   private next(): number {
     return ++this.seq;
@@ -62,6 +64,15 @@ export class FakeSyncServer {
    */
   requireFullResyncOnce(): void {
     this.directiveOnce = true;
+  }
+
+  /**
+   * Set a persistent purge watermark (C8). Any pull whose COMMITTED cursor is in (0, watermark) gets
+   * the full-resync directive; a from-0 re-pull (committed cursor 0) is served normally. Mirrors
+   * sync_purge_state.purged_below_change_seq so tests can reproduce the >PULL_LIMIT / inactive-tenant case.
+   */
+  setWatermark(value: number): void {
+    this.watermark = value;
   }
 
   /** Awaited before every send/pull/ensureInstances (default no delay). */
@@ -136,10 +147,10 @@ export class FakeSyncServer {
         if (fault) return { status: fault.status, body: { title: `HTTP ${fault.status}` } };
         return self.apply(op);
       },
-      async pull(since: number, limit: number): Promise<SyncResponse> {
+      async pull(since: number, limit: number, cursor?: number): Promise<SyncResponse> {
         await self.delay();
         self.pulls += 1;
-        return self.pullPage(since, limit);
+        return self.pullPage(since, limit, cursor ?? since);
       },
       async ensureInstances(start: string, end: string): Promise<TaskSyncRow[]> {
         await self.delay();
@@ -358,15 +369,19 @@ export class FakeSyncServer {
   }
 
   // ── pull ───────────────────────────────────────────────────
-  private pullPage(since: number, limit: number): SyncResponse {
-    if (this.directiveOnce) {
+  private pullPage(since: number, limit: number, committedCursor: number): SyncResponse {
+    // Full-resync directive: the one-shot arm, OR a persistent watermark the committed cursor sits
+    // below (mirrors the server keying on the committed cursor, not `since`). A from-0 re-pull
+    // (committedCursor 0) is never refused.
+    if (this.directiveOnce || (this.watermark > 0 && committedCursor > 0 && committedCursor < this.watermark)) {
       this.directiveOnce = false;
       const empty = (): Row[] => [];
       const changes: Record<PullTable, Row[]> = {
         tasks: empty(), subtasks: empty(), projects: empty(), noteGroups: empty(), notes: empty(),
         recurrenceRules: empty(), focusSessions: empty(), dailyPlans: empty(), settings: empty(),
       };
-      return { changes, nextSince: this.seq, hasMore: false, fullResyncRequired: true } as unknown as SyncResponse;
+      // Echo a cursor at/above the watermark so the client converges after re-pulling (no loop).
+      return { changes, nextSince: Math.max(this.seq, this.watermark), hasMore: false, fullResyncRequired: true } as unknown as SyncResponse;
     }
     const all: { table: PullTable; row: Row }[] = [];
     for (const table of PULL_TABLES) {

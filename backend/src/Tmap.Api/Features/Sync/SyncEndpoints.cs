@@ -23,6 +23,7 @@ public static class SyncEndpoints
         ICurrentUser user,
         CancellationToken ct,
         long since = 0,
+        long? cursor = null,
         int? limit = null)
     {
         var pageSize = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
@@ -143,15 +144,23 @@ public static class SyncEndpoints
 
         await tx.CommitAsync(ct);
 
-        // since=0 is always a complete sync and can never be < watermark while > 0, so this
-        // never trips on a first sync. Below the watermark, a delta would miss purged
-        // tombstones → hand back the directive with empty changes and the high-water cursor.
-        if (since > 0 && since < watermark)
+        // C8 — full-resync directive. Decide on the client's COMMITTED cursor (the `cursor` query
+        // param), NOT the overlap-reduced `since`: a healthy client pulls with since = cursor -
+        // CURSOR_OVERLAP, so keying on `since` would (a) false-trip clients sitting within the overlap
+        // above the watermark and (b) refuse the intermediate pages of a from-0 re-pull. The client
+        // issues that re-pull with cursor=0 so it is never refused here, and we echo a cursor AT OR
+        // ABOVE the watermark which the client adopts after re-pulling — so its next delta never
+        // re-trips (no infinite-resync loop, even for a tenant whose max change_seq is below the
+        // global watermark). When `cursor` is absent (legacy caller) fall back to `since`; cursor/since
+        // of 0 is always a complete sync and never trips (0 > 0 is false).
+        var committedCursor = cursor ?? since;
+        if (committedCursor > 0 && committedCursor < watermark)
         {
             var emptyChanges = new SyncChanges(
                 Tasks: [], Subtasks: [], Projects: [], NoteGroups: [], Notes: [],
                 RecurrenceRules: [], FocusSessions: [], DailyPlans: [], Settings: []);
-            return TypedResults.Ok(new SyncResponse(emptyChanges, highWaterSeq, HasMore: false, FullResyncRequired: true));
+            var resyncCursor = Math.Max(highWaterSeq, watermark);
+            return TypedResults.Ok(new SyncResponse(emptyChanges, resyncCursor, HasMore: false, FullResyncRequired: true));
         }
 
         // Global merge by change_seq, then cut at pageSize. Track each row's seq so the cut
