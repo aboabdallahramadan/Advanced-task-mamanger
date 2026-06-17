@@ -131,4 +131,4 @@ public sealed record SyncChanges(
     List<DailyPlanSyncRow> DailyPlans,
     List<SettingSyncRow> Settings);
 
-public sealed record SyncResponse(SyncChanges Changes, long NextSince, bool HasMore);
+public sealed record SyncResponse(SyncChanges Changes, long NextSince, bool HasMore, bool FullResyncRequired = false);
