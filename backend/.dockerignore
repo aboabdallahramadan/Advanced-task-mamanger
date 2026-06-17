@@ -1,0 +1,23 @@
+# Build context = backend/. Keep the context to source only — never copy local
+# build output, IDE state, or secrets into the image. Mirrors .gitignore (backend section).
+
+# .NET build output
+**/bin/
+**/obj/
+
+# IDE / tooling
+.vs/
+**/*.user
+.idea/
+
+# Local-only / secret config (env-only in prod; never baked into an image)
+**/appsettings.*.local.json
+
+# Docker + VCS metadata (irrelevant to the build, keeps the context small)
+Dockerfile
+.dockerignore
+.git/
+.gitignore
+
+# Test artifacts
+**/TestResults/
