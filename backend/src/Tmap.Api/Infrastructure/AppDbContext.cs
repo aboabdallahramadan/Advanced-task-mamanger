@@ -31,6 +31,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
     public DbSet<DailyPlan> DailyPlans => Set<DailyPlan>();
     public DbSet<UserSetting> UserSettings => Set<UserSetting>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<SyncPurgeState> SyncPurgeState => Set<SyncPurgeState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -173,6 +174,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options, ICurren
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
             // no sync columns, no query filters
+        });
+
+        // ---- SyncPurgeState (single-row watermark; NOT synced/tenant-scoped) ----
+        // Deliberately a PLAIN table: NO ConfigureSyncColumns/ConfigureSyncEntity (so no
+        // change_seq/updated_at trigger config), NO ApplyTenantAndSoftDeleteFilters (so no RLS
+        // policy and no query filters), and it is absent from the SyncTriggersAndRls /
+        // ChangeSeqIndexes synced-table loops. The migration creates it and seeds row (1, 0).
+        modelBuilder.Entity<SyncPurgeState>(b =>
+        {
+            b.ToTable("sync_purge_state");
+            b.HasKey(x => x.Id);
+            b.Property(x => x.Id).ValueGeneratedNever(); // fixed single row, Id = 1
+            b.Property(x => x.PurgedBelowChangeSeq).IsRequired();
         });
 
         // ---- ApplicationUser extra column ----
