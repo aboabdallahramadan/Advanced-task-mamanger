@@ -1,7 +1,10 @@
+using System.Net;
 using System.Net.Http;
 using FluentAssertions;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Hosting;
 using Xunit;
 
@@ -38,21 +41,26 @@ public sealed class TransportSecurityTests : IntegrationTestBase
     public async Task Forwarded_proto_https_over_proxied_http_emits_hsts()
     {
         // Behind Traefik the in-container request arrives over http with X-Forwarded-Proto=https.
-        // UseForwardedHeaders (run before UseHsts) must rewrite the scheme so HSTS is emitted.
+        // UseForwardedHeaders (run before UseHsts) rewrites the scheme so HSTS is emitted — but ONLY
+        // when the connecting peer is trusted. The hardened ForwardedHeadersOptions trusts loopback +
+        // the Docker bridge range, so we drive the request through the TestServer with an explicit
+        // loopback RemoteIpAddress (the in-process TestServer otherwise leaves it null, which the
+        // hardened known-peer check rejects). An untrusted peer's X-Forwarded-Proto would be ignored.
         using var factory = Factory.WithWebHostBuilder(b => b.UseEnvironment(Environments.Production));
-        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+
+        var context = await factory.Server.SendAsync(ctx =>
         {
-            BaseAddress = new Uri("http://localhost"),
+            ctx.Request.Method = HttpMethods.Get;
+            ctx.Request.Scheme = "http";
+            ctx.Request.Host = new HostString("localhost");
+            ctx.Request.Path = "/openapi/v1.json";
+            ctx.Connection.RemoteIpAddress = IPAddress.Loopback; // trusted hop: loopback is in KnownNetworks
+            ctx.Request.Headers["X-Forwarded-Proto"] = "https";
+            ctx.Request.Headers["X-Forwarded-For"] = "1.2.3.4";
         });
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, "/openapi/v1.json");
-        request.Headers.Add("X-Forwarded-Proto", "https");
-        request.Headers.Add("X-Forwarded-For", "1.2.3.4");
-
-        var response = await client.SendAsync(request);
-
-        response.Headers.Contains("Strict-Transport-Security").Should().BeTrue(
-            "UseForwardedHeaders should honor X-Forwarded-Proto=https so HSTS is emitted over a proxied http request");
+        context.Response.Headers.ContainsKey("Strict-Transport-Security").Should().BeTrue(
+            "UseForwardedHeaders should honor X-Forwarded-Proto=https from the trusted loopback hop so HSTS is emitted");
     }
 
     [Fact]

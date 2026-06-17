@@ -112,15 +112,24 @@ builder.Services.AddOpenApi("v1", options =>
     options.AddSchemaTransformer<OptionalSchemaTransformer>();
 });
 
-// Reverse-proxy (Traefik/Coolify): trust the single proxy hop for the real scheme and client IP.
-// ForwardLimit=1 + cleared KnownNetworks/KnownProxies = trust exactly one upstream hop and never
-// trust arbitrary proxies (which would let a client spoof X-Forwarded-For and evade the IP rate cap).
+// Reverse-proxy (Traefik/Coolify): trust ONLY the single proxy hop for the real scheme and client IP.
+// ForwardLimit=1 caps processing to one hop. Clearing the framework-default KnownNetworks/KnownProxies
+// and then re-adding only loopback + the Docker bridge range is deliberate and security-critical: an
+// EMPTY known-list disables the middleware's known-peer check entirely (its internal checkKnownIps
+// becomes false), which would honor X-Forwarded-* from ANY direct or same-Docker-network client —
+// letting it forge its client IP to evade the per-IP auth rate cap (C7) or poison the request log.
+// Trusting loopback (in-process tests + same-host) and 172.16.0.0/12 (the Docker bridge range where
+// Coolify's Traefik reaches this container) means forwarded headers from any other peer are ignored.
+// Uses the non-obsolete KnownIPNetworks (System.Net.IPNetwork); KnownNetworks is obsolete (ASPDEPR005).
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
     options.ForwardLimit = 1;
-    options.KnownNetworks.Clear();
+    options.KnownIPNetworks.Clear();
     options.KnownProxies.Clear();
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("127.0.0.0"), 8));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.IPv6Loopback, 128));
+    options.KnownIPNetworks.Add(new System.Net.IPNetwork(System.Net.IPAddress.Parse("172.16.0.0"), 12));
 });
 
 // HSTS: clear the default localhost exclusion so integration tests (which hit https://localhost
