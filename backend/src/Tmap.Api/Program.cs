@@ -91,6 +91,10 @@ builder.Services.AddTmapCors(builder.Configuration);
 builder.Services.Configure<Tmap.Api.Common.PurgeOptions>(
     builder.Configuration.GetSection(Tmap.Api.Common.PurgeOptions.SectionName));
 
+// Background tombstone purge (~daily). Elevates to SystemCurrentUser internally so RLS sees all
+// tenants; hard-deletes over-horizon tombstones and advances the sync_purge_state watermark.
+builder.Services.AddHostedService<Tmap.Api.Features.Sync.TombstonePurgeService>();
+
 // Readiness: a DB-reachability health check (Npgsql SELECT 1) on the runtime connection.
 // The probe runs as app_user and touches no RLS table, so it is safe (no tenant context).
 // Mapped at /health/ready (S0-4 HealthEndpoints); /health stays pure liveness.
