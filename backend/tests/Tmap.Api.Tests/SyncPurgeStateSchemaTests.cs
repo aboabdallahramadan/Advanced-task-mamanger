@@ -1,6 +1,9 @@
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Npgsql;
+using Tmap.Api.Common;
 using Xunit;
 
 namespace Tmap.Api.Tests;
@@ -61,5 +64,29 @@ public class SyncPurgeStateSchemaTests(PostgresFixture fixture) : IntegrationTes
 
         policyCount.Should().Be(0L,
             "sync_purge_state must have NO RLS policy — it is not in the SyncTriggersAndRls table set");
+    }
+
+    [Fact]
+    public void PurgeOptions_DefaultsTo90Days_WhenUnconfigured()
+    {
+        // The base test config sets no Purge section, so the bound options keep the default.
+        using var scope = Factory.Services.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<PurgeOptions>>();
+
+        options.Value.RetentionDays.Should().Be(90,
+            "the retention horizon defaults to 90 days (> the 60-day refresh window)");
+    }
+
+    [Fact]
+    public void PurgeOptions_BindsConfiguredRetentionDays()
+    {
+        using var factory = NewFactoryWithConfig(new Dictionary<string, string?>
+        {
+            ["Purge:RetentionDays"] = "120",
+        });
+        using var scope = factory.Services.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<PurgeOptions>>();
+
+        options.Value.RetentionDays.Should().Be(120, "Purge__RetentionDays overrides the default");
     }
 }

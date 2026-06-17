@@ -87,6 +87,10 @@ builder.Services.AddTmapRateLimiting();
 // explicitly named origins (never combined with AllowAnyOrigin).
 builder.Services.AddTmapCors(builder.Configuration);
 
+// Tombstone-purge options (Purge__RetentionDays, default 90). Consumed by TombstonePurgeService.
+builder.Services.Configure<Tmap.Api.Common.PurgeOptions>(
+    builder.Configuration.GetSection(Tmap.Api.Common.PurgeOptions.SectionName));
+
 // Readiness: a DB-reachability health check (Npgsql SELECT 1) on the runtime connection.
 // The probe runs as app_user and touches no RLS table, so it is safe (no tenant context).
 // Mapped at /health/ready (S0-4 HealthEndpoints); /health stays pure liveness.
