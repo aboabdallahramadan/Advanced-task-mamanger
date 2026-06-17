@@ -180,6 +180,56 @@ export class LocalDataClient implements DataClient {
   }
 
   /**
+   * Full-resync reset (C9 / spec §5.3). Wipes the local store back to an
+   * empty-but-known-user state so the SyncEngine can re-pull from since=0:
+   * clears the 9 entity tables + the issues log, and resets the meta keys
+   * syncCursor / initialSyncComplete(→false) / pendingRecovery(→false), while
+   * KEEPING meta.lastUser (the authed-offline identity). Runs in one Dexie rw
+   * transaction so an interrupted reset never leaves a torn partial state. The
+   * ops table is intentionally untouched — the engine only calls this once the
+   * push queue is fully drained (SyncEngine pullPhase precondition).
+   */
+  async resetForFullResync(): Promise<void> {
+    await this.store.transaction(
+      'rw',
+      [
+        this.store.tasks,
+        this.store.subtasks,
+        this.store.projects,
+        this.store.noteGroups,
+        this.store.notes,
+        this.store.recurrenceRules,
+        this.store.focusSessions,
+        this.store.dailyPlans,
+        this.store.settings,
+        this.store.issues,
+        this.store.meta,
+      ],
+      async () => {
+        await Promise.all([
+          this.store.tasks.clear(),
+          this.store.subtasks.clear(),
+          this.store.projects.clear(),
+          this.store.noteGroups.clear(),
+          this.store.notes.clear(),
+          this.store.recurrenceRules.clear(),
+          this.store.focusSessions.clear(),
+          this.store.dailyPlans.clear(),
+          this.store.settings.clear(),
+          this.store.issues.clear(),
+        ]);
+        // Per-key meta writes leave lastUser untouched. syncCursor is removed
+        // (so getMeta returns undefined → the next pull starts from 0); the two
+        // gate flags are reset to false rather than deleted (their consumers read
+        // them as booleans).
+        await this.store.meta.delete('syncCursor');
+        await this.store.setMeta('initialSyncComplete', false);
+        await this.store.setMeta('pendingRecovery', false);
+      },
+    );
+  }
+
+  /**
    * Minimal-rank reorder computation against LOCAL rows, with §5.1 tie repair.
    * Returns the minimal [{id, rank}] payload AND mutates `ranks` to the post-move state
    * so the caller can persist the same ranks to the rows in one transaction.
