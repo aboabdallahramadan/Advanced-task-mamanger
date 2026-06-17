@@ -17,6 +17,19 @@ public class TombstonePurgeTests(PostgresFixture fixture) : IntegrationTestBase(
     private AppDbContext NewSystemContext() => NewElevatedDbContext();
 
     /// <summary>
+    /// Reset the shared single-row watermark to 0. sync_purge_state has no tenant isolation, so
+    /// sibling suites (e.g. full-resync, which can set it to high-water + 1000) may leave it
+    /// advanced; each purge assertion needs a known baseline for the GREATEST(existing, maxPurged)
+    /// monotonic update to be deterministic regardless of test order.
+    /// </summary>
+    private async Task ResetWatermarkAsync()
+    {
+        await using var ctx = NewElevatedDbContext();
+        await ctx.Database.ExecuteSqlAsync(
+            $"UPDATE sync_purge_state SET purged_below_change_seq = {0L} WHERE id = 1");
+    }
+
+    /// <summary>
     /// Soft-deletes a live task (created via HTTP) by setting deleted_at to a chosen instant.
     /// The change_seq trigger bumps the seq on this UPDATE; deleted_at is set exactly as given
     /// (the trigger touches only change_seq/updated_at). Returns the tombstone's change_seq.
@@ -52,6 +65,8 @@ public class TombstonePurgeTests(PostgresFixture fixture) : IntegrationTestBase(
     [Fact]
     public async Task Purge_DeletesOverHorizonTombstones_ForBothUsers_KeepsRecentAndLive_AdvancesWatermark()
     {
+        await ResetWatermarkAsync(); // known baseline (shared, non-tenant-scoped watermark)
+
         var horizonDays = 90;
         var oldDeletedAt = DateTimeOffset.UtcNow.AddDays(-(horizonDays + 10)); // 100 days → purge
         var recentDeletedAt = DateTimeOffset.UtcNow.AddDays(-1);                // 1 day → keep
@@ -127,6 +142,8 @@ public class TombstonePurgeTests(PostgresFixture fixture) : IntegrationTestBase(
     [Fact]
     public async Task Purge_WatermarkIsMonotonic_DoesNotRegressWhenNothingToPurge()
     {
+        await ResetWatermarkAsync(); // known baseline (shared, non-tenant-scoped watermark)
+
         var horizonDays = 90;
         var oldDeletedAt = DateTimeOffset.UtcNow.AddDays(-100);
 

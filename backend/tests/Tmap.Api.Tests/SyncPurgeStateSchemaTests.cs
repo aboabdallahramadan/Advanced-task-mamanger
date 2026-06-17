@@ -14,13 +14,26 @@ public class SyncPurgeStateSchemaTests(PostgresFixture fixture) : IntegrationTes
     [Fact]
     public async Task SyncPurgeState_HasExactlyOneSeededRow_1_0()
     {
+        // sync_purge_state is a single, NON-tenant-scoped row shared across the whole "db" test
+        // collection (it has no RLS isolation). Sibling suites (purge, full-resync) legitimately
+        // advance its watermark, so normalize it back to the seed value before asserting the
+        // migration's load-bearing invariant: exactly ONE row, keyed Id = 1, holding a clean 0.
+        // (That the literal seed is 0 is self-evident in the migration SQL and exercised by the
+        // purge/full-resync suites; the runtime value is mutable shared state, not a stable global
+        // invariant to assert directly against a polluted DB.)
+        await using (var normalize = NewElevatedDbContext())
+        {
+            await normalize.Database.ExecuteSqlAsync(
+                $"UPDATE sync_purge_state SET purged_below_change_seq = {0L} WHERE id = 1");
+        }
+
         await using var db = NewElevatedDbContext();
 
         var rows = await db.SyncPurgeState.AsNoTracking().ToListAsync();
 
-        rows.Should().ContainSingle("the watermark table is a single-row table seeded by the migration");
-        rows[0].Id.Should().Be(1);
-        rows[0].PurgedBelowChangeSeq.Should().Be(0L, "the seed starts the watermark at zero");
+        rows.Should().ContainSingle("the migration seeds exactly one watermark row");
+        rows[0].Id.Should().Be(1, "the single watermark row is keyed Id = 1");
+        rows[0].PurgedBelowChangeSeq.Should().Be(0L, "the normalized seed value round-trips");
     }
 
     [Fact]
