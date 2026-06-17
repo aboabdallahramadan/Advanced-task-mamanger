@@ -1,0 +1,32 @@
+# Build context for the web image (apps/web/Dockerfile) = repo ROOT (npm workspaces).
+# Keep the context to source only. Critically, EXCLUDE node_modules: the image runs `npm ci`
+# to install Linux deps, and letting `COPY . .` overlay the host's (win32) node_modules would
+# clobber them with wrong-platform esbuild/rollup binaries and break `vite build`. Also keep VCS,
+# build output, local env/secrets, and editor/agent state out of the context and image.
+
+# Installed dependencies (reinstalled in-image via npm ci)
+**/node_modules
+
+# VCS + agent/editor state
+.git
+.gitignore
+.claude
+.vscode
+.idea
+
+# Build output / bundles (regenerated in-image)
+**/dist
+**/bin
+**/obj
+**/TestResults
+
+# Local-only env + secrets (never bake into an image); keep the committed *.example files
+**/.env
+**/.env.local
+**/.env.*.local
+backend/.env
+
+# Docker + logs
+**/Dockerfile
+**/.dockerignore
+*.log
