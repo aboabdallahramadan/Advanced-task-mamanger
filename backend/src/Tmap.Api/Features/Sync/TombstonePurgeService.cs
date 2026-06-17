@@ -131,6 +131,15 @@ public sealed class TombstonePurgeService(
             }
         }
 
+        // ATOMICITY (data-integrity): the 10 hard-deletes AND the watermark advance must commit as ONE
+        // unit. Otherwise a crash/transient error between a delete and the watermark write leaves
+        // tombstones physically gone while sync_purge_state still points below them — a stale delta
+        // client whose cursor sits in that gap would then get a NORMAL delta that silently omits the
+        // deletions and keep the rows as ghosts forever (the watermark can't retroactively catch up,
+        // since the deleted rows' change_seq is no longer observable). One transaction makes that
+        // impossible: all deletes + the raised watermark commit together, or the whole pass rolls back.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+
         // The 10 trigger-bearing synced tables (same set as SyncTriggersAndRls/ChangeSeqIndexes).
         await PurgeTableAsync("tasks", db.Tasks);
         await PurgeTableAsync("subtasks", db.Subtasks);
@@ -150,6 +159,9 @@ public sealed class TombstonePurgeService(
             state.PurgedBelowChangeSeq = maxPurgedSeq;
             await db.SaveChangesAsync(ct);
         }
+
+        // Commit the deletes + watermark advance together (see the atomicity note above).
+        await tx.CommitAsync(ct);
 
         logger.LogInformation(
             "Tombstone purge pass: cutoff {Cutoff:o}; deleted {Total} rows; watermark {Watermark}",
