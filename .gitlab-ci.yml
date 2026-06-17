@@ -37,6 +37,10 @@ test:backend:
     # Ryuk (Testcontainers' reaper) is flaky under dind; the CI job is ephemeral so its
     # containers are torn down with the runner anyway.
     TESTCONTAINERS_RYUK_DISABLED: "true"
+    # In dind, Testcontainers must reach the spun Postgres on the dind host (the `docker` service),
+    # not localhost — the container's mapped port is exposed on dind, so without this the DB
+    # connection times out even though the Postgres container started fine.
+    TESTCONTAINERS_HOST_OVERRIDE: "docker"
     NUGET_PACKAGES: "$CI_PROJECT_DIR/.nuget"
   cache:
     key: "nuget-$CI_COMMIT_REF_SLUG"
@@ -48,11 +52,12 @@ test:backend:
 
 # ---------------------------------------------------------------------------
 # Frontend: client (@tmap/app) + web tests + the web typecheck/bundle.
-# Uses `npm install`, NOT `npm ci`: the committed package-lock.json records the native
-# rollup/esbuild binaries only for the lockfile host's platform (npm/cli#4828), so `npm ci`
-# fails on a linux runner with "Cannot find module @rollup/rollup-linux-x64-gnu". A fresh
-# install resolves the correct linux binaries. Only the publish workspaces are installed
-# (skips the desktop/electron app for speed).
+# The committed package-lock.json records the native rollup/esbuild binaries only for the
+# lockfile host's platform (win32) — an npm limitation (npm/cli#4828) — so BOTH `npm ci` AND
+# `npm install` WITH that lockfile present fail on a linux runner with "Cannot find module
+# @rollup/rollup-linux-x64-gnu". We delete the lockfile so npm resolves the correct linux
+# binaries fresh (the same reason the web Dockerfile doesn't copy it). Only the publish
+# workspaces are installed (skips the desktop/electron app for speed).
 # ---------------------------------------------------------------------------
 test:frontend:
   stage: test
@@ -64,6 +69,7 @@ test:frontend:
     paths:
       - .npm/
   before_script:
+    - rm -f package-lock.json
     - npm install -w @tmap/web -w @tmap/app -w @tmap/api-client --include-workspace-root --no-audit --no-fund
   script:
     - npm run test:app
