@@ -138,6 +138,12 @@ builder.Services.AddHsts(options => options.ExcludedHosts.Clear());
 
 var app = builder.Build();
 
+// Two-role DB bootstrap (C5): when ConnectionStrings:Migrator is set (prod), migrate the schema
+// as the owner role then provision the locked-down runtime app_user, synchronously BEFORE the
+// host serves any traffic. No-op when unset (local dev / tests). Not a hosted service: a
+// BackgroundService would race Kestrel accepting requests before the schema/role exist.
+await Tmap.Api.Infrastructure.Persistence.DbBootstrapper.RunAsync(builder.Configuration);
+
 // FIRST middleware: rewrite scheme + RemoteIpAddress from the trusted proxy's forwarded headers
 // before HSTS (needs the https scheme) and the rate limiter (keys on RemoteIpAddress) observe them.
 app.UseForwardedHeaders();
