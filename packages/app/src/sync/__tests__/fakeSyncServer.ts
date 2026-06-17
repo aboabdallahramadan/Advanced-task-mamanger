@@ -47,9 +47,21 @@ export class FakeSyncServer {
   private faults: { match: Matcher; fault: Fault }[] = [];
   private latencyMs = 0;
   private pulls = 0;
+  /** One-shot: the next pull() returns the full-resync directive (C9), then clears. */
+  private directiveOnce = false;
 
   private next(): number {
     return ++this.seq;
+  }
+
+  /**
+   * Arm a single full-resync directive (C9): the NEXT pull() returns
+   * { changes: empty, nextSince: <high-water>, hasMore: false, fullResyncRequired: true }
+   * regardless of `since`, then disarms. Mirrors the server's behavior when the
+   * client's cursor has fallen below the purge watermark.
+   */
+  requireFullResyncOnce(): void {
+    this.directiveOnce = true;
   }
 
   /** Awaited before every send/pull/ensureInstances (default no delay). */
@@ -347,6 +359,15 @@ export class FakeSyncServer {
 
   // ── pull ───────────────────────────────────────────────────
   private pullPage(since: number, limit: number): SyncResponse {
+    if (this.directiveOnce) {
+      this.directiveOnce = false;
+      const empty = (): Row[] => [];
+      const changes: Record<PullTable, Row[]> = {
+        tasks: empty(), subtasks: empty(), projects: empty(), noteGroups: empty(), notes: empty(),
+        recurrenceRules: empty(), focusSessions: empty(), dailyPlans: empty(), settings: empty(),
+      };
+      return { changes, nextSince: this.seq, hasMore: false, fullResyncRequired: true } as unknown as SyncResponse;
+    }
     const all: { table: PullTable; row: Row }[] = [];
     for (const table of PULL_TABLES) {
       for (const row of this.tables[table].values()) {
@@ -363,7 +384,7 @@ export class FakeSyncServer {
     };
     for (const { table, row } of page) changes[table].push(row);
     const nextSince = page.length > 0 ? page[page.length - 1].row.changeSeq : since;
-    return { changes, nextSince, hasMore } as unknown as SyncResponse;
+    return { changes, nextSince, hasMore, fullResyncRequired: false } as unknown as SyncResponse;
   }
 }
 

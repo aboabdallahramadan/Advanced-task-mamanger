@@ -10,7 +10,7 @@ import type { LocalStore } from '../data/local/LocalStore';
 import type { TaskSyncRow, SyncChanges } from '../data/local/rows';
 import type { SyncTransport } from './SyncTransport';
 import { applyPullPage } from '../data/local/applyPull';
-import type { SyncBridge } from '../data/local/LocalDataClient';
+import { LocalDataClient, type SyncBridge } from '../data/local/LocalDataClient';
 import type { SyncIssue, SyncOp, SyncStatus, SyncTable } from './types';
 import { entityKey } from './types';
 import { createConnectivity, type Connectivity } from './connectivity';
@@ -37,6 +37,12 @@ export interface SyncEngineDeps {
   clearTimer?: (h: ReturnType<typeof setTimeout>) => void;
   /** Awaitable delay (fake-timer friendly); defaults to setTimeout-based sleep. */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * Full-resync reset (C9) — defaults to a LocalDataClient-backed
+   * resetForFullResync over this store. Injected in tests; production wiring
+   * passes the app's LocalDataClient.resetForFullResync.
+   */
+  resetForFullResync?: () => Promise<void>;
 }
 
 /** Outcome of replaying one op, classified per spec §3.3. */
@@ -59,6 +65,7 @@ export class SyncEngine implements SyncBridge {
   private readonly setTimer: (cb: () => void, ms: number) => ReturnType<typeof setTimeout>;
   private readonly clearTimer: (h: ReturnType<typeof setTimeout>) => void;
   private readonly sleep: (ms: number) => Promise<void>;
+  private readonly resetForFullResync: () => Promise<void>;
 
   private running = false;          // start() called, stop() not yet
   private terminal = false;         // 401-dead; no further cycles
@@ -92,6 +99,9 @@ export class SyncEngine implements SyncBridge {
     this.setTimer = deps.setTimer ?? ((cb, ms) => setTimeout(cb, ms));
     this.clearTimer = deps.clearTimer ?? ((h) => clearTimeout(h));
     this.sleep = deps.sleep ?? ((ms) => new Promise((r) => setTimeout(r, ms)));
+    this.resetForFullResync =
+      deps.resetForFullResync ??
+      (() => new LocalDataClient(this.store, this).resetForFullResync());
     // Prime the synchronous-getStatus cache from the store (best-effort; emitStatus refreshes it).
     void this.refreshSnapshot();
   }
@@ -525,6 +535,29 @@ export class SyncEngine implements SyncBridge {
     const delta = await this.pullPaged(Math.max(0, prior - CURSOR_OVERLAP), prior);
     anyApplied = anyApplied || delta.applied;
 
+    // C9 — full-resync directive: the server's delta would miss purged tombstones.
+    // Only reset+re-pull when the push queue is fully drained (no queued local work to
+    // lose or leave pointing at wiped rows); otherwise defer to a later, drained cycle.
+    if (delta.fullResyncRequired) {
+      if ((await this.store.ops.count()) === 0) {
+        await this.resetForFullResync();
+        // Re-pull from since=0, which repopulates the store and re-sets the gate.
+        const refill = await this.pullPaged(0, 0);
+        anyApplied = anyApplied || refill.applied;
+        if (refill.reachedEnd) {
+          await this.store.setMeta('initialSyncComplete', true);
+          this.cachedInitialSyncComplete = true;
+        }
+      }
+      // Whether reset or deferred, skip the rest of this pull phase: the recovery
+      // pull and gate logic below operate on a now-empty/irrelevant cursor.
+      await this.store.setMeta('lastSyncedAt', new Date().toISOString());
+      if (anyApplied) {
+        for (const cb of this.changesAppliedCbs) cb();
+      }
+      return;
+    }
+
     // §4.1 — set the bootstrap-completeness gate once, the first time a full delta pass
     //   reaches hasMore=false. Cursor presence is NOT the signal (a crash mid-initial-sync
     //   leaves a partial prefix); reaching the end of the paged loop is. The authoritative
@@ -558,12 +591,17 @@ export class SyncEngine implements SyncBridge {
   private async pullPaged(
     since: number,
     startCursor: number,
-  ): Promise<{ applied: boolean; cursor: number; reachedEnd: boolean }> {
+  ): Promise<{ applied: boolean; cursor: number; reachedEnd: boolean; fullResyncRequired: boolean }> {
     let cursor = startCursor;
     let applied = false;
     let hasMore = true;
     while (hasMore) {
       const page = await this.transport.pull(since, PULL_LIMIT);
+      // C9 — purge-horizon directive: the server refused a delta below the watermark.
+      // Stop paging immediately and let pullPhase decide (reset+re-pull, or defer).
+      if (page.fullResyncRequired === true) {
+        return { applied, cursor, reachedEnd: false, fullResyncRequired: true };
+      }
       const pageApplied = await applyPullPage(this.store, page.changes);
       applied = applied || pageApplied;
       // nextSince is int64 (typed number | string by the generator) — coerce.
@@ -580,7 +618,7 @@ export class SyncEngine implements SyncBridge {
       since = nextSince;
       hasMore = page.hasMore;
     }
-    return { applied, cursor, reachedEnd: true };
+    return { applied, cursor, reachedEnd: true, fullResyncRequired: false };
   }
 
   /** Wrap a flat list of pulled TaskSyncRows as a SyncChanges page (only the tasks field). */
