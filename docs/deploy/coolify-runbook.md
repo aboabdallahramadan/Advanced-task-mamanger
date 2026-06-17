@@ -11,9 +11,11 @@ truth for this runbook: spec `docs/superpowers/specs/2026-06-13-sp5-publish-prod
 §2.2, §3, §6.2. Run every command from a shell with `openssl` available (any Linux/macOS box or
 the VPS itself).
 
-> **Pre-deploy quality gate (do this before every push to `main`).** Coolify auto-deploys `main`
-> via its GitHub webhook, so `main` must always be green. Before pushing, run the full suites and
-> the api-client regen exactly as SP0–SP3 were gated:
+> **Pre-deploy quality gate.** Coolify auto-deploys `main` via its GitLab webhook, so `main` must
+> always be green. GitLab CI (`.gitlab-ci.yml`) runs this gate automatically on every push / merge
+> request — backend `dotnet test` (on `docker:dind` for Testcontainers), the client + web suites,
+> `build:web`, and both Docker-image builds. Running it locally first is still the fastest feedback;
+> the api-client regen below must be run + committed by hand after a backend DTO change:
 >
 > ```bash
 > # from backend/   (Docker must be running for Testcontainers)
@@ -32,8 +34,9 @@ the VPS itself).
 - A running Coolify instance on the VPS, reachable in your browser, with a configured server +
   destination (the default Docker network is fine — Dockerfile apps and a managed standalone
   Postgres attach to the same Coolify destination network automatically).
-- This GitHub repo connected to Coolify (a GitHub App or deploy key) so Coolify can pull it and
-  receive push webhooks.
+- This **GitLab** repo (`gitlab.com/tmapqmind/tmap`) connected to Coolify (Coolify's GitLab App, or
+  a project access token / deploy key) so Coolify can pull it and receive push webhooks. GitLab CI
+  runs the test/build gate on each push; Coolify still builds the Dockerfiles and deploys on `main`.
 - DNS control for `qmindtech.net`.
 - `openssl` locally (for secret generation in §3).
 
