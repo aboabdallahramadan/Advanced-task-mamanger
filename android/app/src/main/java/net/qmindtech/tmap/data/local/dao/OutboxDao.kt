@@ -27,8 +27,8 @@ interface OutboxDao {
     @Query("SELECT COUNT(*) FROM outbox WHERE parkedAt IS NULL")
     fun observeUnparkedCount(): Flow<Int>
 
-    @Query("UPDATE outbox SET entityId = :new WHERE entityId = :old")
-    suspend fun remapEntityId(old: String, new: String)
+    @Query("UPDATE outbox SET entityId = :newId WHERE entityId = :oldId")
+    suspend fun remapEntityId(oldId: String, newId: String)
 
     @Query("DELETE FROM outbox")
     suspend fun clear()
