@@ -30,6 +30,17 @@ class TaskFilterTest {
   }
 
   // ---- status filter (multi) ----
+  @Test fun applyTaskFilter_empty_statuses_excludes_all_non_archived() {
+    // An empty statuses set is NOT treated as "match all" — it means no non-archived
+    // status is selected, so all non-archived tasks are excluded (intentional semantics).
+    val tasks = listOf(
+      fakeTask(id = "i", status = TaskStatus.Inbox),
+      fakeTask(id = "p", status = TaskStatus.Planned),
+    )
+    val out = applyTaskFilter(tasks, projects, TaskFilter(statuses = emptySet()))
+    assertEquals(emptyList<String>(), ids(out))
+  }
+
   @Test fun status_filter_keeps_only_selected_non_archived() {
     val tasks = listOf(
       fakeTask(id = "i", status = TaskStatus.Inbox),

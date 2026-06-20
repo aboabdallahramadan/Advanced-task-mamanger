@@ -12,23 +12,25 @@ enum class SortField { CreatedAt, Priority, PlannedDate, Title, Status }
 enum class SortDirection { Asc, Desc }
 enum class GroupBy { None, Status, Project, Priority }
 
-val NON_ARCHIVED_STATUSES: Set<TaskStatus> = setOf(
-  TaskStatus.Inbox, TaskStatus.Backlog, TaskStatus.Planned, TaskStatus.Scheduled, TaskStatus.Done,
-)
-val ALL_PRIORITIES: Set<Int?> = setOf(1, 2, 3, 4, null)
-
 data class TaskFilter(
   val search: String = "",
-  val statuses: Set<TaskStatus> = NON_ARCHIVED_STATUSES,
+  val statuses: Set<TaskStatus> = TaskFilter.NON_ARCHIVED_STATUSES,
   val showArchived: Boolean = false,
-  val priorities: Set<Int?> = ALL_PRIORITIES,
+  val priorities: Set<Int?> = TaskFilter.ALL_PRIORITIES,
   val projectIds: Set<String>? = null,
   val dateFrom: LocalDate? = null,
   val dateTo: LocalDate? = null,
   val sortField: SortField = SortField.CreatedAt,
   val sortDirection: SortDirection = SortDirection.Desc,
   val groupBy: GroupBy = GroupBy.None,
-)
+) {
+  companion object {
+    val NON_ARCHIVED_STATUSES: Set<TaskStatus> = setOf(
+      TaskStatus.Inbox, TaskStatus.Backlog, TaskStatus.Planned, TaskStatus.Scheduled, TaskStatus.Done,
+    )
+    val ALL_PRIORITIES: Set<Int?> = setOf(1, 2, 3, 4, null)
+  }
+}
 
 data class TaskGroup(val key: String, val label: String, val items: List<TaskListItem>)
 
