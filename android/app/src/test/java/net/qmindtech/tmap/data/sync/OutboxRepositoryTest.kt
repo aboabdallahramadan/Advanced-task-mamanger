@@ -18,16 +18,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import java.time.Instant
-import java.time.LocalDate
 
 @Serializable
 data class FakePayload(val title: String)
-
-/** A fixed util.Clock for deterministic createdAt/parkedAt stamps in sync tests. */
-private class FixedClock(private val instant: Instant) : Clock {
-    override fun now(): Instant = instant
-    override fun today(): LocalDate = LocalDate.parse("2026-06-18")
-}
 
 @RunWith(RobolectricTestRunner::class)
 class OutboxRepositoryTest {
