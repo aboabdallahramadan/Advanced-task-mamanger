@@ -35,8 +35,8 @@ class TaskEditorViewModelTest {
   private fun editVm(repo: FakeTaskRepo, subs: FakeSubtaskRepo = FakeSubtaskRepo(), id: String = "t1"): TaskEditorViewModel =
     TaskEditorViewModel(repo, subs, FakeProjectRepo(), clock(), SavedStateHandle(mapOf("taskId" to id)))
 
-  private fun createVm(repo: FakeTaskRepo): TaskEditorViewModel =
-    TaskEditorViewModel(repo, FakeSubtaskRepo(), FakeProjectRepo(), clock(), SavedStateHandle(mapOf("taskId" to null)))
+  private fun createVm(repo: FakeTaskRepo, subs: FakeSubtaskRepo = FakeSubtaskRepo()): TaskEditorViewModel =
+    TaskEditorViewModel(repo, subs, FakeProjectRepo(), clock(), SavedStateHandle(mapOf("taskId" to null)))
 
   @Test fun toEditorState_maps_entity_fields() {
     val t = fakeTask(
@@ -81,6 +81,7 @@ class TaskEditorViewModelTest {
     vm.save { done = true }
     assertEquals(1, repo.updated.size)
     assertEquals("t1", repo.updated.first().first)
+    assertEquals("Renamed", repo.updated.first().second.title)
     assertTrue(repo.created.isEmpty())
     assertTrue(done)
   }
@@ -119,7 +120,7 @@ class TaskEditorViewModelTest {
     val repo = FakeTaskRepo()
     val subs = FakeSubtaskRepo()
     // create mode: no taskId → addSubtask is a no-op
-    val createVm = createVm(repo)
+    val createVm = createVm(repo, subs)
     createVm.addSubtask("nope")
     assertTrue(subs.created.isEmpty())
     // edit mode: persisted task → creates
