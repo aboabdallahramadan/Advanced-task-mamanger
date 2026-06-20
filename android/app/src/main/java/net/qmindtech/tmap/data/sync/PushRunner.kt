@@ -107,6 +107,12 @@ class PushRunner(
                     parkOp(head)
                     rejections.add(SurfacedRejection(head.entityType, head.entityId, head.opType, "parked: ${o.reason}"))
                     parked++
+                    // Park is the terminal poison outcome, reached only after exhausting the in-cycle
+                    // retry ladder — like the Retry5xx abort, this cycle made no forward progress on the
+                    // head, so END it. The next drain skips the parked op (peekNextUnparked) and reaches
+                    // later ops with FRESH responses, so a parked head never wedges the queue AND never
+                    // burns a later op's retry budget against the stale 5xx backlog.
+                    break
                 }
                 is OpOutcome.Drop -> {
                     outbox.delete(head.localSeq)
