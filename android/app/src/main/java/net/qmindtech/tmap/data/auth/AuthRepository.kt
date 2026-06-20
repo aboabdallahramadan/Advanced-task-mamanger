@@ -3,6 +3,8 @@ package net.qmindtech.tmap.data.auth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import net.qmindtech.tmap.data.remote.TmapApiService
 import net.qmindtech.tmap.data.remote.dto.AuthTokenResponse
 import net.qmindtech.tmap.data.remote.dto.LoginRequest
@@ -27,6 +29,8 @@ class AuthRepositoryImpl(
 
     private val _session = MutableStateFlow<SessionState>(SessionState.LoadingSession)
     override val session: StateFlow<SessionState> = _session.asStateFlow()
+
+    private val refreshMutex = Mutex()
 
     override suspend fun register(email: String, password: String): Result<Unit> =
         runCatching { applyAuth(api.register(RegisterRequest(email, password))) }
@@ -63,15 +67,27 @@ class AuthRepositoryImpl(
     }
 
     override suspend fun refreshBlocking(): Boolean {
-        val refresh = tokenStore.readRefreshToken() ?: run {
-            _session.value = SessionState.Unauthenticated
-            return false
+        // Capture the token the caller saw as stale BEFORE taking the lock.
+        val tokenWhenCalled = tokenStore.accessToken
+        return refreshMutex.withLock {
+            // Single-flight: if another caller already rotated the token while we waited, adopt it.
+            if (tokenStore.accessToken != null && tokenStore.accessToken != tokenWhenCalled) {
+                return@withLock true
+            }
+            val refresh = tokenStore.readRefreshToken() ?: run {
+                _session.value = SessionState.Unauthenticated
+                return@withLock false
+            }
+            runCatching {
+                val res = api.refresh(RefreshRequest(refresh))
+                res.refreshToken?.let { tokenStore.saveRefreshToken(it) }
+                tokenStore.accessToken = res.accessToken
+                true
+            }.getOrElse {
+                // Definitive failure (e.g. 401 invalid_grant): route to login, KEEP local data (§5.3).
+                _session.value = SessionState.Unauthenticated
+                false
+            }
         }
-        return runCatching {
-            val res = api.refresh(RefreshRequest(refresh))
-            res.refreshToken?.let { tokenStore.saveRefreshToken(it) }
-            tokenStore.accessToken = res.accessToken
-            true
-        }.getOrElse { false }
     }
 }
