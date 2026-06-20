@@ -17,6 +17,7 @@ import net.qmindtech.tmap.data.sync.OutboxRepository
 import net.qmindtech.tmap.data.sync.SyncScheduler
 import net.qmindtech.tmap.util.Clock
 import java.util.UUID
+import javax.inject.Inject
 
 interface ProjectRepository {
     fun observeAll(): Flow<List<ProjectEntity>>
@@ -31,7 +32,7 @@ interface ProjectRepository {
  * "0002", …) locally and enqueues ONE REORDER op whose payload is the List<ReorderItem> the
  * PATCH /projects/reorder endpoint accepts.
  */
-class ProjectRepositoryImpl(
+class ProjectRepositoryImpl @Inject constructor(
     private val projectDao: ProjectDao,
     private val outbox: OutboxRepository,
     private val db: AppDatabase,

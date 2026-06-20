@@ -17,6 +17,7 @@ import net.qmindtech.tmap.data.sync.OutboxRepository
 import net.qmindtech.tmap.data.sync.SyncScheduler
 import net.qmindtech.tmap.util.Clock
 import java.util.UUID
+import javax.inject.Inject
 
 interface SubtaskRepository {
     fun observeByTask(taskId: String): Flow<List<SubtaskEntity>>
@@ -31,7 +32,7 @@ interface SubtaskRepository {
  * call to POST /tasks/{taskId}/subtasks, and the extra key is ignored on deserialization to
  * CreateSubtaskRequest (ignoreUnknownKeys).
  */
-class SubtaskRepositoryImpl(
+class SubtaskRepositoryImpl @Inject constructor(
     private val subtaskDao: SubtaskDao,
     private val outbox: OutboxRepository,
     private val db: AppDatabase,

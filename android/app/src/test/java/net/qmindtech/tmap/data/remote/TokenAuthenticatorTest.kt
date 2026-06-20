@@ -53,7 +53,7 @@ class TokenAuthenticatorTest {
         val auth = ScriptedAuth(tokenStore, rotateTo = "fresh")
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore))
-            .authenticator(TokenAuthenticator(auth, tokenStore))
+            .authenticator(TokenAuthenticator({ auth }, tokenStore))
             .build()
         server.enqueue(MockResponse().setResponseCode(401))   // first attempt rejected
         server.enqueue(MockResponse().setResponseCode(200))   // retry succeeds
@@ -71,7 +71,7 @@ class TokenAuthenticatorTest {
         val auth = ScriptedAuth(tokenStore, rotateTo = null)   // refresh always fails
         val client = OkHttpClient.Builder()
             .addInterceptor(AuthInterceptor(tokenStore))
-            .authenticator(TokenAuthenticator(auth, tokenStore))
+            .authenticator(TokenAuthenticator({ auth }, tokenStore))
             .build()
         server.enqueue(MockResponse().setResponseCode(401))    // single 401; no retry must follow
         val res = client.newCall(Request.Builder().url(server.url("/api/v1/tasks")).build()).execute()

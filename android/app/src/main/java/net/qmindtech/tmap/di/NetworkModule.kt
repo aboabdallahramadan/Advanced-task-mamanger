@@ -38,9 +38,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideTokenAuthenticator(
-        authRepository: AuthRepository,
+        // Lazy breaks the OkHttpClient → Retrofit → TmapApiService → AuthRepository construction cycle:
+        // the repository is resolved on the first 401, not when the authenticator is built.
+        authRepository: dagger.Lazy<AuthRepository>,
         tokenStore: TokenStore,
-    ): TokenAuthenticator = TokenAuthenticator(authRepository, tokenStore)
+    ): TokenAuthenticator = TokenAuthenticator({ authRepository.get() }, tokenStore)
 
     @Provides
     @Singleton

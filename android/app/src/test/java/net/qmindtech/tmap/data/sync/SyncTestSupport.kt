@@ -71,3 +71,35 @@ class FakeRearmer : SyncReminderRearmer {
         deletedSeen.addAll(deletedIds)
     }
 }
+
+// ── appended to SyncTestSupport.kt (P4 worker tests) ──
+
+/** A throwaway in-memory db + runners used only to satisfy SyncEngine's super-ctor in test doubles. */
+private fun throwingEnvDb(): net.qmindtech.tmap.data.local.AppDatabase = Room.inMemoryDatabaseBuilder(
+    ApplicationProvider.getApplicationContext<Context>(),
+    net.qmindtech.tmap.data.local.AppDatabase::class.java,
+).allowMainThreadQueries().build()
+
+fun throwingPush(): PushRunner {
+    val db = throwingEnvDb()
+    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; explicitNulls = false }
+    val outbox = OutboxRepository(db.outboxDao(), json, FixedClock())
+    val retrofit = retrofit2.Retrofit.Builder().baseUrl("http://localhost/")
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+    val api = retrofit.create(net.qmindtech.tmap.data.remote.TmapApiService::class.java)
+    return PushRunner(api, outbox, db.taskDao(), db.subtaskDao(), db.projectDao(), json, { })
+}
+
+fun throwingPull(): PullRunner {
+    val db = throwingEnvDb()
+    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; explicitNulls = false }
+    val retrofit = retrofit2.Retrofit.Builder().baseUrl("http://localhost/")
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+    val api = retrofit.create(net.qmindtech.tmap.data.remote.TmapApiService::class.java)
+    return PullRunner(
+        api, db, db.taskDao(), db.subtaskDao(), db.projectDao(),
+        db.settingsDao(), db.syncStateDao(), db.outboxDao(), FakeRearmer(),
+    )
+}

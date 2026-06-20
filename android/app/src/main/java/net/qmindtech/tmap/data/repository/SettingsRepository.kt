@@ -7,6 +7,7 @@ import net.qmindtech.tmap.data.local.dao.SettingsDao
 import net.qmindtech.tmap.data.local.entities.SettingEntity
 import net.qmindtech.tmap.data.sync.SyncScheduler
 import net.qmindtech.tmap.util.Clock
+import javax.inject.Inject
 
 /** Reserved settings key under which the user's IANA timezone is persisted (spine §Deletes). */
 const val TIME_ZONE_KEY = "__timeZoneId"
@@ -22,7 +23,7 @@ interface SettingsRepository {
  * Here we apply the optimistic local write (changeSeq stays 0 until a pull rebases it) and nudge a
  * sync. The timezone, when provided, is stored under the reserved TIME_ZONE_KEY.
  */
-class SettingsRepositoryImpl(
+class SettingsRepositoryImpl @Inject constructor(
     private val settingsDao: SettingsDao,
     private val db: AppDatabase,
     private val syncScheduler: SyncScheduler,

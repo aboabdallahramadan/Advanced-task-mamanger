@@ -124,6 +124,7 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.room.testing)
     testImplementation(libs.work.testing)
+    testImplementation(libs.kotlinx.coroutines.guava)
     testImplementation(libs.hilt.android.testing)
     kspTest(libs.hilt.compiler)
 }

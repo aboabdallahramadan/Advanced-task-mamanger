@@ -61,7 +61,8 @@ class NetworkModuleTest {
     fun `module-built client attaches bearer and drives refresh on 401`() {
         val json = NetworkModule.provideJson()
         val interceptor = NetworkModule.provideAuthInterceptor(tokenStore)
-        val authenticator = NetworkModule.provideTokenAuthenticator(StubAuth(tokenStore), tokenStore)
+        val stub = StubAuth(tokenStore)
+        val authenticator = NetworkModule.provideTokenAuthenticator(dagger.Lazy { stub }, tokenStore)
         val client = NetworkModule.provideOkHttpClient(interceptor, authenticator)
         // Re-point the module's Retrofit at MockWebServer (prod base url is otherwise used).
         val retrofit = NetworkModule.provideRetrofit(client, json).newBuilder()

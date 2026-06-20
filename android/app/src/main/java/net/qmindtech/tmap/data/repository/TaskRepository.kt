@@ -20,6 +20,7 @@ import net.qmindtech.tmap.util.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import javax.inject.Inject
 
 /**
  * Create/edit shapes consumed by the TaskEditor (P6) and TaskRepository.create/update.
@@ -73,7 +74,7 @@ interface TaskRepository {
  * outbox, then arms/cancels the reminder and requests an expedited (debounced) sync. Creates use a
  * client UUID so the queued op is idempotent-by-id.
  */
-class TaskRepositoryImpl(
+class TaskRepositoryImpl @Inject constructor(
     private val taskDao: TaskDao,
     private val subtaskDao: SubtaskDao,
     private val outbox: OutboxRepository,

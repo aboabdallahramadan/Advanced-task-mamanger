@@ -13,7 +13,7 @@ import javax.inject.Inject
  *   - otherwise                              -> Idle.
  * A mutex makes overlapping syncNow calls serialize (single-flight is otherwise the worker's job).
  */
-class SyncEngine @Inject constructor(
+open class SyncEngine @Inject constructor(
     private val push: PushRunner,
     private val pull: PullRunner,
     private val statusHolder: SyncStatusHolder,
@@ -21,7 +21,7 @@ class SyncEngine @Inject constructor(
 ) {
     private val mutex = Mutex()
 
-    suspend fun syncNow(reason: String): SyncResult = mutex.withLock {
+    open suspend fun syncNow(reason: String): SyncResult = mutex.withLock {
         if (!isOnline()) {
             statusHolder.set(SyncStatus.Offline)
             return@withLock SyncResult()

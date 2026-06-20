@@ -11,6 +11,7 @@ import net.qmindtech.tmap.data.remote.dto.LoginRequest
 import net.qmindtech.tmap.data.remote.dto.LogoutRequest
 import net.qmindtech.tmap.data.remote.dto.RefreshRequest
 import net.qmindtech.tmap.data.remote.dto.RegisterRequest
+import javax.inject.Inject
 
 interface AuthRepository {
     val session: StateFlow<SessionState>
@@ -21,7 +22,7 @@ interface AuthRepository {
     suspend fun refreshBlocking(): Boolean
 }
 
-class AuthRepositoryImpl(
+class AuthRepositoryImpl @Inject constructor(
     private val api: TmapApiService,
     private val tokenStore: TokenStore,
     private val clock: net.qmindtech.tmap.util.Clock,

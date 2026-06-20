@@ -13,6 +13,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import android.util.Base64
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
 
 private val Context.tokenDataStore by preferencesDataStore(name = "tmap_tokens")
 
@@ -21,7 +23,9 @@ private val Context.tokenDataStore by preferencesDataStore(name = "tmap_tokens")
  * Preferences DataStore. The access token is in-memory only. Crypto stays behind [TokenStore] so the
  * repository/authenticator logic can be tested with FakeTokenStore (AndroidKeyStore is absent under Robolectric).
  */
-class KeystoreTokenStore(private val context: Context) : TokenStore {
+class KeystoreTokenStore @Inject constructor(
+    @ApplicationContext private val context: Context,
+) : TokenStore {
 
     override var accessToken: String? = null
 
