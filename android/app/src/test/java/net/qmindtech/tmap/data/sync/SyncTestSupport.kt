@@ -56,3 +56,18 @@ class RecordingBackoff {
     val waited = mutableListOf<Int>()
     val fn: suspend (Int) -> Unit = { attempt -> waited.add(attempt) }
 }
+
+// Test double for the MAIN-source net.qmindtech.tmap.data.sync.SyncReminderRearmer interface.
+class FakeRearmer : SyncReminderRearmer {
+    var reconcileCalls = 0
+    val changedSeen = mutableListOf<net.qmindtech.tmap.data.local.entities.TaskEntity>()
+    val deletedSeen = mutableListOf<String>()
+    override suspend fun reconcile(
+        changed: List<net.qmindtech.tmap.data.local.entities.TaskEntity>,
+        deletedIds: List<String>,
+    ) {
+        reconcileCalls++
+        changedSeen.addAll(changed)
+        deletedSeen.addAll(deletedIds)
+    }
+}
