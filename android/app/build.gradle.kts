@@ -127,4 +127,5 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.guava)
     testImplementation(libs.hilt.android.testing)
     kspTest(libs.hilt.compiler)
+    testImplementation(libs.compose.ui.test.junit4)
 }

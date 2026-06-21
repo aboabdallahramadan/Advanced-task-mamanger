@@ -1,43 +1,51 @@
 package net.qmindtech.tmap.ui.theme
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 
-// Dark-only. No dynamic color — the brand palette is fixed across all devices.
-// internal (not private) so ThemeColorSchemeTest can verify token→slot mappings.
-internal val TmapDarkColorScheme: ColorScheme = darkColorScheme(
+/**
+ * Material3 bridge scheme. Midnight Calm is the source of truth; this exists so M3 components
+ * (ripple, default text colors, selection handles) render coherently. App UI reads TmapColors
+ * via LocalTmapColors, never these roles directly.
+ */
+val TmapDarkColorScheme: ColorScheme = darkColorScheme(
     primary = MidnightCalmColors.accent,
     onPrimary = MidnightCalmColors.onAccent,
-    primaryContainer = MidnightCalmColors.accentEnd,
-    onPrimaryContainer = MidnightCalmColors.textPrimary,
-    secondary = MidnightCalmColors.accent,
+    secondary = MidnightCalmColors.accentEnd,
     onSecondary = MidnightCalmColors.onAccent,
     background = MidnightCalmColors.bgBottom,
-    onBackground = MidnightCalmColors.textBody,
+    onBackground = MidnightCalmColors.textPrimary,
     surface = MidnightCalmColors.surface,
     onSurface = MidnightCalmColors.textPrimary,
     surfaceVariant = MidnightCalmColors.surfaceRaised,
     onSurfaceVariant = MidnightCalmColors.textSecondary,
     surfaceContainer = MidnightCalmColors.surfaceRaised,
-    surfaceContainerHigh = MidnightCalmColors.surfaceInset,
+    surfaceContainerHigh = MidnightCalmColors.surfaceRaised,
     outline = MidnightCalmColors.borderStrong,
     outlineVariant = MidnightCalmColors.borderSubtle,
-    error = MidnightCalmColors.danger,
-    onError = MidnightCalmColors.textPrimary,
-    errorContainer = MidnightCalmColors.danger,
-    onErrorContainer = MidnightCalmColors.textPrimary,
     tertiary = MidnightCalmColors.success,
-    onTertiary = MidnightCalmColors.bgBottom,
+    onTertiary = MidnightCalmColors.onAccent,
+    error = MidnightCalmColors.danger,
+    onError = MidnightCalmColors.onAccent,
 )
 
 @Composable
 fun TmapTheme(content: @Composable () -> Unit) {
     CompositionLocalProvider(
         LocalTmapColors provides MidnightCalmColors,
+        LocalTmapShapes provides TmapDefaultShapes,
+        LocalTmapSpacing provides TmapDefaultSpacing,
         LocalTmapType provides TmapDefaultType,
+        LocalTmapMotion provides TmapDefaultMotion,
     ) {
         MaterialTheme(
             colorScheme = TmapDarkColorScheme,
@@ -45,4 +53,19 @@ fun TmapTheme(content: @Composable () -> Unit) {
             content = content,
         )
     }
+}
+
+/** The app-wide vertical background gradient (bgTop → bgBottom). Every screen sits on this. */
+@Composable
+fun TmapBackground(
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val colors = LocalTmapColors.current
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(colors.bgTop, colors.bgBottom))),
+        content = content,
+    )
 }
