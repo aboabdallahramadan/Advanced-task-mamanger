@@ -22,7 +22,6 @@ import net.qmindtech.tmap.data.local.dao.SettingsDao
 import net.qmindtech.tmap.data.local.dao.SubtaskDao
 import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
-import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.data.remote.TmapApiService
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.ProjectRepositoryImpl
@@ -38,8 +37,6 @@ import net.qmindtech.tmap.data.sync.PushRunner
 import net.qmindtech.tmap.data.sync.SyncReminderRearmer
 import net.qmindtech.tmap.data.sync.SyncScheduler
 import net.qmindtech.tmap.data.sync.WorkManagerSyncScheduler
-import net.qmindtech.tmap.notifications.NoopReminderScheduler
-import net.qmindtech.tmap.notifications.ReminderScheduler
 import net.qmindtech.tmap.util.Clock
 import net.qmindtech.tmap.util.CoroutineDispatchers
 import net.qmindtech.tmap.util.SystemClock
@@ -52,8 +49,9 @@ import javax.inject.Singleton
  * OutboxRepository, SyncStatusHolder and SyncEngine resolve via their own @Inject constructors
  * (no @Provides for them here); this module only supplies what @Inject cannot, e.g. the isOnline probe.
  *
- * TokenStore -> KeystoreTokenStore is bound here (the only TokenStore binding path); ReminderScheduler
- * is bound to NoopReminderScheduler until P7 binds the real AlarmManager implementation.
+ * TokenStore -> KeystoreTokenStore is bound here (the only TokenStore binding path). The reminder
+ * bindings (ReminderScheduler + SyncReminderRearmer) live in ReminderModule (P7.6b), which binds the
+ * real AlarmManager-backed AlarmReminderScheduler and ReminderRearmer.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -79,12 +77,6 @@ abstract class AppModule {
 
     @Binds @Singleton
     abstract fun bindSyncScheduler(impl: WorkManagerSyncScheduler): SyncScheduler
-
-    @Binds @Singleton
-    abstract fun bindSyncReminderRearmer(impl: NoopReminderRearmer): SyncReminderRearmer
-
-    @Binds @Singleton
-    abstract fun bindReminderScheduler(impl: NoopReminderScheduler): ReminderScheduler
 
     companion object {
 
@@ -139,14 +131,4 @@ abstract class AppModule {
                 caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
         }
     }
-}
-
-/**
- * No-op SyncReminderRearmer used until P7 binds the real ReminderRearmer. PullRunner calls
- * reconcile() after each pull; doing nothing here is safe (reminders simply aren't (re)armed from
- * sync until P7). P7 REPLACES this binding with `@Binds ReminderRearmer -> SyncReminderRearmer`.
- */
-@Singleton
-class NoopReminderRearmer @javax.inject.Inject constructor() : SyncReminderRearmer {
-    override suspend fun reconcile(changed: List<TaskEntity>, deletedIds: List<String>) = Unit
 }
