@@ -35,10 +35,13 @@ internal val TmapDarkColorScheme: ColorScheme = darkColorScheme(
 
 @Composable
 fun TmapTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalTmapColors provides MidnightCalmColors) {
+    CompositionLocalProvider(
+        LocalTmapColors provides MidnightCalmColors,
+        LocalTmapType provides TmapDefaultType,
+    ) {
         MaterialTheme(
             colorScheme = TmapDarkColorScheme,
-            typography = TmapTypography,
+            typography = TmapMaterialTypography,
             content = content,
         )
     }
