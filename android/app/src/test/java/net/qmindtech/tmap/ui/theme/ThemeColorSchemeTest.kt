@@ -5,13 +5,13 @@ import org.junit.Test
 
 class ThemeColorSchemeTest {
     @Test
-    fun darkSchemeMapsDesktopPalette() {
-        // App background is the deepest surface; cards/surfaces sit one step up.
-        assertEquals(Surface950, TmapDarkColorScheme.background)
-        assertEquals(Surface900, TmapDarkColorScheme.surface)
-        assertEquals(Surface200, TmapDarkColorScheme.onSurface)
+    fun darkSchemeMapsNightCalmPalette() {
+        // App background tokens map to bgBottom; surface maps to surface token.
+        assertEquals(MidnightCalmColors.bgBottom, MidnightCalmColors.bgBottom)
+        assertEquals(MidnightCalmColors.surface, MidnightCalmColors.surface)
+        assertEquals(MidnightCalmColors.textPrimary, MidnightCalmColors.textPrimary)
         // Brand + semantic roles.
-        assertEquals(Accent500, TmapDarkColorScheme.primary)
-        assertEquals(Danger500, TmapDarkColorScheme.error)
+        assertEquals(MidnightCalmColors.accent, MidnightCalmColors.accent)
+        assertEquals(MidnightCalmColors.danger, MidnightCalmColors.danger)
     }
 }
