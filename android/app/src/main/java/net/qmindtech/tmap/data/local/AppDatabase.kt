@@ -25,7 +25,10 @@ import net.qmindtech.tmap.data.local.entities.TaskEntity
         OutboxOp::class,
         SyncStateEntity::class,
     ],
-    version = 1,
+    // v2 adds sync_state.pendingRecovery (BUG 0 recovery flag). The prod build relies on
+    // fallbackToDestructiveMigration() (DatabaseModule) so an existing v1 install is wiped + re-pulled
+    // on first open — acceptable per spec §3.3 (a schema bump deliberately triggers a full resync).
+    version = 2,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

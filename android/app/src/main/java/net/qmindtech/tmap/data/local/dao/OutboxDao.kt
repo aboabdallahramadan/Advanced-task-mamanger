@@ -18,8 +18,20 @@ interface OutboxDao {
     @Query("SELECT COUNT(*) FROM outbox WHERE parkedAt IS NULL")
     suspend fun countUnparked(): Int
 
+    /** Total queued ops (parked + unparked). The full-resync/recovery gate must block on poison ops too. */
+    @Query("SELECT COUNT(*) FROM outbox")
+    suspend fun countAll(): Int
+
+    /** Parked (poison) ops only — drives the sticky "N changes need attention" SyncStatus.Error. */
+    @Query("SELECT COUNT(*) FROM outbox WHERE parkedAt IS NOT NULL")
+    suspend fun countParked(): Int
+
     @Query("DELETE FROM outbox WHERE localSeq = :localSeq")
     suspend fun delete(localSeq: Long)
+
+    /** Drop every queued op for an id — used when a rejected CREATE makes its later ops unreplayable. */
+    @Query("DELETE FROM outbox WHERE entityId = :entityId")
+    suspend fun deleteByEntityId(entityId: String)
 
     @Query("UPDATE outbox SET attempts = attempts + 1, parkedAt = :parkedAt WHERE localSeq = :localSeq")
     suspend fun bumpAttempts(localSeq: Long, parkedAt: Instant?)

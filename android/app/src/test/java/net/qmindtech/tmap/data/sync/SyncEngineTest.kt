@@ -30,7 +30,7 @@ class SyncEngineTest {
     fun setUp() {
         env = SyncTestEnv()
         outbox = OutboxRepository(env.db.outboxDao(), env.json, clock)
-        push = PushRunner(env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(), env.json, { })
+        push = PushRunner(env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(), env.db.syncStateDao(), env.json, { })
         pull = PullRunner(env.api, env.db, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
             env.db.settingsDao(), env.db.syncStateDao(), env.db.outboxDao(), rearmer)
         holder = SyncStatusHolder()
@@ -96,8 +96,14 @@ class SyncEngineTest {
 
     @Test
     fun `rejections from push are reflected in SyncResult and surface as Error status`() = runTest {
-        env.server.enqueue(env.jsonResponse(400, """{"title":"bad","status":400}"""))
-        env.server.enqueue(env.jsonResponse(200, """{"changes":{},"nextSince":0,"hasMore":false}"""))
+        // The POST create 400s (definitive drop); every GET sync returns an empty page. Route by method
+        // because the drop now also schedules a from-0 recovery pull (BUG 0), so TWO GETs may fire.
+        env.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse =
+                if (request.method == "GET")
+                    env.jsonResponse(200, """{"changes":{},"nextSince":0,"hasMore":false}""")
+                else env.jsonResponse(400, """{"title":"bad","status":400}""")
+        }
         outbox.enqueueRaw(EntityType.TASK, "bad", OpType.CREATE,
             env.json.encodeToString(CreateTaskRequest.serializer(), CreateTaskRequest(id = "bad", title = "x")))
 
@@ -106,6 +112,37 @@ class SyncEngineTest {
 
         assertEquals(1, result.rejected)
         assertTrue(holder.status.value is SyncStatus.Error)
+    }
+
+    @Test
+    fun `a parked op keeps SyncStatus Error on a later clean cycle (sticky, not reset to Idle)`() = runTest {
+        // A poison CREATE that ALWAYS 5xxes (POST), and GET sync always returns an empty page. Route by
+        // method so push's variable 500 consumption never steals the pull's GET response (FIFO hazard).
+        outbox.enqueueRaw(EntityType.TASK, "poison", OpType.CREATE,
+            env.json.encodeToString(CreateTaskRequest.serializer(), CreateTaskRequest(id = "poison", title = "p")))
+        env.server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+            override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): okhttp3.mockwebserver.MockResponse =
+                if (request.method == "GET")
+                    env.jsonResponse(200, """{"changes":{},"nextSince":0,"hasMore":false}""")
+                else env.emptyResponse(500) // every POST (the poison create) 5xxes
+        }
+        val pushWithBackoff = PushRunner(
+            env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
+            env.db.syncStateDao(), env.json, { },
+        )
+        val engine = SyncEngine(pushWithBackoff, pull, holder, isOnline = { true })
+
+        // Three cycles park the poison op (attempts 4 -> 8 -> 10, matches PushRunner5xxParkTest cadence).
+        engine.syncNow("c1")
+        engine.syncNow("c2")
+        engine.syncNow("c3") // parks it on this cycle
+        assertEquals(1, outbox.countParked())
+        assertTrue(holder.status.value is SyncStatus.Error)
+
+        // A later CLEAN cycle (no new parks, no rejections) must STAY Error because the op is still parked.
+        engine.syncNow("clean")
+        assertEquals(1, outbox.countParked())
+        assertTrue("sticky parked-op error must not reset to Idle", holder.status.value is SyncStatus.Error)
     }
 
     @Test

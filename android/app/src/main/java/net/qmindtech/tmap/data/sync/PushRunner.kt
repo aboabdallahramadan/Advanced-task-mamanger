@@ -8,6 +8,7 @@ import net.qmindtech.tmap.data.local.EntityType
 import net.qmindtech.tmap.data.local.OpType
 import net.qmindtech.tmap.data.local.dao.ProjectDao
 import net.qmindtech.tmap.data.local.dao.SubtaskDao
+import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
 import net.qmindtech.tmap.data.local.entities.OutboxOp
 import net.qmindtech.tmap.data.remote.TmapApiService
@@ -34,11 +35,18 @@ data class SurfacedRejection(
 data class PushOutcome(
     val pushed: Int = 0,
     val rejected: Int = 0,
+    /** Ops newly parked DURING this drain. */
     val parked: Int = 0,
     val adopted: Int = 0,
     val rejections: List<SurfacedRejection> = emptyList(),
     /** True when a network failure aborted the phase (queue intact). */
     val networkAborted: Boolean = false,
+    /**
+     * TOTAL parked (poison) ops still in the outbox after the drain (BUG 1 sticky error). Unlike
+     * [parked] (new-this-cycle), this stays > 0 across later clean cycles until the op is resolved,
+     * so SyncEngine can keep SyncStatus.Error instead of resetting to Idle.
+     */
+    val parkedTotal: Int = 0,
 )
 
 /** Classification of one op send, mirroring the SP3 OpOutcome taxonomy. */
@@ -67,6 +75,7 @@ class PushRunner(
     private val taskDao: TaskDao,
     private val subtaskDao: SubtaskDao,
     private val projectDao: ProjectDao,
+    private val syncStateDao: SyncStateDao,
     private val json: Json,
     private val backoff: suspend (attempt: Int) -> Unit,
 ) {
@@ -96,11 +105,14 @@ class PushRunner(
             when (val o = outcome) {
                 is OpOutcome.Done -> { outbox.delete(head.localSeq); pushed++ }
                 is OpOutcome.Adopt -> { adoptExisting(head, o.existingId); adopted++ }
-                is OpOutcome.Network -> return PushOutcome(pushed, rejected, parked, adopted, rejections, networkAborted = true)
+                is OpOutcome.Network -> return PushOutcome(
+                    pushed, rejected, parked, adopted, rejections,
+                    networkAborted = true, parkedTotal = outbox.countParked(),
+                )
                 is OpOutcome.Retry5xx -> {
                     // Exhausted the in-cycle ladder: persist the attempt count, abort, resume next cycle.
                     outbox.bumpAttempts(head.localSeq, parkedAt = null)
-                    return PushOutcome(pushed, rejected, parked, adopted, rejections)
+                    return PushOutcome(pushed, rejected, parked, adopted, rejections, parkedTotal = outbox.countParked())
                 }
                 is OpOutcome.Park -> {
                     // parkOp() stamps parkedAt (and bumps attempts) — no separate bump needed.
@@ -115,18 +127,47 @@ class PushRunner(
                     break
                 }
                 is OpOutcome.Drop -> {
-                    outbox.delete(head.localSeq)
+                    dropOp(head)
                     rejections.add(SurfacedRejection(head.entityType, head.entityId, head.opType, o.reason))
                     rejected++
                 }
             }
         }
-        return PushOutcome(pushed, rejected, parked, adopted, rejections)
+        return PushOutcome(pushed, rejected, parked, adopted, rejections, parkedTotal = outbox.countParked())
     }
 
     /** Park = stamp parkedAt so peekNextUnparked skips it; the op stays for retry/discard surfacing. */
     private suspend fun parkOp(op: OutboxOp) {
         outbox.bumpAttempts(op.localSeq, parkedAt = op.createdAt) // any non-null Instant parks it
+    }
+
+    /**
+     * Definitive-4xx drop (SP3 recoverGhostRows + scheduleRecovery mirror). Beyond deleting the op:
+     *  - a rejected CREATE leaves an orphan LOCAL row that exists on no server — delete it, and drop
+     *    other queued ops for that id (they reference the same phantom and would 4xx too);
+     *  - ALWAYS arm a durable from-0 recovery pull so a rejected UPDATE (e.g. edit-vs-delete) can't
+     *    leave local permanently diverged from server truth.
+     */
+    private suspend fun dropOp(op: OutboxOp) {
+        if (op.opType == OpType.CREATE) {
+            deleteLocalEntity(op.entityType, op.entityId)
+            outbox.deleteByEntityId(op.entityId) // drops THIS op plus any later ops for the ghost id
+        } else {
+            outbox.delete(op.localSeq)
+        }
+        // Ensure the (1) row exists before the targeted UPDATE, then arm recovery.
+        syncStateDao.get()
+        syncStateDao.setPendingRecovery(true)
+    }
+
+    /** Delete the orphan local Room row for a rejected CREATE via the entity-type's DAO. */
+    private suspend fun deleteLocalEntity(type: EntityType, id: String) {
+        when (type) {
+            EntityType.TASK -> taskDao.deleteById(id)
+            EntityType.SUBTASK -> subtaskDao.deleteById(id)
+            EntityType.PROJECT -> projectDao.deleteById(id)
+            EntityType.SETTINGS -> Unit
+        }
     }
 
     private suspend fun sendOnce(op: OutboxOp): OpOutcome {

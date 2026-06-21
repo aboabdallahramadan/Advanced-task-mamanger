@@ -45,7 +45,10 @@ class OutboxRepository @Inject constructor(
 
     suspend fun peek(): OutboxOp? = dao.peekNextUnparked()
     suspend fun countUnparked(): Int = dao.countUnparked()
+    suspend fun countAll(): Int = dao.countAll()
+    suspend fun countParked(): Int = dao.countParked()
     suspend fun delete(localSeq: Long) = dao.delete(localSeq)
+    suspend fun deleteByEntityId(entityId: String) = dao.deleteByEntityId(entityId)
     suspend fun bumpAttempts(localSeq: Long, parkedAt: Instant?) = dao.bumpAttempts(localSeq, parkedAt)
     suspend fun remapEntityId(old: String, new: String) = dao.remapEntityId(old, new)
     suspend fun clear() = dao.clear()

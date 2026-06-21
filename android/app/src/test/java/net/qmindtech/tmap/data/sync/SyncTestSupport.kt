@@ -88,7 +88,7 @@ fun throwingPush(): PushRunner {
         .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
     val api = retrofit.create(net.qmindtech.tmap.data.remote.TmapApiService::class.java)
-    return PushRunner(api, outbox, db.taskDao(), db.subtaskDao(), db.projectDao(), json, { })
+    return PushRunner(api, outbox, db.taskDao(), db.subtaskDao(), db.projectDao(), db.syncStateDao(), json, { })
 }
 
 fun throwingPull(): PullRunner {

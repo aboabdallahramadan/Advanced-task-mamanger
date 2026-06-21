@@ -26,7 +26,7 @@ class PushRunnerFifoTest {
     fun setUp() {
         env = SyncTestEnv()
         outbox = OutboxRepository(env.db.outboxDao(), env.json, clock)
-        runner = PushRunner(env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(), env.json, backoff.fn)
+        runner = PushRunner(env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(), env.db.syncStateDao(), env.json, backoff.fn)
     }
 
     @After

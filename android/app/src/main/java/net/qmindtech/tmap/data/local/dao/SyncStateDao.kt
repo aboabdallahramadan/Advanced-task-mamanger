@@ -19,6 +19,14 @@ interface SyncStateDao {
     @Query("SELECT * FROM sync_state WHERE id = 1")
     fun observe(): Flow<SyncStateEntity?>
 
+    /**
+     * Targeted pendingRecovery setter (BUG 0). UPDATE-only so it never resurrects a deleted row and
+     * never races a concurrent cursor write into a stale snapshot. Callers ensure the (1) row exists
+     * (get() runs first in both push and pull paths).
+     */
+    @Query("UPDATE sync_state SET pendingRecovery = :flag WHERE id = 1")
+    suspend fun setPendingRecovery(flag: Boolean)
+
     /** Returns the (1) row, inserting the default if absent. */
     @Transaction
     suspend fun get(): SyncStateEntity {

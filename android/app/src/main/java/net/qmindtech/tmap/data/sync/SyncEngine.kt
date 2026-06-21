@@ -45,11 +45,19 @@ open class SyncEngine @Inject constructor(
                 parked = pushOutcome.parked,
                 fullResynced = pullOutcome.fullResynced,
             )
-            if (pushOutcome.rejected > 0 || pushOutcome.parked > 0) {
-                val msg = pushOutcome.rejections.firstOrNull()?.reason ?: "sync rejected an operation"
-                statusHolder.set(SyncStatus.Error(msg))
-            } else {
-                statusHolder.set(SyncStatus.Idle)
+            // Sticky error: keep Error while ANY op is parked (parkedTotal), even on a later clean
+            // cycle with no new rejections/parks — otherwise the only user signal is a one-cycle Error
+            // the next cycle silently resets to Idle (BUG 1b). New-this-cycle rejections also surface.
+            when {
+                pushOutcome.rejected > 0 || pushOutcome.parked > 0 -> {
+                    val msg = pushOutcome.rejections.firstOrNull()?.reason ?: "sync rejected an operation"
+                    statusHolder.set(SyncStatus.Error(msg))
+                }
+                pushOutcome.parkedTotal > 0 -> {
+                    val n = pushOutcome.parkedTotal
+                    statusHolder.set(SyncStatus.Error("$n ${if (n == 1) "change needs" else "changes need"} attention"))
+                }
+                else -> statusHolder.set(SyncStatus.Idle)
             }
             result
         } catch (e: Exception) {

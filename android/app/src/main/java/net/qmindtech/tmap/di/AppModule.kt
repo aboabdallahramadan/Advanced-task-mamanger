@@ -93,8 +93,9 @@ abstract class AppModule {
             taskDao: TaskDao,
             subtaskDao: SubtaskDao,
             projectDao: ProjectDao,
+            syncStateDao: SyncStateDao,
             json: Json,
-        ): PushRunner = PushRunner(api, outbox, taskDao, subtaskDao, projectDao, json, ::syncBackoff)
+        ): PushRunner = PushRunner(api, outbox, taskDao, subtaskDao, projectDao, syncStateDao, json, ::syncBackoff)
 
         @Provides @Singleton
         fun providePullRunner(

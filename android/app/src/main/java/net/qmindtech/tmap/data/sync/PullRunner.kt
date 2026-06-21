@@ -33,8 +33,11 @@ data class PullOutcome(
  *  - per row: deletedAt != null -> deleteById (tombstone); else upsert.
  *  - SHADOW RULE: skip the entity write if outbox has an UNPARKED op for that id (local wins).
  *  - advance lastSeq = nextSince after each page (never regresses); set initialSyncComplete after a full pass.
- *  - on fullResyncRequired AND outbox.countUnparked() == 0: clear all entity tables, lastSeq = 0,
- *    re-pull from cursor = 0. (Deferred while ops pending — the next drained cycle resyncs.)
+ *  - on fullResyncRequired AND outbox.countAll() == 0: clear all entity tables, lastSeq = 0,
+ *    re-pull from cursor = 0. (Deferred while ANY op pending — parked or not — so a poison op cannot
+ *    let the destructive reset wipe the local-only data it references.)
+ *  - if pendingRecovery is set AND outbox.countAll() == 0: run ONE bounded from-0 recovery pull to
+ *    converge after a definitive-4xx drop, then clear the flag.
  *  - after the pull, call rearmer.reconcile(changedTasks, deletedTaskIds).
  */
 class PullRunner(
@@ -65,9 +68,11 @@ class PullRunner(
             val page = api.sync(since = since, cursor = committedCursor, limit = PULL_LIMIT)
             pages++
 
-            // Full-resync directive — drain-gated: only when the outbox is fully drained.
+            // Full-resync directive — drain-gated on TOTAL ops (parked + unparked). A parked (poison)
+            // op MUST block the destructive reset: clearing the tables would wipe the local-only data
+            // the parked op references, which could then never replay (BUG 1a).
             if (page.fullResyncRequired) {
-                if (outboxDao.countUnparked() == 0) {
+                if (outboxDao.countAll() == 0) {
                     db.withTransaction {
                         taskDao.clear(); subtaskDao.clear(); projectDao.clear(); settingsDao.clear()
                         syncStateDao.upsert(state.copy(lastSeq = 0L, initialSyncComplete = false))
@@ -108,6 +113,17 @@ class PullRunner(
             if (!s.initialSyncComplete) {
                 db.withTransaction { syncStateDao.upsert(s.copy(initialSyncComplete = true)) }
             }
+        }
+
+        // Recovery pull (BUG 0 scheduleRecovery mirror): a prior definitive-4xx Drop stamped
+        // pendingRecovery; converge local state back to server truth with ONE bounded from-0 pull,
+        // then clear the flag. Drain-gated on TOTAL ops (a parked op defers it, same as full-resync).
+        // Skipped after a full-resync (which already re-pulled from 0 this cycle).
+        if (!fullResynced && syncStateDao.get().pendingRecovery && outboxDao.countAll() == 0) {
+            val recovery = pullFrom(0L, 0L, changedTasks, deletedTaskIds)
+            applied = applied || recovery.applied
+            pages += recovery.pages
+            syncStateDao.setPendingRecovery(false)
         }
 
         rearmer.reconcile(changedTasks, deletedTaskIds)
