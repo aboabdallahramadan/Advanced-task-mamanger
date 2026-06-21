@@ -11,6 +11,7 @@ import net.qmindtech.tmap.data.remote.dto.LoginRequest
 import net.qmindtech.tmap.data.remote.dto.LogoutRequest
 import net.qmindtech.tmap.data.remote.dto.RefreshRequest
 import net.qmindtech.tmap.data.remote.dto.RegisterRequest
+import net.qmindtech.tmap.data.sync.SyncScheduler
 import javax.inject.Inject
 
 interface AuthRepository {
@@ -26,6 +27,7 @@ class AuthRepositoryImpl @Inject constructor(
     private val api: TmapApiService,
     private val tokenStore: TokenStore,
     private val clock: net.qmindtech.tmap.util.Clock,
+    private val syncScheduler: SyncScheduler,
 ) : AuthRepository {
 
     private val _session = MutableStateFlow<SessionState>(SessionState.LoadingSession)
@@ -44,6 +46,8 @@ class AuthRepositoryImpl @Inject constructor(
         res.refreshToken?.let { tokenStore.saveRefreshToken(it) }
         tokenStore.accessToken = res.accessToken
         _session.value = SessionState.Authenticated(res.user.id, res.user.email, res.user.timeZoneId)
+        // Resume background sync for the new session (idempotent KEEP — safe even if already scheduled).
+        syncScheduler.schedulePeriodic()
     }
 
     override suspend fun logout() {
@@ -53,6 +57,9 @@ class AuthRepositoryImpl @Inject constructor(
             runCatching { api.logout(LogoutRequest(refresh)) }
         }
         tokenStore.clear()                       // clears ONLY tokens — Room is intentionally KEPT (spec §5.3)
+        // Stop the periodic/expedited workers: with cleared tokens they would 401 and (without this)
+        // their pending writes could be dropped — keep the outbox intact for re-login + full resync (§5.3).
+        syncScheduler.cancelAll()
         _session.value = SessionState.Unauthenticated
     }
 
@@ -67,6 +74,15 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
+    /**
+     * Definitive teardown to Unauthenticated: cancel background sync (cleared tokens would 401 and risk
+     * dropping pending writes) but KEEP Room + the outbox so re-login + full resync reconciles (§5.3).
+     */
+    private fun toUnauthenticated() {
+        syncScheduler.cancelAll()
+        _session.value = SessionState.Unauthenticated
+    }
+
     override suspend fun refreshBlocking(): Boolean {
         // Capture the token the caller saw as stale BEFORE taking the lock.
         val tokenWhenCalled = tokenStore.accessToken
@@ -76,7 +92,7 @@ class AuthRepositoryImpl @Inject constructor(
                 return@withLock true
             }
             val refresh = tokenStore.readRefreshToken() ?: run {
-                _session.value = SessionState.Unauthenticated
+                toUnauthenticated()
                 return@withLock false
             }
             runCatching {
@@ -86,7 +102,7 @@ class AuthRepositoryImpl @Inject constructor(
                 true
             }.getOrElse {
                 // Definitive failure (e.g. 401 invalid_grant): route to login, KEEP local data (§5.3).
-                _session.value = SessionState.Unauthenticated
+                toUnauthenticated()
                 false
             }
         }

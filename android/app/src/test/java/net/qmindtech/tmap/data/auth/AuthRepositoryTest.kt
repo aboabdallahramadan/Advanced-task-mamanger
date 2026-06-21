@@ -3,6 +3,7 @@ package net.qmindtech.tmap.data.auth
 import app.cash.turbine.test
 import kotlinx.coroutines.test.runTest
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.repository.FakeSyncScheduler
 import net.qmindtech.tmap.util.Clock
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
@@ -25,6 +26,7 @@ class AuthRepositoryTest {
     private lateinit var server: MockWebServer
     private lateinit var api: TmapApiService
     private lateinit var tokenStore: FakeTokenStore
+    private lateinit var scheduler: FakeSyncScheduler
 
     private class FixedClock : Clock {
         override fun now(): Instant = Instant.parse("2026-06-18T00:00:00Z")
@@ -46,12 +48,13 @@ class AuthRepositoryTest {
             .build()
             .create(TmapApiService::class.java)
         tokenStore = FakeTokenStore()
+        scheduler = FakeSyncScheduler()
     }
 
     @After
     fun tearDown() = server.shutdown()
 
-    private fun repo() = AuthRepositoryImpl(api, tokenStore, FixedClock())
+    private fun repo() = AuthRepositoryImpl(api, tokenStore, FixedClock(), scheduler)
 
     @Test
     fun `login stores tokens and emits Authenticated`() = runTest {
@@ -65,6 +68,23 @@ class AuthRepositoryTest {
         assertTrue(s is SessionState.Authenticated)
         assertEquals("u1", (s as SessionState.Authenticated).userId)
         assertEquals("Asia/Riyadh", s.timeZoneId)
+    }
+
+    @Test
+    fun `login success resumes background sync (schedulePeriodic)`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(authBody("ref1")))
+        val repo = repo()
+        assertTrue(repo.login("a@b.com", "pw").isSuccess)
+        // The new session must re-arm the periodic worker (idempotent KEEP) so sync resumes.
+        assertEquals(1, scheduler.periodicCount)
+    }
+
+    @Test
+    fun `register success resumes background sync (schedulePeriodic)`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(authBody("ref1")))
+        val repo = repo()
+        assertTrue(repo.register("a@b.com", "pw").isSuccess)
+        assertEquals(1, scheduler.periodicCount)
     }
 
     @Test
@@ -102,6 +122,7 @@ class AuthRepositoryTest {
         server.enqueue(MockResponse().setResponseCode(204))   // logout endpoint
         repo.logout()
         assertEquals(1, tokenStore.clearCalls)                // TokenStore.clear called exactly once
+        assertEquals(1, scheduler.cancelCount)                // background sync cancelled on logout (§5.3)
         assertNull(tokenStore.readRefreshToken())
         assertNull(tokenStore.accessToken)
         assertTrue(repo.session.value is SessionState.Unauthenticated)

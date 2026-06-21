@@ -188,7 +188,11 @@ class PushRunner(
             return if (existingId != null) OpOutcome.Adopt(existingId) else OpOutcome.Drop("HTTP 409")
         }
         if (status >= 500) return OpOutcome.Retry5xx(status)
-        // Definitive 4xx (400/403/404-on-non-delete/422). 401 is the Authenticator's domain, not here.
+        // 401 is normally the Authenticator's domain. But a worker can race a logout / definitive-refresh
+        // teardown (cancelAll) and reach here with cleared tokens; a 401 must NOT be treated as a definitive
+        // 4xx (which would Drop the op). PARK it instead so the pending write survives for re-login + resync.
+        if (status == 401) return OpOutcome.Park("HTTP 401")
+        // Definitive 4xx (400/403/404-on-non-delete/422).
         return OpOutcome.Drop("HTTP $status${problemTitle(e)?.let { ": $it" } ?: ""}")
     }
 

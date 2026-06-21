@@ -4,6 +4,7 @@ import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFact
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.repository.FakeSyncScheduler
 import net.qmindtech.tmap.util.Clock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -56,10 +57,25 @@ class LogoutKeepsLocalDataTest {
         tokenStore.saveRefreshToken("ref1")
         tokenStore.accessToken = "acc"
         // AuthRepositoryImpl is constructed with NO DAO/DB — structurally cannot clear Room.
-        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock())
+        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock(), FakeSyncScheduler())
         server.enqueue(MockResponse().setResponseCode(204))   // logout endpoint
         repo.logout()
         assertEquals("TokenStore.clear must run exactly once", 1, tokenStore.clearCalls)
         assertEquals("Room must be untouched on logout (spec §5.3)", 0, roomSpy.clearCalls)
+    }
+
+    @Test
+    fun `logout cancels background sync but keeps the outbox intact`() = runTest {
+        // Regression: a worker racing logout with cleared tokens would 401 and risk dropping pending
+        // writes. logout() must cancel all sync work — while keeping local data (incl. the outbox).
+        val roomSpy = RoomClearSpy()
+        val scheduler = FakeSyncScheduler()
+        tokenStore.saveRefreshToken("ref1")
+        tokenStore.accessToken = "acc"
+        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock(), scheduler)
+        server.enqueue(MockResponse().setResponseCode(204))   // logout endpoint
+        repo.logout()
+        assertEquals("logout must cancel all sync work", 1, scheduler.cancelCount)
+        assertEquals("logout must NOT clear local data (spec §5.3)", 0, roomSpy.clearCalls)
     }
 }

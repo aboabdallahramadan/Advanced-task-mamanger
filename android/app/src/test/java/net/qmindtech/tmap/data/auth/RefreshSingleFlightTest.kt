@@ -7,6 +7,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.repository.FakeSyncScheduler
 import net.qmindtech.tmap.util.Clock
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -76,7 +77,7 @@ class RefreshSingleFlightTest {
 
     @Test
     fun `N concurrent 401s trigger exactly one auth refresh`() = runTest {
-        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock())
+        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock(), FakeSyncScheduler())
         val n = 8
         val results = coroutineScope {
             (1..n).map { async { repo.refreshBlocking() } }.awaitAll()
@@ -95,8 +96,12 @@ class RefreshSingleFlightTest {
             override fun dispatch(request: RecordedRequest): MockResponse =
                 MockResponse().setResponseCode(401).setBody("""{"title":"invalid_grant","status":401}""")
         }
-        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock())
+        val scheduler = FakeSyncScheduler()
+        val repo = AuthRepositoryImpl(api, tokenStore, FixedClock(), scheduler)
         assertEquals(false, repo.refreshBlocking())
         assertTrue(repo.session.value is SessionState.Unauthenticated)
+        // A definitive refresh failure is a teardown to Unauthenticated: it must cancel sync work too,
+        // so the periodic/expedited workers stop racing with cleared tokens (§5.3).
+        assertEquals(1, scheduler.cancelCount)
     }
 }

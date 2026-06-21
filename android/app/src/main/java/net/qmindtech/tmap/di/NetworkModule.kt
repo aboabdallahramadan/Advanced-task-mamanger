@@ -14,6 +14,7 @@ import net.qmindtech.tmap.data.remote.TokenAuthenticator
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
 @Module
@@ -22,6 +23,9 @@ object NetworkModule {
 
     /** Prod base URL (Global Constraints). The local-dev `http://10.0.2.2:5188` override is a build-config concern. */
     const val BASE_URL: String = "https://api-tasks.qmindtech.net/"
+
+    /** Bounded end-to-end call timeout (spec §10 defense-in-depth): no dispatcher thread hangs forever. */
+    const val CALL_TIMEOUT_SECONDS: Long = 30L
 
     @Provides
     @Singleton
@@ -52,6 +56,9 @@ object NetworkModule {
     ): OkHttpClient = OkHttpClient.Builder()
         .addInterceptor(authInterceptor)
         .authenticator(tokenAuthenticator)
+        // Defense-in-depth (spec §10): a bounded end-to-end timeout so no call (incl. a misbehaving
+        // refresh path) can hang an OkHttp dispatcher thread indefinitely; an exceeded call surfaces.
+        .callTimeout(CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
 
     @Provides

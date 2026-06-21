@@ -23,6 +23,16 @@ class TokenAuthenticator(
 ) : Authenticator {
 
     override fun authenticate(route: Route?, response: Response): Request? {
+        // Re-entrancy guard (spec §10): /auth/refresh shares THIS client, so when refresh itself 401s
+        // (family-revoke / expired refresh token) OkHttp would re-invoke us for the refresh request;
+        // that nested refreshBlocking() would block forever on the non-reentrant refreshMutex held by
+        // the outer in-flight refresh → DEADLOCK. Never refresh an auth-endpoint call: surface its 401.
+        // (login/register carry no bearer either, so refreshing them is pointless regardless.)
+        val path = response.request.url.encodedPath
+        if (path.endsWith("/auth/refresh") || path.endsWith("/auth/login") || path.endsWith("/auth/register")) {
+            return null
+        }
+
         val priorAuth = response.request.header("Authorization")
         val refreshed = runBlocking { authRepositoryProvider().refreshBlocking() }
         if (!refreshed) return null                       // definitive failure → stop, surface the 401
