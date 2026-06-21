@@ -8,10 +8,12 @@ import java.time.ZoneId
 interface Clock {
     fun now(): Instant
     fun today(): LocalDate
+    fun zone(): ZoneId = ZoneId.systemDefault()
 }
 
 /** Production clock; [today] is the calendar date in [zone] (the user's zone). */
 class SystemClock(private val zone: ZoneId = ZoneId.systemDefault()) : Clock {
     override fun now(): Instant = Instant.now()
     override fun today(): LocalDate = LocalDate.now(zone)
+    override fun zone(): ZoneId = zone
 }
