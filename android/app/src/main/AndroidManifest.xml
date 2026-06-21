@@ -26,7 +26,32 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Reminder tap deep-link: tmap://task/{taskId} -> Routes.TaskEditor (P5 NavHost binds it). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="tmap" android:host="task" />
+            </intent-filter>
         </activity>
+
+        <!-- Fired by ReminderScheduler's exact alarm; not exported (internal PendingIntent only). -->
+        <receiver
+            android:name=".notifications.AlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="net.qmindtech.tmap.action.REMINDER_FIRE" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-arms alarms after reboot. exported=true is required for the system BOOT_COMPLETED broadcast. -->
+        <receiver
+            android:name=".notifications.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <!-- Disable the default WorkManager initializer so TmapApplication's
              Configuration.Provider (with the HiltWorkerFactory) drives WorkManager. -->
