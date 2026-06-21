@@ -7,7 +7,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Composable
 
 // Dark-only. No dynamic color — the brand palette is fixed across all devices.
-private val TmapDarkColorScheme: ColorScheme = darkColorScheme(
+// internal (not private) so ThemeColorSchemeTest can verify token→slot mappings.
+internal val TmapDarkColorScheme: ColorScheme = darkColorScheme(
     primary = MidnightCalmColors.accent,
     onPrimary = MidnightCalmColors.onAccent,
     primaryContainer = MidnightCalmColors.accentEnd,
