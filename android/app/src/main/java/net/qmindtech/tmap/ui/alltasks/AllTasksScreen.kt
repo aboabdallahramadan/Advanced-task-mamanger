@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.PriorityDisplay
 import net.qmindtech.tmap.ui.components.TaskRow
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -94,6 +95,42 @@ fun AllTasksScreen(
         TextButton(onClick = viewModel::clearFilters) {
           Icon(Icons.Filled.Clear, contentDescription = null)
           Text("Clear")
+        }
+      }
+      // Row 2: Priority filter chips
+      Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+      ) {
+        TaskFilter.ALL_PRIORITIES.forEach { p ->
+          FilterChip(
+            selected = p in state.filter.priorities,
+            onClick = {
+              val next = state.filter.priorities.toMutableSet()
+              if (!next.remove(p)) next.add(p)
+              viewModel.setPriorities(next)
+            },
+            label = { Text(PriorityDisplay.label(p)) },
+          )
+        }
+      }
+      // Row 3: Project filter chips (only shown when there are projects)
+      if (state.projects.isNotEmpty()) {
+        Row(
+          modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+          state.projects.forEach { project ->
+            FilterChip(
+              selected = project.id in (state.filter.projectIds ?: emptySet()),
+              onClick = {
+                val next = (state.filter.projectIds ?: emptySet()).toMutableSet()
+                if (!next.remove(project.id)) next.add(project.id)
+                viewModel.setProjectIds(if (next.isEmpty()) null else next)
+              },
+              label = { Text(project.name) },
+            )
+          }
         }
       }
 
