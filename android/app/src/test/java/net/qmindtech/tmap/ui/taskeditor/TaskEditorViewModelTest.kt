@@ -241,4 +241,31 @@ class TaskEditorViewModelTest {
 
     assertEquals(false, vm.uiState.value.isEdit)
   }
+
+  // ── observe-job leak regression ───────────────────────────────────────────
+
+  /**
+   * Regression: load("a") then load("b") must cancel the "a" collector so that
+   * a later emission on "a"'s flow cannot overwrite _state with stale data.
+   */
+  @Test fun load_cancels_prior_observe_so_stale_task_a_emit_does_not_overwrite_task_b() =
+    runTest(testDispatcher) {
+      val repo = FakeTaskRepo()
+      repo.setForId(fakeTask(id = "a", title = "Task A"))
+      repo.setForId(fakeTask(id = "b", title = "Task B"))
+
+      val vm = TaskEditorViewModel(repo, FakeSubtaskRepo(), FakeProjectRepo(), clock(), SavedStateHandle(mapOf("taskId" to null)))
+
+      vm.load("a")
+      assertEquals("Task A", vm.uiState.value.title)
+
+      vm.load("b")
+      assertEquals("Task B", vm.uiState.value.title)
+
+      // Emit an update to task "a" — the prior observeJob must be cancelled so this
+      // emission does NOT overwrite the state that now belongs to task "b".
+      repo.emitForId("a", fakeTask(id = "a", title = "Task A — updated"))
+
+      assertEquals("Task B", vm.uiState.value.title)
+    }
 }

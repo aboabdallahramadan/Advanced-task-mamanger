@@ -95,10 +95,14 @@ class FakeTaskRepo(
   val actualTimeAdded = mutableListOf<Pair<String, Int>>()
   var nextId = "new-id"
 
+  // Per-id flows for testing multi-task observation scenarios.
+  private val perIdFlows = mutableMapOf<String, MutableStateFlow<TaskEntity?>>()
+
   override fun observeAll(): Flow<List<TaskEntity>> = all
   override fun observeToday(today: LocalDate): Flow<List<TaskEntity>> = this.today
   override fun observeByStatus(s: TaskStatus): Flow<List<TaskEntity>> = byStatus
-  override fun observe(id: String): Flow<TaskEntity?> = single
+  override fun observe(id: String): Flow<TaskEntity?> =
+    perIdFlows[id] ?: single
   override suspend fun create(draft: TaskDraft): String { created += draft; return nextId }
   override suspend fun update(id: String, edit: TaskEdit) { updated += id to edit }
   override suspend fun markDone(id: String) { markedDone += id }
@@ -111,6 +115,16 @@ class FakeTaskRepo(
   fun setAll(v: List<TaskEntity>) = all.let { it.value = v }
   fun setByStatus(v: List<TaskEntity>) = byStatus.let { it.value = v }
   fun setSingle(v: TaskEntity?) = single.let { it.value = v }
+
+  /** Sets up a per-id flow so [observe] returns a flow scoped to [entity.id]. */
+  fun setForId(entity: TaskEntity) {
+    perIdFlows.getOrPut(entity.id) { MutableStateFlow(null) }.value = entity
+  }
+
+  /** Emits a new value on the per-id flow for [id] (must have been set via [setForId] first). */
+  fun emitForId(id: String, entity: TaskEntity?) {
+    perIdFlows[id]?.value = entity
+  }
 }
 
 class FakeProjectRepo(

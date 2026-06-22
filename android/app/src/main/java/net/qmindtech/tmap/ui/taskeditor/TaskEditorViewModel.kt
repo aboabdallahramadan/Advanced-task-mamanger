@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +40,8 @@ class TaskEditorViewModel @Inject constructor(
   // Mutable so load() can override the value set by SavedStateHandle (sheet usage).
   private var taskId: String? = initialTaskId
 
+  private var observeJob: Job? = null
+
   private val _state = MutableStateFlow(
     if (initialTaskId == null) TaskEditorUiState(isEdit = false, loading = false) else TaskEditorUiState()
   )
@@ -70,8 +73,9 @@ class TaskEditorViewModel @Inject constructor(
   }
 
   private fun startObserving(id: String?) {
+    observeJob?.cancel()
     if (id != null) {
-      viewModelScope.launch {
+      observeJob = viewModelScope.launch {
         combine(
           taskRepo.observe(id),
           subtaskRepo.observeByTask(id),
@@ -87,7 +91,7 @@ class TaskEditorViewModel @Inject constructor(
         }
       }
     } else {
-      viewModelScope.launch {
+      observeJob = viewModelScope.launch {
         projectRepo.observeAll().collect { projects -> _state.update { it.copy(projects = projects) } }
       }
     }
