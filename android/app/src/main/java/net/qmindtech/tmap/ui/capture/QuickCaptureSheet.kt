@@ -43,7 +43,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import net.qmindtech.tmap.ui.components.Chip
 import net.qmindtech.tmap.ui.components.FilterChip
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
@@ -259,11 +258,12 @@ private fun TokenChip(
   bgColor: Color,
   textColor: Color,
 ) {
+  val chipCorner = 6.dp
   val shapes = LocalTmapShapes.current
   val type = LocalTmapType.current
   Box(
     modifier = Modifier
-      .background(color = bgColor, shape = RoundedCornerShape(6.dp))
+      .background(color = bgColor, shape = RoundedCornerShape(chipCorner))
       .padding(horizontal = 6.dp, vertical = 1.dp),
   ) {
     Text(
