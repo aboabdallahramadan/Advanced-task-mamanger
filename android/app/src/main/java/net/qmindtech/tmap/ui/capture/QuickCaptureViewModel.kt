@@ -55,17 +55,21 @@ class QuickCaptureViewModel @Inject constructor(
   fun chipToday() {
     clearDate = false
     dateOverride = clock.today()
+    _state.update { it.copy(chipTodayActive = true, chipInboxActive = false) }
   }
 
   fun chipInbox() {
     clearDate = true
     dateOverride = null
+    _state.update { it.copy(chipInboxActive = true, chipTodayActive = false) }
   }
 
   fun chipPriority() {
-    priorityOverride = when (priorityOverride ?: _state.value.parsed.priority) {
+    val next = when (priorityOverride ?: _state.value.parsed.priority) {
       0 -> 2; 2 -> 1; else -> 0
     }.takeIf { it != 0 }
+    priorityOverride = next
+    _state.update { it.copy(priorityLevel = next ?: 0) }
   }
 
   fun chipRemind() {
@@ -100,6 +104,11 @@ class QuickCaptureViewModel @Inject constructor(
     dateOverride = null
     clearDate = false
     priorityOverride = null
-    _state.update { QuickCaptureUiState(projects = it.projects) }
+    _state.update {
+      QuickCaptureUiState(
+        projects = it.projects,
+        // chip-active fields reset to their defaults (false / 0) via default values
+      )
+    }
   }
 }

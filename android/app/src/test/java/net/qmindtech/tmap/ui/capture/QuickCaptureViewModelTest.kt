@@ -13,6 +13,7 @@ import net.qmindtech.tmap.testutil.FixedClock
 import net.qmindtech.tmap.testutil.fakeProject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -94,5 +95,38 @@ class QuickCaptureViewModelTest {
     vm.onTextChange("   ")
     vm.submit()
     assertTrue(repo.created.isEmpty())
+  }
+
+  @Test fun chipToday_surfaces_active_state_and_chipInbox_clears_it() = runTest(testDispatcher) {
+    val vm = vm()
+    vm.chipToday()
+    assertTrue("chipTodayActive should be true after chipToday()", vm.uiState.value.chipTodayActive)
+    assertFalse("chipInboxActive should be false after chipToday()", vm.uiState.value.chipInboxActive)
+    vm.chipInbox()
+    assertTrue("chipInboxActive should be true after chipInbox()", vm.uiState.value.chipInboxActive)
+    assertFalse("chipTodayActive should be false after chipInbox()", vm.uiState.value.chipTodayActive)
+  }
+
+  @Test fun chipPriority_surfaces_priorityLevel_and_cycles() = runTest(testDispatcher) {
+    val vm = vm()
+    assertEquals("priorityLevel starts at 0", 0, vm.uiState.value.priorityLevel)
+    vm.chipPriority() // 0→2
+    assertEquals(2, vm.uiState.value.priorityLevel)
+    vm.chipPriority() // 2→1
+    assertEquals(1, vm.uiState.value.priorityLevel)
+    vm.chipPriority() // 1→0 (off)
+    assertEquals(0, vm.uiState.value.priorityLevel)
+  }
+
+  @Test fun chip_active_state_resets_after_submit() = runTest(testDispatcher) {
+    val vm = vm()
+    vm.onTextChange("Task")
+    vm.chipToday()
+    vm.chipPriority()
+    assertTrue(vm.uiState.value.chipTodayActive)
+    assertEquals(2, vm.uiState.value.priorityLevel)
+    vm.submit()
+    assertFalse("chipTodayActive resets after submit", vm.uiState.value.chipTodayActive)
+    assertEquals("priorityLevel resets after submit", 0, vm.uiState.value.priorityLevel)
   }
 }
