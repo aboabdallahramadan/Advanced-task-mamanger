@@ -22,6 +22,8 @@ import org.junit.Before
 import org.junit.Test
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneOffset
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TaskEditorViewModelTest {
@@ -158,5 +160,46 @@ class TaskEditorViewModelTest {
     val vm = editVm(repo, subs)
     vm.reorderSubtasks(listOf("s2", "s1"))
     assertEquals(listOf("s2", "s1"), subs.updated)
+  }
+
+  // ── onScheduledStartTimeChange / onScheduledEndTimeChange helpers ─────────
+
+  @Test fun onScheduledStartTimeChange_uses_plannedDate_as_anchor() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    val plannedDate = LocalDate.of(2026, 6, 21)
+    repo.setSingle(fakeTask(id = "t1", plannedDate = plannedDate))
+    val vm = editVm(repo)
+    vm.onScheduledStartTimeChange(LocalTime.of(9, 30))
+    val expected = plannedDate.atTime(9, 30).atZone(ZoneOffset.UTC).toInstant()
+    assertEquals(expected, vm.uiState.value.scheduledStart)
+  }
+
+  @Test fun onScheduledStartTimeChange_falls_back_to_today_when_no_plannedDate() = runTest(testDispatcher) {
+    // FixedClock.today() = 2026-06-18 (UTC)
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1", plannedDate = null))
+    val vm = editVm(repo)
+    vm.onScheduledStartTimeChange(LocalTime.of(8, 0))
+    val expected = LocalDate.of(2026, 6, 18).atTime(8, 0).atZone(ZoneOffset.UTC).toInstant()
+    assertEquals(expected, vm.uiState.value.scheduledStart)
+  }
+
+  @Test fun onScheduledEndTimeChange_uses_plannedDate_and_recomputes_duration() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    val plannedDate = LocalDate.of(2026, 6, 21)
+    repo.setSingle(fakeTask(id = "t1", plannedDate = plannedDate))
+    val vm = editVm(repo)
+    vm.onScheduledStartTimeChange(LocalTime.of(9, 0))
+    vm.onScheduledEndTimeChange(LocalTime.of(10, 30))
+    assertEquals(90, vm.uiState.value.durationMinutes)
+  }
+
+  @Test fun onScheduledStartTimeChange_clear_via_null_instant_propagates() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1"))
+    val vm = editVm(repo)
+    vm.onScheduledStartTimeChange(LocalTime.of(9, 0))
+    vm.onScheduledStartChange(null)
+    assertEquals(null, vm.uiState.value.scheduledStart)
   }
 }

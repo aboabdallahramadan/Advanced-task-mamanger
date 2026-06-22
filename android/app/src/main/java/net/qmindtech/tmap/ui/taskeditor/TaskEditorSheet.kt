@@ -14,14 +14,20 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.data.local.TaskStatus
@@ -43,22 +50,21 @@ import net.qmindtech.tmap.ui.components.SheetScaffold
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 import net.qmindtech.tmap.ui.theme.LocalTmapType
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * Bottom-sheet task editor (spec §6.3 — "Tap a card → editor opens as a bottom sheet").
  *
  * Wraps [SheetScaffold] and renders all task fields: title, notes, subtasks (add/complete/
- * rename/delete — edit mode only), project, planned date (gated — see note below), scheduled
- * start/end + duration, due date (gated), priority, reminder, status.  Actions: Complete, Delete,
- * Create/Update.
+ * rename/delete — edit mode only), project, planned date, scheduled start/end + duration,
+ * due date, priority, reminder, status.  Actions: Complete, Delete, Create/Update.
  *
- * NOTE on date pickers: Planned-date and due-date use the platform [android.app.DatePickerDialog].
- * A composable wrapper is not yet componentized (P0 follow-up).  Until then, date fields are
- * present in the UiState and wired to their VM actions; the tap targets are implemented as
- * chip-like buttons that will open the dialog in a future task.
- *
- * Subtask drag-to-reorder requires a drag-handle in [SubtaskRow] (P0/follow-up); the VM action
- * [TaskEditorViewModel.reorderSubtasks] exists and will be wired then.
+ * Date/time fields use Material3 [DatePickerDialog] and [TimePicker] dialogs, rendered dark
+ * via the TmapTheme M3 bridge.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -72,6 +78,12 @@ fun TaskEditorSheet(
     val spacing = LocalTmapSpacing.current
     var newSubtask by remember { mutableStateOf("") }
 
+    // ── Dialog visibility flags ───────────────────────────────────────────
+    var showPlannedDatePicker by remember { mutableStateOf(false) }
+    var showDueDatePicker by remember { mutableStateOf(false) }
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
+
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.accent,
         unfocusedBorderColor = colors.borderSubtle,
@@ -81,6 +93,110 @@ fun TaskEditorSheet(
         focusedTextColor = colors.textPrimary,
         unfocusedTextColor = colors.textBody,
     )
+
+    // ── Planned-date picker dialog ────────────────────────────────────────
+    if (showPlannedDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = state.plannedDate
+                ?.atStartOfDay(ZoneId.of("UTC"))?.toInstant()?.toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showPlannedDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { ms ->
+                        viewModel.onPlannedDateChange(
+                            Instant.ofEpochMilli(ms).atZone(ZoneId.of("UTC")).toLocalDate()
+                        )
+                    }
+                    showPlannedDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPlannedDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    // ── Due-date picker dialog ────────────────────────────────────────────
+    if (showDueDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = state.dueDate
+                ?.atStartOfDay(ZoneId.of("UTC"))?.toInstant()?.toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showDueDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { ms ->
+                        viewModel.onDueDateChange(
+                            Instant.ofEpochMilli(ms).atZone(ZoneId.of("UTC")).toLocalDate()
+                        )
+                    }
+                    showDueDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDueDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    // ── Scheduled-start time picker dialog ───────────────────────────────
+    if (showStartTimePicker) {
+        val initialTime = state.scheduledStart
+            ?.let { LocalTime.ofInstant(it, viewModel.zone()) }
+            ?: LocalTime.of(9, 0)
+        val timeState = rememberTimePickerState(
+            initialHour = initialTime.hour,
+            initialMinute = initialTime.minute,
+            is24Hour = false,
+        )
+        Dialog(onDismissRequest = { showStartTimePicker = false }) {
+            Column {
+                TimePicker(state = timeState)
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { showStartTimePicker = false }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        viewModel.onScheduledStartTimeChange(
+                            LocalTime.of(timeState.hour, timeState.minute)
+                        )
+                        showStartTimePicker = false
+                    }) { Text("OK") }
+                }
+            }
+        }
+    }
+
+    // ── Scheduled-end time picker dialog ─────────────────────────────────
+    if (showEndTimePicker) {
+        val initialTime = state.scheduledEnd
+            ?.let { LocalTime.ofInstant(it, viewModel.zone()) }
+            ?: LocalTime.of(10, 0)
+        val timeState = rememberTimePickerState(
+            initialHour = initialTime.hour,
+            initialMinute = initialTime.minute,
+            is24Hour = false,
+        )
+        Dialog(onDismissRequest = { showEndTimePicker = false }) {
+            Column {
+                TimePicker(state = timeState)
+                Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                    TextButton(onClick = { showEndTimePicker = false }) { Text("Cancel") }
+                    TextButton(onClick = {
+                        viewModel.onScheduledEndTimeChange(
+                            LocalTime.of(timeState.hour, timeState.minute)
+                        )
+                        showEndTimePicker = false
+                    }) { Text("OK") }
+                }
+            }
+        }
+    }
 
     SheetScaffold(
         onDismiss = onDismiss,
@@ -226,29 +342,122 @@ fun TaskEditorSheet(
                 }
             }
 
-            // ── Planned date (date-picker placeholder) ───────────────────
+            // ── Planned date ─────────────────────────────────────────────
             SectionLabel(text = "Planned date", colors = colors, type = type)
-            FilterChip(
-                label = state.plannedDate?.toString() ?: "No date",
-                selected = state.plannedDate != null,
-                // TODO(P0-followup): open DatePickerDialog — componentize date picker
-                onClick = { /* date picker not yet componentized */ },
-                modifier = Modifier.semantics {
-                    contentDescription = "Pick planned date"
-                },
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    label = state.plannedDate?.format(DATE_FORMATTER) ?: "No date",
+                    selected = state.plannedDate != null,
+                    onClick = { showPlannedDatePicker = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Pick planned date, current value: ${state.plannedDate?.format(DATE_FORMATTER) ?: "none"}"
+                    },
+                )
+                if (state.plannedDate != null) {
+                    IconButton(
+                        onClick = { viewModel.onPlannedDateChange(null) },
+                        modifier = Modifier.semantics { contentDescription = "Clear planned date" },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = null,
+                            tint = colors.textTertiary,
+                        )
+                    }
+                }
+            }
 
-            // ── Due date (date-picker placeholder) ───────────────────────
+            // ── Scheduled start / end ─────────────────────────────────────
+            SectionLabel(text = "Scheduled time", colors = colors, type = type)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    label = state.scheduledStart
+                        ?.let { LocalTime.ofInstant(it, viewModel.zone()).format(TIME_FORMATTER) }
+                        ?: "Start time",
+                    selected = state.scheduledStart != null,
+                    onClick = { showStartTimePicker = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Pick scheduled start time, current value: ${
+                            state.scheduledStart?.let { LocalTime.ofInstant(it, viewModel.zone()).format(TIME_FORMATTER) } ?: "none"
+                        }"
+                    },
+                )
+                if (state.scheduledStart != null) {
+                    IconButton(
+                        onClick = { viewModel.onScheduledStartChange(null) },
+                        modifier = Modifier.semantics { contentDescription = "Clear scheduled start" },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = null,
+                            tint = colors.textTertiary,
+                        )
+                    }
+                }
+                Text(
+                    text = "→",
+                    style = type.meta,
+                    color = colors.textTertiary,
+                )
+                FilterChip(
+                    label = state.scheduledEnd
+                        ?.let { LocalTime.ofInstant(it, viewModel.zone()).format(TIME_FORMATTER) }
+                        ?: "End time",
+                    selected = state.scheduledEnd != null,
+                    onClick = { showEndTimePicker = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Pick scheduled end time, current value: ${
+                            state.scheduledEnd?.let { LocalTime.ofInstant(it, viewModel.zone()).format(TIME_FORMATTER) } ?: "none"
+                        }"
+                    },
+                )
+                if (state.scheduledEnd != null) {
+                    IconButton(
+                        onClick = { viewModel.onScheduledEndChange(null) },
+                        modifier = Modifier.semantics { contentDescription = "Clear scheduled end" },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = null,
+                            tint = colors.textTertiary,
+                        )
+                    }
+                }
+            }
+
+            // ── Due date ──────────────────────────────────────────────────
             SectionLabel(text = "Due date", colors = colors, type = type)
-            FilterChip(
-                label = state.dueDate?.toString() ?: "No due date",
-                selected = state.dueDate != null,
-                // TODO(P0-followup): open DatePickerDialog — componentize date picker
-                onClick = { /* date picker not yet componentized */ },
-                modifier = Modifier.semantics {
-                    contentDescription = "Pick due date"
-                },
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                FilterChip(
+                    label = state.dueDate?.format(DATE_FORMATTER) ?: "No due date",
+                    selected = state.dueDate != null,
+                    onClick = { showDueDatePicker = true },
+                    modifier = Modifier.semantics {
+                        contentDescription = "Pick due date, current value: ${state.dueDate?.format(DATE_FORMATTER) ?: "none"}"
+                    },
+                )
+                if (state.dueDate != null) {
+                    IconButton(
+                        onClick = { viewModel.onDueDateChange(null) },
+                        modifier = Modifier.semantics { contentDescription = "Clear due date" },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Close,
+                            contentDescription = null,
+                            tint = colors.textTertiary,
+                        )
+                    }
+                }
+            }
 
             // ── Subtasks (edit mode only) ─────────────────────────────────
             if (state.isEdit) {
@@ -346,6 +555,11 @@ fun TaskEditorSheet(
         }
     }
 }
+
+// ── Formatters ────────────────────────────────────────────────────────────────
+
+private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
+private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 
 // ── Local helper ──────────────────────────────────────────────────────────────
 

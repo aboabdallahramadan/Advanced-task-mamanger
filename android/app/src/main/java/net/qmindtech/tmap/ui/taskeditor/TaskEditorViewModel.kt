@@ -19,6 +19,8 @@ import net.qmindtech.tmap.util.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
 import javax.inject.Inject
 
 @HiltViewModel
@@ -85,6 +87,33 @@ class TaskEditorViewModel @Inject constructor(
   }
 
   fun onDueDateChange(date: LocalDate?) = _state.update { it.copy(dueDate = date) }
+
+  /**
+   * Exposed so composables can obtain the user's timezone for building Instants from LocalTime
+   * without depending on [Clock] directly.
+   */
+  fun zone(): ZoneId = clock.zone()
+
+  /**
+   * Pick a scheduled-start time.  The date anchor is [TaskEditorUiState.plannedDate] if set,
+   * otherwise [Clock.today].  Converts LocalDate+LocalTime → Instant and delegates to
+   * [onScheduledStartChange], preserving duration-recompute logic already there.
+   */
+  fun onScheduledStartTimeChange(time: LocalTime) {
+    val date = _state.value.plannedDate ?: clock.today()
+    val instant = date.atTime(time).atZone(clock.zone()).toInstant()
+    onScheduledStartChange(instant)
+  }
+
+  /**
+   * Pick a scheduled-end time.  Date anchor same as [onScheduledStartTimeChange].
+   * Delegates to [onScheduledEndChange], preserving duration-recompute logic.
+   */
+  fun onScheduledEndTimeChange(time: LocalTime) {
+    val date = _state.value.plannedDate ?: clock.today()
+    val instant = date.atTime(time).atZone(clock.zone()).toInstant()
+    onScheduledEndChange(instant)
+  }
 
   fun reorderSubtasks(orderedIds: List<String>) {
     if (taskId == null) return
