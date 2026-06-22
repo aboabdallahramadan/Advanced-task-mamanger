@@ -17,7 +17,8 @@ import javax.inject.Inject
 
 data class TaskListItem(val task: TaskEntity, val projectName: String?)
 
-data class TodayUiState(
+/** Legacy list-only state kept until P1.3 rebuilds the ViewModel. */
+data class TodayListUiState(
   val loading: Boolean = true,
   val items: List<TaskListItem> = emptyList(),
 )
@@ -41,10 +42,10 @@ class TodayViewModel @Inject constructor(
   clock: Clock,
 ) : ViewModel() {
 
-  val uiState: StateFlow<TodayUiState> =
+  val uiState: StateFlow<TodayListUiState> =
     combine(taskRepo.observeToday(clock.today()), projectRepo.observeAll()) { tasks, projects ->
-      TodayUiState(loading = false, items = timeOrderToday(tasks, projects))
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState())
+      TodayListUiState(loading = false, items = timeOrderToday(tasks, projects))
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayListUiState())
 
   fun toggleDone(task: TaskEntity) {
     viewModelScope.launch { taskRepo.markDone(task.id) }

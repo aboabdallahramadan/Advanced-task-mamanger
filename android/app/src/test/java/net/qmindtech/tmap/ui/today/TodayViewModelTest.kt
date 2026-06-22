@@ -58,7 +58,7 @@ class TodayViewModelTest {
     val vm = TodayViewModel(repo, FakeProjectRepo(), FixedClock(Instant.parse("2026-06-18T06:00:00Z")))
     vm.uiState.test {
       // initial loading frame may be coalesced; assert the settled state
-      val s = expectMostRecentItem()
+      val s: TodayListUiState = expectMostRecentItem()
       assertEquals(false, s.loading)
       assertEquals(listOf("early", "late"), s.items.map { it.task.id })
       cancelAndIgnoreRemainingEvents()
