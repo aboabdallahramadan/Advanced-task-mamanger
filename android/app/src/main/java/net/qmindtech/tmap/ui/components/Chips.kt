@@ -12,6 +12,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
@@ -43,7 +46,7 @@ fun Chip(
                 color = if (selected) colors.accent else colors.surfaceInset,
                 shape = RoundedCornerShape(shapes.pill),
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -91,7 +94,7 @@ fun FilterChip(
                 color = if (selected) colors.accent else colors.borderSubtle,
                 shape = RoundedCornerShape(shapes.pill),
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -137,7 +140,8 @@ fun SegmentedControl(
                         color = if (isSelected) colors.surfaceRaised else Color.Transparent,
                         shape = RoundedCornerShape(shapes.pill),
                     )
-                    .clickable { onSelect(index) }
+                    .semantics { selected = isSelected }
+                    .clickable(role = Role.Tab) { onSelect(index) }
                     .padding(horizontal = 14.dp, vertical = 7.dp),
             )
         }
