@@ -37,6 +37,7 @@ import net.qmindtech.tmap.data.sync.PushRunner
 import net.qmindtech.tmap.data.sync.SyncReminderRearmer
 import net.qmindtech.tmap.data.sync.SyncScheduler
 import net.qmindtech.tmap.data.sync.WorkManagerSyncScheduler
+import net.qmindtech.tmap.ui.capture.QuickCaptureParser
 import net.qmindtech.tmap.util.Clock
 import net.qmindtech.tmap.util.CoroutineDispatchers
 import net.qmindtech.tmap.util.SystemClock
@@ -122,6 +123,9 @@ abstract class AppModule {
             val millis = 1000L shl attempt.coerceIn(0, 2) // 1000, 2000, 4000
             kotlinx.coroutines.delay(millis)
         }
+
+        @Provides
+        fun provideQuickCaptureParser(clock: Clock): QuickCaptureParser = QuickCaptureParser(clock)
 
         /** ConnectivityManager probe: true when a validated internet-capable network is active. */
         private fun isOnline(context: Context): Boolean {
