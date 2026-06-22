@@ -66,6 +66,10 @@ interface TaskRepository {
     suspend fun update(id: String, edit: TaskEdit)
     suspend fun markDone(id: String)
     suspend fun delete(id: String)
+    suspend fun defer(id: String, toDate: LocalDate)
+    suspend fun moveToDay(id: String, date: LocalDate)
+    suspend fun reorder(orderedIds: List<String>)
+    suspend fun addActualTime(id: String, minutes: Int)
 }
 
 /**
@@ -181,6 +185,68 @@ class TaskRepositoryImpl @Inject constructor(
             outbox.enqueueRaw(EntityType.TASK, id, OpType.DELETE, "{}")
         }
         reminder.cancel(id)
+        syncScheduler.requestExpeditedSync()
+    }
+
+    override suspend fun defer(id: String, toDate: LocalDate) = moveToDay(id, toDate)
+
+    override suspend fun moveToDay(id: String, date: LocalDate) {
+        val current = taskDao.getById(id) ?: return
+        val newStatus = when (current.status) {
+            TaskStatus.Inbox, TaskStatus.Backlog -> TaskStatus.Planned
+            else -> current.status
+        }
+        val updated = current.copy(
+            plannedDate = date,
+            scheduledStart = null,
+            scheduledEnd = null,
+            status = newStatus,
+            updatedAt = clock.now(),
+        )
+        db.withTransaction {
+            taskDao.upsertAll(listOf(updated))
+            outbox.enqueue(
+                EntityType.TASK, id, OpType.UPDATE,
+                updated.toUpdateRequest(), UpdateTaskRequest.serializer(),
+            )
+        }
+        reminder.arm(updated)
+        syncScheduler.requestExpeditedSync()
+    }
+
+    override suspend fun reorder(orderedIds: List<String>) {
+        if (orderedIds.isEmpty()) return
+        val now = clock.now()
+        val byId = orderedIds.mapNotNull { taskDao.getById(it) }.associateBy { it.id }
+        val updates = orderedIds.mapIndexedNotNull { i, taskId ->
+            byId[taskId]?.copy(rank = "%06d".format(i), updatedAt = now)
+        }
+        if (updates.isEmpty()) return
+        db.withTransaction {
+            taskDao.upsertAll(updates)
+            updates.forEach { u ->
+                outbox.enqueue(
+                    EntityType.TASK, u.id, OpType.UPDATE,
+                    u.toUpdateRequest(), UpdateTaskRequest.serializer(),
+                )
+            }
+        }
+        syncScheduler.requestExpeditedSync()
+    }
+
+    override suspend fun addActualTime(id: String, minutes: Int) {
+        val current = taskDao.getById(id) ?: return
+        val updated = current.copy(
+            actualTimeMinutes = current.actualTimeMinutes + minutes,
+            updatedAt = clock.now(),
+        )
+        db.withTransaction {
+            taskDao.upsertAll(listOf(updated))
+            outbox.enqueue(
+                EntityType.TASK, id, OpType.UPDATE,
+                updated.toUpdateRequest(), UpdateTaskRequest.serializer(),
+            )
+        }
         syncScheduler.requestExpeditedSync()
     }
 }

@@ -88,6 +88,10 @@ class FakeTaskRepo(
   val updated = mutableListOf<Pair<String, TaskEdit>>()
   val markedDone = mutableListOf<String>()
   val deleted = mutableListOf<String>()
+  val deferred = mutableListOf<Pair<String, LocalDate>>()
+  val movedToDay = mutableListOf<Pair<String, LocalDate>>()
+  val reordered = mutableListOf<List<String>>()
+  val actualTimeAdded = mutableListOf<Pair<String, Int>>()
   var nextId = "new-id"
 
   override fun observeAll(): Flow<List<TaskEntity>> = all
@@ -98,6 +102,10 @@ class FakeTaskRepo(
   override suspend fun update(id: String, edit: TaskEdit) { updated += id to edit }
   override suspend fun markDone(id: String) { markedDone += id }
   override suspend fun delete(id: String) { deleted += id }
+  override suspend fun defer(id: String, toDate: LocalDate) { deferred += id to toDate }
+  override suspend fun moveToDay(id: String, date: LocalDate) { movedToDay += id to date }
+  override suspend fun reorder(orderedIds: List<String>) { reordered += orderedIds }
+  override suspend fun addActualTime(id: String, minutes: Int) { actualTimeAdded += id to minutes }
 
   fun setAll(v: List<TaskEntity>) = all.let { it.value = v }
   fun setByStatus(v: List<TaskEntity>) = byStatus.let { it.value = v }
