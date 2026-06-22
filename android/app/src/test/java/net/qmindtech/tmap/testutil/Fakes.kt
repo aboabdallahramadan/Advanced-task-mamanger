@@ -75,6 +75,7 @@ fun fakeSubtask(
 
 class FixedClock(private val now: Instant) : Clock {
   override fun now(): Instant = now
+  override fun zone(): java.time.ZoneId = java.time.ZoneOffset.UTC
   override fun today(): LocalDate = now.atZone(java.time.ZoneOffset.UTC).toLocalDate()
 }
 

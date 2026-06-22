@@ -59,3 +59,40 @@ fun TaskRow(
     task.durationMinutes?.let { Text("${it}m", style = MaterialTheme.typography.labelSmall) }
   }
 }
+
+/** TaskUi overload — used by TodayScreen (P1.3 interim stub) until P1.4/P1.5 rebuilds the full screen. */
+@Composable
+fun TaskRow(
+  task: TaskUi,
+  projectName: String?,
+  onClick: () -> Unit,
+  onToggleDone: () -> Unit,
+  modifier: Modifier = Modifier,
+) {
+  Row(
+    modifier = modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(8.dp),
+  ) {
+    IconButton(onClick = onToggleDone, modifier = Modifier.size(28.dp)) {
+      Icon(
+        imageVector = if (task.isDone) Icons.Filled.CheckCircle else Icons.Outlined.RadioButtonUnchecked,
+        contentDescription = if (task.isDone) "Mark not done" else "Mark done",
+      )
+    }
+    PriorityBadge(task.priority)
+    Column(modifier = Modifier.weight(1f)) {
+      Text(
+        text = task.title,
+        style = MaterialTheme.typography.bodyLarge,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        textDecoration = if (task.isDone) TextDecoration.LineThrough else null,
+      )
+      if (projectName != null) {
+        Text(projectName, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+      }
+    }
+    task.scheduledLabel?.let { Text(it, style = MaterialTheme.typography.labelSmall) }
+  }
+}

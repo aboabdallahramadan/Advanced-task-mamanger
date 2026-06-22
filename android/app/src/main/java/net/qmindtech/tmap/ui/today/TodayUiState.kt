@@ -1,12 +1,33 @@
 package net.qmindtech.tmap.ui.today
 
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.ui.components.TaskUi
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+// ---------------------------------------------------------------------------
+// Legacy shared types — used by InboxViewModel, BacklogViewModel, TaskFilter
+// until those screens are rebuilt in later phases.  Do NOT remove.
+// ---------------------------------------------------------------------------
+
+data class TaskListItem(val task: TaskEntity, val projectName: String?)
+
+fun timeOrderToday(tasks: List<TaskEntity>, projects: List<ProjectEntity>): List<TaskListItem> {
+  val names = projects.associate { it.id to it.name }
+  val far = Instant.MAX
+  return tasks
+    .sortedWith(
+      compareBy<TaskEntity> { it.scheduledStart ?: far }
+        .thenBy { it.plannedDate ?: LocalDate.MAX }
+        .thenBy { it.createdAt }
+    )
+    .map { TaskListItem(it, it.projectId?.let { pid -> names[pid] }) }
+}
 
 enum class TodaySection { Morning, Afternoon, Evening, Other }
 

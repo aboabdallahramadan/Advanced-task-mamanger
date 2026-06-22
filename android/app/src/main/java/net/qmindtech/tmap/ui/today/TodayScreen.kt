@@ -21,6 +21,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.EmptyState
 import net.qmindtech.tmap.ui.components.TaskRow
 
+// NOTE: This screen is a temporary stub that keeps the build green until P1.4/P1.5 rebuild it
+// against the full TodayUiState (groups, progress, greeting, etc.).
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TodayScreen(
@@ -28,6 +30,8 @@ fun TodayScreen(
   viewModel: TodayViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  // Flatten all grouped tasks into a single list for the interim screen.
+  val allTasks = state.groups.flatMap { it.tasks }
   Scaffold(
     topBar = { TopAppBar(title = { Text("Today") }) },
     floatingActionButton = {
@@ -36,7 +40,7 @@ fun TodayScreen(
       }
     },
   ) { padding ->
-    if (!state.loading && state.items.isEmpty()) {
+    if (!state.loading && allTasks.isEmpty()) {
       EmptyState(
         icon = Icons.Filled.Today,
         title = "Nothing scheduled today",
@@ -45,12 +49,12 @@ fun TodayScreen(
       )
     } else {
       LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-        items(state.items, key = { it.task.id }) { item ->
+        items(allTasks, key = { it.id }) { taskUi ->
           TaskRow(
-            task = item.task,
-            projectName = item.projectName,
-            onClick = { onOpenTask(item.task.id) },
-            onToggleDone = { viewModel.toggleDone(item.task) },
+            task = taskUi,
+            projectName = taskUi.projectName,
+            onClick = { onOpenTask(taskUi.id) },
+            onToggleDone = { viewModel.toggleComplete(taskUi.id) },
           )
         }
       }
