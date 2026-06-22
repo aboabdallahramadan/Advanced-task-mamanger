@@ -29,6 +29,7 @@ import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,9 +70,15 @@ import java.time.format.DateTimeFormatter
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TaskEditorSheet(
+    taskId: String?,
     onDismiss: () -> Unit,
     viewModel: TaskEditorViewModel = hiltViewModel(),
 ) {
+    // When opened as a sheet the ViewModel's SavedStateHandle has no taskId injected by the
+    // nav graph, so we drive loading imperatively.  load() is idempotent when called with the
+    // same id and the state is already populated.
+    LaunchedEffect(taskId) { viewModel.load(taskId) }
+
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalTmapColors.current
     val type = LocalTmapType.current

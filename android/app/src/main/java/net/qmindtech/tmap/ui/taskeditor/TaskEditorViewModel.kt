@@ -34,19 +34,47 @@ class TaskEditorViewModel @Inject constructor(
 
   // "new" sentinel and null both mean create-mode.
   private val rawId: String? = savedStateHandle.get<String?>("taskId")
-  private val taskId: String? = rawId?.takeIf { it.isNotBlank() && it != "new" }
+  private val initialTaskId: String? = rawId?.takeIf { it.isNotBlank() && it != "new" }
+
+  // Mutable so load() can override the value set by SavedStateHandle (sheet usage).
+  private var taskId: String? = initialTaskId
 
   private val _state = MutableStateFlow(
-    if (taskId == null) TaskEditorUiState(isEdit = false, loading = false) else TaskEditorUiState()
+    if (initialTaskId == null) TaskEditorUiState(isEdit = false, loading = false) else TaskEditorUiState()
   )
   val uiState: StateFlow<TaskEditorUiState> = _state.asStateFlow()
 
   init {
-    if (taskId != null) {
+    startObserving(initialTaskId)
+  }
+
+  /**
+   * Called by [TaskEditorSheet] when the sheet is opened with a specific taskId (sheet path
+   * bypasses SavedStateHandle injection, so the composable passes the id explicitly).
+   *
+   * `null` / `"new"` → create-mode.  Any other non-blank string → edit-mode.
+   *
+   * This is safe to call in a [LaunchedEffect] — it replaces the active observation job
+   * only if the id is actually different from the current one.
+   */
+  fun load(id: String?) {
+    val resolved = id?.takeIf { it.isNotBlank() && it != "new" }
+    if (resolved == taskId && _state.value.title.isNotBlank()) return   // already loaded
+    taskId = resolved
+    _state.value = if (resolved == null) {
+      TaskEditorUiState(isEdit = false, loading = false)
+    } else {
+      TaskEditorUiState()
+    }
+    startObserving(resolved)
+  }
+
+  private fun startObserving(id: String?) {
+    if (id != null) {
       viewModelScope.launch {
         combine(
-          taskRepo.observe(taskId),
-          subtaskRepo.observeByTask(taskId),
+          taskRepo.observe(id),
+          subtaskRepo.observeByTask(id),
           projectRepo.observeAll(),
         ) { task, subs, projects ->
           Triple(task, subs, projects)
@@ -125,8 +153,9 @@ class TaskEditorViewModel @Inject constructor(
   fun save(onDone: () -> Unit) {
     val s = _state.value
     if (s.title.isBlank()) return
+    val id = taskId   // capture before coroutine; taskId is a var and can't be smart-cast inside lambda
     viewModelScope.launch {
-      if (taskId == null) taskRepo.create(s.toDraft()) else taskRepo.update(taskId, s.toEdit())
+      if (id == null) taskRepo.create(s.toDraft()) else taskRepo.update(id, s.toEdit())
       _state.update { it.copy(saved = true) }
       onDone()
     }

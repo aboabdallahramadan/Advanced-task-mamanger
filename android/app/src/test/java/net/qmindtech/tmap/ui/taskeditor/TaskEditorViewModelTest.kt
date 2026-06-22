@@ -202,4 +202,43 @@ class TaskEditorViewModelTest {
     vm.onScheduledStartChange(null)
     assertEquals(null, vm.uiState.value.scheduledStart)
   }
+
+  // ── load() — sheet path (SavedStateHandle has no taskId) ──────────────────
+
+  @Test fun load_with_id_switches_to_edit_mode_and_fetches_task() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t2", title = "Sheet task", status = TaskStatus.Planned))
+    // VM created without a taskId (simulates sheet usage where SSH has no key)
+    val vm = createVm(repo)
+    assertEquals(false, vm.uiState.value.isEdit)
+
+    vm.load("t2")
+
+    assertEquals(true, vm.uiState.value.isEdit)
+    assertEquals("Sheet task", vm.uiState.value.title)
+    assertEquals(TaskStatus.Planned, vm.uiState.value.status)
+  }
+
+  @Test fun load_null_resets_to_create_mode() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1", title = "Existing"))
+    val vm = editVm(repo)
+    // starts in edit mode
+    assertEquals(true, vm.uiState.value.isEdit)
+
+    vm.load(null)
+
+    assertEquals(false, vm.uiState.value.isEdit)
+    assertEquals("", vm.uiState.value.title)
+  }
+
+  @Test fun load_new_sentinel_resets_to_create_mode() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1"))
+    val vm = editVm(repo)
+
+    vm.load("new")
+
+    assertEquals(false, vm.uiState.value.isEdit)
+  }
 }

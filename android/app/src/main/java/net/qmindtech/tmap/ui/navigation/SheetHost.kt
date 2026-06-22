@@ -1,19 +1,20 @@
 package net.qmindtech.tmap.ui.navigation
 
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import net.qmindtech.tmap.ui.components.SheetScaffold
-import net.qmindtech.tmap.ui.theme.LocalTmapColors
+import net.qmindtech.tmap.ui.capture.QuickCaptureSheet
+import net.qmindtech.tmap.ui.taskeditor.TaskEditorSheet
 
 /**
  * Holds capture/editor bottom-sheet state, driven by [SheetCommands] (openCapture/openTaskEditor).
  *
- * In P0 the sheet bodies are stubs; P1 replaces them with QuickCaptureSheet / TaskEditorSheet.
+ * Wired in P1:
+ *  - [SheetRequest.Capture] → [QuickCaptureSheet] (rapid-fire NL capture, stays open after submit)
+ *  - [SheetRequest.Editor]  → [TaskEditorSheet] (full field editor; taskId null = create mode)
  *
  * Collector note: the flow has extraBufferCapacity = 4, so requests emitted before this
  * composable enters the composition are buffered and replayed when collection starts.
@@ -26,20 +27,14 @@ fun SheetHost() {
     LaunchedEffect(Unit) {
         SheetCommands.requests.collect { req -> active = req }
     }
-    val colors = LocalTmapColors.current
     when (val req = active) {
-        is SheetRequest.Capture -> SheetScaffold(
+        is SheetRequest.Capture -> QuickCaptureSheet(
             onDismiss = { active = null },
-            title = "Quick capture",
-        ) {
-            Text("Capture sheet — implemented in P1.", color = colors.textSecondary)
-        }
-        is SheetRequest.Editor -> SheetScaffold(
+        )
+        is SheetRequest.Editor -> TaskEditorSheet(
+            taskId = req.taskId,
             onDismiss = { active = null },
-            title = "Edit task",
-        ) {
-            Text("Editor for ${req.taskId} — implemented in P1.", color = colors.textSecondary)
-        }
+        )
         null -> Unit
     }
 }
