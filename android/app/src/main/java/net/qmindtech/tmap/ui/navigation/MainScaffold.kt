@@ -29,6 +29,7 @@ import androidx.navigation.navDeepLink
 import net.qmindtech.tmap.ui.components.TmapFab
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.TmapBackground
+import net.qmindtech.tmap.ui.today.TodayScreen
 
 /**
  * Main app scaffold: 5-tab bottom nav (Daily-first, amber tint) + corner TmapFab (opens capture)
@@ -103,7 +104,22 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                     navController = navController,
                     startDestination = Route.Today.route,
                 ) {
-                    composable(Route.Today.route) { TodayPlaceholder() }
+                    composable(Route.Today.route) {
+                        TodayScreen(
+                            onOpenTask = { taskId -> navController.openTaskEditor(taskId) },
+                            onOpenCapture = { navController.openCapture() },
+                            onPlanMyDay = {
+                                navController.navigate(Route.Planning.route) {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onFocus = {
+                                navController.navigate(Route.Focus.create(null)) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
+                    }
                     composable(Route.Inbox.route) { InboxPlaceholder() }
                     composable(Route.Browse.route) { BrowsePlaceholder() }
                     composable(Route.Notes.route) { NotesPlaceholder() }
