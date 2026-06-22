@@ -5,6 +5,7 @@ import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
 import java.time.Instant
 import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /**
  * The UI projection of a task used by every list (FIXED cross-phase contract).
@@ -45,18 +46,20 @@ fun TaskEntity.toUi(
     isDone = status == TaskStatus.Done,
 )
 
-/** "9:30", "9:30–10:15" (en-dash), or null when there is no scheduled start. */
+/**
+ * "9:30", "9:30–10:15" (en-dash), or null when there is no scheduled start.
+ *
+ * Uses 24-hour **H:mm** (Midnight Calm design spec) — no leading zero on the hour,
+ * two-digit minutes, locale-safe via [DateTimeFormatter.ofPattern].
+ */
 fun scheduledLabel(start: Instant?, durationMinutes: Int?, zone: ZoneId): String? {
     if (start == null) return null
-    val startLocal = start.atZone(zone).toLocalTime()
-    val startStr = formatTime(startLocal.hour, startLocal.minute)
+    val fmt = DateTimeFormatter.ofPattern("H:mm")
+    val startStr = fmt.format(start.atZone(zone).toLocalTime())
     if (durationMinutes == null || durationMinutes <= 0) return startStr
     val endLocal = start.plusSeconds(durationMinutes * 60L).atZone(zone).toLocalTime()
-    return "$startStr–${formatTime(endLocal.hour, endLocal.minute)}"
+    return "$startStr–${fmt.format(endLocal)}"
 }
-
-private fun formatTime(hour: Int, minute: Int): String =
-    "$hour:${minute.toString().padStart(2, '0')}"
 
 /** "#6EA8FE" / "6EA8FE" → 0xFF6EA8FEL; null/blank/malformed → null. */
 fun parseProjectColor(hex: String?): Long? {

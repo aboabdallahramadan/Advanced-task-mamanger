@@ -105,4 +105,40 @@ class TaskUiTest {
         assertNull(parseProjectColor(""))
         assertNull(parseProjectColor("not-a-color"))
     }
+
+    // --- 24-hour H:mm format edge cases (Midnight Calm design spec) ---
+
+    @Test
+    fun scheduledLabel24hSubTenMorningHour() {
+        // 09:05 UTC → "9:05" (no leading zero on hour, zero-padded minute)
+        val ui = task(scheduledStart = Instant.parse("2026-06-21T09:05:00Z")).toUi(null, zone = utc)
+        assertEquals("9:05", ui.scheduledLabel)
+    }
+
+    @Test
+    fun scheduledLabel24hAfternoonHourNoRange() {
+        // 14:00 UTC → "14:00" (24-hour, no duration)
+        val ui = task(scheduledStart = Instant.parse("2026-06-21T14:00:00Z")).toUi(null, zone = utc)
+        assertEquals("14:00", ui.scheduledLabel)
+    }
+
+    @Test
+    fun scheduledLabel24hRangeCrossingIntoAfternoon() {
+        // 13:30 + 90 min → "13:30–15:00"
+        val ui = task(
+            scheduledStart = Instant.parse("2026-06-21T13:30:00Z"),
+            durationMinutes = 90,
+        ).toUi(null, zone = utc)
+        assertEquals("13:30–15:00", ui.scheduledLabel)
+    }
+
+    @Test
+    fun scheduledLabelZeroDurationTreatedAsNoDuration() {
+        // duration = 0 → treated as no range, emits start only
+        val ui = task(
+            scheduledStart = Instant.parse("2026-06-21T09:30:00Z"),
+            durationMinutes = 0,
+        ).toUi(null, zone = utc)
+        assertEquals("9:30", ui.scheduledLabel)
+    }
 }
