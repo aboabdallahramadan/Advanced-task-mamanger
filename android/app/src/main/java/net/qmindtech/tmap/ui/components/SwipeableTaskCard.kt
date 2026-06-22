@@ -6,7 +6,6 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
+import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 
 @Composable
 fun SwipeableTaskCard(
@@ -38,6 +38,7 @@ fun SwipeableTaskCard(
 ) {
     val colors = LocalTmapColors.current
     val shapes = LocalTmapShapes.current
+    val spacing = LocalTmapSpacing.current
     val scope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
     val thresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
@@ -56,7 +57,7 @@ fun SwipeableTaskCard(
                     },
                     shape = RoundedCornerShape(shapes.card),
                 )
-                .padding(horizontal = 22.dp),
+                .padding(horizontal = spacing.xxl),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = if (offsetX.value > 0f) Arrangement.Start else Arrangement.End,
         ) {

@@ -12,8 +12,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import net.qmindtech.tmap.ui.theme.LocalTmapColors
-
 /** Small round project color marker (mockup's colored dot before the meta line). */
 @Composable
 fun ProjectDot(colorArgb: Long, modifier: Modifier = Modifier, size: Dp = 8.dp) {
@@ -23,7 +21,6 @@ fun ProjectDot(colorArgb: Long, modifier: Modifier = Modifier, size: Dp = 8.dp) 
 /** Rounded color swatch with an optional emoji — for project cards/pickers. */
 @Composable
 fun ProjectSwatch(colorArgb: Long, emoji: String?, modifier: Modifier = Modifier) {
-    val colors = LocalTmapColors.current
     Box(
         modifier = modifier
             .size(34.dp)
