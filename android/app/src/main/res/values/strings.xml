@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">TMap</string>
+    <!-- New Daily-first 5-tab nav labels (P0.15+) -->
     <string name="nav_today">Today</string>
     <string name="nav_inbox">Inbox</string>
+    <string name="nav_browse">Browse</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_you">You</string>
+    <!-- Legacy strings kept for TmapApp.kt compat until P0.16 removes them -->
     <string name="nav_all_tasks">All Tasks</string>
     <string name="nav_projects">Projects</string>
 </resources>

@@ -5,22 +5,22 @@ import org.junit.Test
 
 class BottomNavItemTest {
     @Test
-    fun bottomBarHasFourPrimaryDestinationsInOrder() {
+    fun bottomBarHasFivePrimaryDestinationsInDailyFirstOrder() {
         assertEquals(
             listOf(
-                Routes.Today.route,
-                Routes.Inbox.route,
-                Routes.AllTasks.route,
-                Routes.Projects.route,
+                Route.Today.route,
+                Route.Inbox.route,
+                Route.Browse.route,
+                Route.Notes.route,
+                Route.You.route,
             ),
             BOTTOM_NAV_ITEMS.map { it.route },
         )
     }
 
     @Test
-    fun everyItemCarriesAnIconAndLabel() {
-        assertEquals(4, BOTTOM_NAV_ITEMS.size)
-        // labelRes must be a real (non-zero) resource id reference, icon non-null by type.
+    fun everyItemCarriesAnIconAndLabelResource() {
+        assertEquals(5, BOTTOM_NAV_ITEMS.size)
         assertEquals(true, BOTTOM_NAV_ITEMS.all { it.labelRes != 0 })
     }
 }

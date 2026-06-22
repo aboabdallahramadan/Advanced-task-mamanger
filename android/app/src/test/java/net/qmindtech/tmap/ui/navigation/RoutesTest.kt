@@ -5,37 +5,36 @@ import org.junit.Test
 
 class RoutesTest {
     @Test
-    fun primaryDestinationRouteStringsArePinned() {
-        assertEquals("today", Routes.Today.route)
-        assertEquals("inbox", Routes.Inbox.route)
-        assertEquals("backlog", Routes.Backlog.route)
-        assertEquals("all_tasks", Routes.AllTasks.route)
-        assertEquals("projects", Routes.Projects.route)
-        assertEquals("settings", Routes.Settings.route)
-        assertEquals("login", Routes.Login.route)
-        assertEquals("register", Routes.Register.route)
+    fun primaryTabRouteStringsArePinned() {
+        assertEquals("today", Route.Today.route)
+        assertEquals("inbox", Route.Inbox.route)
+        assertEquals("browse", Route.Browse.route)
+        assertEquals("notes", Route.Notes.route)
+        assertEquals("you", Route.You.route)
+        assertEquals("planning", Route.Planning.route)
     }
 
     @Test
-    fun taskEditorPatternAndNavArg() {
-        assertEquals("task_editor/{taskId}", Routes.TaskEditor.PATTERN)
-        assertEquals("taskId", Routes.TaskEditor.ARG_TASK_ID)
+    fun focusRoutePatternAndArg() {
+        assertEquals("focus/{taskId}", Route.Focus.PATTERN)
+        assertEquals("taskId", Route.Focus.ARG_TASK_ID)
+        assertEquals("focus/new", Route.Focus.create(null))
+        assertEquals("focus/abc", Route.Focus.create("abc"))
+        assertEquals("focus/new", Route.Focus(null).route)
+        assertEquals("focus/xyz", Route.Focus("xyz").route)
     }
 
     @Test
-    fun taskEditorCreateUsesNewSentinelForNullId() {
-        assertEquals("task_editor/new", Routes.TaskEditor.create(null))
-        assertEquals("new", Routes.TaskEditor.NEW_SENTINEL)
+    fun projectDetailRoutePatternAndArg() {
+        assertEquals("project/{projectId}", Route.ProjectDetail.PATTERN)
+        assertEquals("projectId", Route.ProjectDetail.ARG_PROJECT_ID)
+        assertEquals("project/p1", Route.ProjectDetail.create("p1"))
+        assertEquals("project/p1", Route.ProjectDetail("p1").route)
     }
 
     @Test
-    fun taskEditorCreateEmbedsAnExistingId() {
-        assertEquals("task_editor/abc-123", Routes.TaskEditor.create("abc-123"))
-    }
-
-    @Test
-    fun taskEditorInstanceRouteMatchesCreate() {
-        assertEquals("task_editor/new", Routes.TaskEditor(null).route)
-        assertEquals("task_editor/xyz", Routes.TaskEditor("xyz").route)
+    fun authRouteStringsArePinned() {
+        assertEquals("login", Route.Login.route)
+        assertEquals("register", Route.Register.route)
     }
 }
