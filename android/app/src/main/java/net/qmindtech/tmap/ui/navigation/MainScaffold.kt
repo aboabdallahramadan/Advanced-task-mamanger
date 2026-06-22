@@ -26,6 +26,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
+import net.qmindtech.tmap.ui.browse.BrowseScreen
 import net.qmindtech.tmap.ui.components.TmapFab
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.TmapBackground
@@ -121,7 +122,16 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                         )
                     }
                     composable(Route.Inbox.route) { InboxPlaceholder() }
-                    composable(Route.Browse.route) { BrowsePlaceholder() }
+                    composable(Route.Browse.route) {
+                        BrowseScreen(
+                            onOpenTask = { taskId -> navController.openTaskEditor(taskId) },
+                            onOpenProject = { projectId ->
+                                navController.navigate(Route.ProjectDetail.create(projectId)) {
+                                    launchSingleTop = true
+                                }
+                            },
+                        )
+                    }
                     composable(Route.Notes.route) { NotesPlaceholder() }
                     composable(Route.You.route) { YouPlaceholder() }
                     composable(Route.Planning.route) { PlanningPlaceholder() }
