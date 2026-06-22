@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.local.TaskStatus
@@ -29,16 +30,7 @@ class TodayViewModel @Inject constructor(
 
   private val mode = MutableStateFlow(TodayMode.List)
 
-  // Snapshot of today's raw entities so action handlers can read current status without re-querying.
-  // Kept in sync via an eager internal collection (independent of uiState subscribers).
   private val todayTasksFlow = taskRepo.observeToday(clock.today())
-  @Volatile private var lastTasks: List<TaskEntity> = emptyList()
-
-  init {
-    viewModelScope.launch {
-      todayTasksFlow.collect { lastTasks = it }
-    }
-  }
 
   val uiState: StateFlow<TodayUiState> =
     combine(
@@ -46,13 +38,12 @@ class TodayViewModel @Inject constructor(
       projectRepo.observeAll(),
       mode,
     ) { tasks, projects, m ->
-      lastTasks = tasks
       val projectsById = projects.associateBy { it.id }
       val sorted = tasks.sortedWith(
         compareBy<TaskEntity>({ it.rank ?: "zzzzzz" }, { it.scheduledStart ?: Instant.MAX }, { it.createdAt }),
       )
       val starts = sorted.associate { it.id to it.scheduledStart?.atZone(clock.zone())?.toLocalTime() }
-      val uis = sorted.map { it.toUi(projectsById[it.projectId]) }
+      val uis = sorted.map { it.toUi(projectsById[it.projectId], zone = clock.zone()) }
       val nowTime = clock.now().atZone(clock.zone()).toLocalTime()
       TodayUiState(
         loading = false,
@@ -67,8 +58,8 @@ class TodayViewModel @Inject constructor(
   fun setMode(mode: TodayMode) { this.mode.value = mode }
 
   fun toggleComplete(taskId: String) {
-    val task = lastTasks.firstOrNull { it.id == taskId }
     viewModelScope.launch {
+      val task = todayTasksFlow.first().firstOrNull { it.id == taskId }
       if (task?.status == TaskStatus.Done) {
         taskRepo.update(taskId, TaskEdit(status = TaskStatus.Planned))
       } else {
