@@ -41,14 +41,13 @@ fun PrimaryButton(
     val shapes = LocalTmapShapes.current
     val type = LocalTmapType.current
     val shape = RoundedCornerShape(shapes.button)
-    val brush = if (enabled) {
-        Brush.linearGradient(listOf(colors.accent, colors.accentEnd))
-    } else {
-        Brush.linearGradient(listOf(colors.surfaceRaised, colors.surfaceRaised))
-    }
+    val brush = Brush.linearGradient(listOf(colors.accent, colors.accentEnd))
     Box(
         modifier = modifier
-            .background(brush = brush, shape = shape)
+            .then(
+                if (enabled) Modifier.background(brush = brush, shape = shape)
+                else Modifier.background(colors.surfaceRaised, shape)
+            )
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 13.dp),
         contentAlignment = Alignment.Center,
@@ -62,7 +61,7 @@ fun PrimaryButton(
 }
 
 /**
- * Secondary/ghost button with a [TmapColorScheme.surfaceRaised] fill and [TmapColorScheme.borderSubtle] outline.
+ * Secondary/ghost button with a [TmapColorScheme.surfaceRaised] fill and [TmapColorScheme.borderStrong] outline.
  *
  * Text: [TmapColorScheme.textPrimary] when enabled, [TmapColorScheme.textTertiary] when disabled.
  * Corner radius: [TmapShapes.button] (13 dp).
@@ -81,7 +80,7 @@ fun SecondaryButton(
     Box(
         modifier = modifier
             .background(colors.surfaceRaised, shape)
-            .border(1.dp, colors.borderSubtle, shape)
+            .border(1.dp, colors.borderStrong, shape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 13.dp),
         contentAlignment = Alignment.Center,
@@ -100,15 +99,13 @@ fun SecondaryButton(
  * A 56 dp amber-gradient circle ([TmapColorScheme.accent]→[TmapColorScheme.accentEnd] at 135°)
  * with a centred `+` icon ([TmapColorScheme.onAccent]) and a soft diffuse amber shadow.
  *
- * @param onClick            Invoked when tapped.
- * @param modifier           Optional outer modifier (position, offset, etc.).
- * @param contentDescription Accessibility label for the icon; defaults to "Add".
+ * @param onClick   Invoked when tapped.
+ * @param modifier  Optional outer modifier (position, offset, etc.).
  */
 @Composable
 fun TmapFab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    contentDescription: String = "Add",
 ) {
     val colors = LocalTmapColors.current
     val brush = Brush.linearGradient(listOf(colors.accent, colors.accentEnd))
@@ -122,7 +119,7 @@ fun TmapFab(
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
-            contentDescription = contentDescription,
+            contentDescription = "Add",
             tint = colors.onAccent,
         )
     }
