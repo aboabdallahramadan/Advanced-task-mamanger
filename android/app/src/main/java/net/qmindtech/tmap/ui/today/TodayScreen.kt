@@ -1,5 +1,6 @@
 package net.qmindtech.tmap.ui.today
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,8 +10,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.CalendarToday
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -33,10 +35,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.ui.components.EmptyState
 import net.qmindtech.tmap.ui.components.PrimaryButton
-import net.qmindtech.tmap.ui.components.ProgressRing
 import net.qmindtech.tmap.ui.components.SecondaryButton
 import net.qmindtech.tmap.ui.components.SegmentedControl
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
+import net.qmindtech.tmap.ui.theme.LocalTmapShapes
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 import net.qmindtech.tmap.ui.theme.LocalTmapType
 
@@ -65,6 +67,7 @@ fun TodayScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalTmapColors.current
     val spacing = LocalTmapSpacing.current
+    val shapes = LocalTmapShapes.current
     val type = LocalTmapType.current
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -115,26 +118,44 @@ fun TodayScreen(
 
                 Spacer(Modifier.height(spacing.md))
 
-                // Progress ring + label.
+                // Progress bar + "X of Y · Nh left" label (matches daily-core.html ①).
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    ProgressRing(
-                        progress = state.progress.fraction,
-                        modifier = Modifier.size(44.dp),
+                    val fraction = state.progress.fraction.coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(7.dp)
+                            .background(
+                                color = colors.borderSubtle,
+                                shape = RoundedCornerShape(shapes.pill),
+                            ),
                     ) {
-                        // Center label inside the ring: compact done/total.
-                        Text(
-                            text = "${state.progress.done}/${state.progress.total}",
-                            style = type.meta,
-                            color = colors.textSecondary,
-                        )
+                        if (fraction > 0f) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(fraction)
+                                    .height(7.dp)
+                                    .background(
+                                        brush = Brush.horizontalGradient(
+                                            listOf(colors.accent, colors.accentEnd),
+                                        ),
+                                        shape = RoundedCornerShape(shapes.pill),
+                                    ),
+                            )
+                        }
                     }
                     Spacer(Modifier.width(spacing.sm))
                     val hoursLeft = state.progress.minutesLeft / 60
                     val minsLeft = state.progress.minutesLeft % 60
-                    val timeLabel = if (hoursLeft > 0) "${hoursLeft}h left" else "${minsLeft}m left"
+                    val timeLabel = when {
+                        state.progress.minutesLeft == 0 -> "Done"
+                        hoursLeft > 0 && minsLeft > 0 -> "${hoursLeft}h ${minsLeft}m left"
+                        hoursLeft > 0 -> "${hoursLeft}h left"
+                        else -> "${minsLeft}m left"
+                    }
                     Text(
                         text = "${state.progress.done} of ${state.progress.total} · $timeLabel",
                         style = type.meta,

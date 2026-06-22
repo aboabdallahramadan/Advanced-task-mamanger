@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.components.SwipeableTaskCard
+import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 
 // Maps each TodaySection to its display label (uppercase, per mockup).
 private fun TodaySection.label(): String = when (this) {
@@ -37,10 +38,11 @@ fun TodayListContent(
     onReorder: (List<String>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val spacing = LocalTmapSpacing.current
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = spacing.screenH),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         groups.forEach { group ->
