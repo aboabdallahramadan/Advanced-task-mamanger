@@ -16,6 +16,8 @@ import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.SubtaskRepository
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.util.Clock
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -69,6 +71,27 @@ class TaskEditorViewModel @Inject constructor(
   fun onPlannedDateChange(d: LocalDate?) = _state.update { it.copy(plannedDate = d) }
   fun onDurationChange(m: Int?) = _state.update { it.copy(durationMinutes = m) }
   fun onReminderChange(m: Int?) = _state.update { it.copy(reminderMinutes = m) }
+
+  fun onScheduledStartChange(instant: Instant?) = _state.update {
+    val end = it.scheduledEnd
+    val dur = if (instant != null && end != null) Duration.between(instant, end).toMinutes().toInt() else it.durationMinutes
+    it.copy(scheduledStart = instant, durationMinutes = dur)
+  }
+
+  fun onScheduledEndChange(instant: Instant?) = _state.update {
+    val start = it.scheduledStart
+    val dur = if (start != null && instant != null) Duration.between(start, instant).toMinutes().toInt() else it.durationMinutes
+    it.copy(scheduledEnd = instant, durationMinutes = dur)
+  }
+
+  fun onDueDateChange(date: LocalDate?) = _state.update { it.copy(dueDate = date) }
+
+  fun reorderSubtasks(orderedIds: List<String>) {
+    if (taskId == null) return
+    viewModelScope.launch {
+      orderedIds.forEachIndexed { i, sid -> subtaskRepo.update(sid, sortOrder = i) }
+    }
+  }
 
   fun save(onDone: () -> Unit) {
     val s = _state.value

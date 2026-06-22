@@ -129,4 +129,34 @@ class TaskEditorViewModelTest {
     edit.addSubtask("Real sub")
     assertEquals(listOf("t1" to "Real sub"), subs.created)
   }
+
+  @Test fun schedule_changes_update_state_and_recompute_duration() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1", status = TaskStatus.Planned))
+    val vm = editVm(repo)
+    val start = Instant.parse("2026-06-21T09:00:00Z")
+    val end = Instant.parse("2026-06-21T10:30:00Z")
+    vm.onScheduledStartChange(start)
+    vm.onScheduledEndChange(end)
+    assertEquals(start, vm.uiState.value.scheduledStart)
+    assertEquals(end, vm.uiState.value.scheduledEnd)
+    assertEquals(90, vm.uiState.value.durationMinutes)
+  }
+
+  @Test fun due_date_change_updates_state() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1"))
+    val vm = editVm(repo)
+    vm.onDueDateChange(LocalDate.of(2026, 6, 30))
+    assertEquals(LocalDate.of(2026, 6, 30), vm.uiState.value.dueDate)
+  }
+
+  @Test fun reorderSubtasks_persists_sortOrder_in_order() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1"))
+    val subs = FakeSubtaskRepo()
+    val vm = editVm(repo, subs)
+    vm.reorderSubtasks(listOf("s2", "s1"))
+    assertEquals(listOf("s2", "s1"), subs.updated)
+  }
 }
