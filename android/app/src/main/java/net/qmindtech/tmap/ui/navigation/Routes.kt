@@ -1,39 +1,15 @@
 package net.qmindtech.tmap.ui.navigation
 
+import android.util.Log
+import androidx.annotation.VisibleForTesting
 import androidx.navigation.NavController
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LEGACY — kept verbatim so TmapApp.kt (pre-P0.16) continues to compile.
-// P0.16 will delete this block when it rewires TmapApp onto Route.
-// ─────────────────────────────────────────────────────────────────────────────
-sealed class Routes(val route: String) {
-    data object Today : Routes("today")
-    data object Inbox : Routes("inbox")
-    data object Backlog : Routes("backlog")
-    data object AllTasks : Routes("all_tasks")
-    data object Projects : Routes("projects")
-    data object Settings : Routes("settings")
-    data object Login : Routes("login")
-    data object Register : Routes("register")
-
-    // Single full-screen editor route reused for create + edit.
-    // A null id (create) is encoded as the "new" sentinel so the path arg is non-null.
-    data class TaskEditor(val taskId: String?) : Routes(create(taskId)) {
-        companion object {
-            const val NEW_SENTINEL = "new"
-            const val ARG_TASK_ID = "taskId"
-            const val PATTERN = "task_editor/{taskId}"
-            fun create(taskId: String?): String = "task_editor/${taskId ?: NEW_SENTINEL}"
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// NEW (P0.15) — Daily-first navigation contracts (spec §5). FIXED cross-phase
-// contract consumed by P0.16 (MainScaffold/SheetHost) and every later screen.
+// Daily-first navigation contracts (spec §5). FIXED cross-phase contract
+// consumed by MainScaffold/SheetHost and every later screen.
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
@@ -50,6 +26,7 @@ sealed interface Route {
     data object Notes : Route { override val route = "notes" }
     data object You : Route { override val route = "you" }
     data object Planning : Route { override val route = "planning" }
+    data object Settings : Route { override val route = "settings" }
 
     data class Focus(val taskId: String?) : Route {
         override val route = create(taskId)
@@ -85,6 +62,8 @@ sealed interface Route {
 // SheetHost (P0.16) collects SheetCommands.requests and reacts accordingly.
 // ─────────────────────────────────────────────────────────────────────────────
 
+private const val TAG = "SheetCommands"
+
 /** Which sheet to open. */
 sealed interface SheetRequest {
     data object Capture : SheetRequest
@@ -96,9 +75,22 @@ sealed interface SheetRequest {
  * A buffered SharedFlow so a request emitted before SheetHost subscribes is not lost.
  */
 object SheetCommands {
-    private val _requests = MutableSharedFlow<SheetRequest>(extraBufferCapacity = 4)
-    val requests: SharedFlow<SheetRequest> = _requests.asSharedFlow()
-    fun request(req: SheetRequest) { _requests.tryEmit(req) }
+    private var _requests = MutableSharedFlow<SheetRequest>(extraBufferCapacity = 4)
+    val requests: SharedFlow<SheetRequest> get() = _requests.asSharedFlow()
+
+    fun request(req: SheetRequest) {
+        if (!_requests.tryEmit(req)) {
+            Log.e(TAG, "SheetCommands.request: buffer full, dropping $req — no collector active?")
+        }
+    }
+
+    /**
+     * Resets the internal flow to a fresh instance. Only for testing — do NOT call in production.
+     */
+    @VisibleForTesting
+    fun resetForTest() {
+        _requests = MutableSharedFlow(extraBufferCapacity = 4)
+    }
 }
 
 /**

@@ -15,6 +15,11 @@ class RoutesTest {
     }
 
     @Test
+    fun settingsRouteStringIsPinned() {
+        assertEquals("settings", Route.Settings.route)
+    }
+
+    @Test
     fun focusRoutePatternAndArg() {
         assertEquals("focus/{taskId}", Route.Focus.PATTERN)
         assertEquals("taskId", Route.Focus.ARG_TASK_ID)
