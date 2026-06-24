@@ -35,8 +35,11 @@ class SyncEngineTest {
             env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
             env.db.syncStateDao(), env.json, { },
         )
-        pull = PullRunner(env.api, env.db, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
-            env.db.settingsDao(), env.db.syncStateDao(), env.db.outboxDao(), rearmer)
+        pull = PullRunner(
+            env.api, env.db, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
+            env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
+            env.db.settingsDao(), env.db.syncStateDao(), env.db.outboxDao(), rearmer,
+        )
         holder = SyncStatusHolder()
     }
 

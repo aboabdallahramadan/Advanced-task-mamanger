@@ -2,6 +2,10 @@ package net.qmindtech.tmap.data.sync
 
 import androidx.room.withTransaction
 import net.qmindtech.tmap.data.local.AppDatabase
+import net.qmindtech.tmap.data.local.dao.DailyPlanDao
+import net.qmindtech.tmap.data.local.dao.FocusSessionDao
+import net.qmindtech.tmap.data.local.dao.NoteDao
+import net.qmindtech.tmap.data.local.dao.NoteGroupDao
 import net.qmindtech.tmap.data.local.dao.OutboxDao
 import net.qmindtech.tmap.data.local.dao.ProjectDao
 import net.qmindtech.tmap.data.local.dao.SettingsDao
@@ -10,6 +14,8 @@ import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
 import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.remote.dto.NoteGroupSyncRow
+import net.qmindtech.tmap.data.remote.dto.NoteSyncRow
 import net.qmindtech.tmap.data.remote.dto.ProjectSyncRow
 import net.qmindtech.tmap.data.remote.dto.SettingSyncRow
 import net.qmindtech.tmap.data.remote.dto.SubtaskSyncRow
@@ -46,6 +52,10 @@ class PullRunner(
     private val taskDao: TaskDao,
     private val subtaskDao: SubtaskDao,
     private val projectDao: ProjectDao,
+    private val noteDao: NoteDao,
+    private val noteGroupDao: NoteGroupDao,
+    private val focusSessionDao: FocusSessionDao,
+    private val dailyPlanDao: DailyPlanDao,
     private val settingsDao: SettingsDao,
     private val syncStateDao: SyncStateDao,
     private val outboxDao: OutboxDao,
@@ -75,6 +85,7 @@ class PullRunner(
                 if (outboxDao.countAll() == 0) {
                     db.withTransaction {
                         taskDao.clear(); subtaskDao.clear(); projectDao.clear(); settingsDao.clear()
+                        noteDao.clear(); noteGroupDao.clear(); focusSessionDao.clear(); dailyPlanDao.clear()
                         syncStateDao.upsert(state.copy(lastSeq = 0L, initialSyncComplete = false))
                     }
                     fullResynced = true
@@ -195,6 +206,24 @@ class PullRunner(
                 if (shadow.contains(row.key)) continue
                 if (row.deletedAt != null) settingsDao.clear() // settings has no deleteById; tombstone is rare
                 else settingsDao.upsertAll(listOf(row.toEntity()))
+                applied = true
+            }
+            // Notes — preserve the LOCAL-ONLY pinnedAt across an upsert (spec §7.7).
+            for (row: NoteSyncRow in changes.notes) {
+                if (shadow.contains(row.id)) continue
+                if (row.deletedAt != null) {
+                    noteDao.deleteById(row.id)
+                } else {
+                    val existingPin = noteDao.getById(row.id)?.pinnedAt
+                    noteDao.upsertAll(listOf(row.toEntity().copy(pinnedAt = existingPin)))
+                }
+                applied = true
+            }
+            // Note-groups (no local-only fields; standard upsert/tombstone).
+            for (row: NoteGroupSyncRow in changes.noteGroups) {
+                if (shadow.contains(row.id)) continue
+                if (row.deletedAt != null) noteGroupDao.deleteById(row.id)
+                else noteGroupDao.upsertAll(listOf(row.toEntity()))
                 applied = true
             }
         }

@@ -104,6 +104,7 @@ fun throwingPull(): PullRunner {
     val api = retrofit.create(net.qmindtech.tmap.data.remote.TmapApiService::class.java)
     return PullRunner(
         api, db, db.taskDao(), db.subtaskDao(), db.projectDao(),
+        db.noteDao(), db.noteGroupDao(), db.focusSessionDao(), db.dailyPlanDao(),
         db.settingsDao(), db.syncStateDao(), db.outboxDao(), FakeRearmer(),
     )
 }

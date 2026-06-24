@@ -117,11 +117,19 @@ abstract class AppModule {
             taskDao: TaskDao,
             subtaskDao: SubtaskDao,
             projectDao: ProjectDao,
+            noteDao: NoteDao,
+            noteGroupDao: NoteGroupDao,
+            focusSessionDao: FocusSessionDao,
+            dailyPlanDao: DailyPlanDao,
             settingsDao: SettingsDao,
             syncStateDao: SyncStateDao,
             outboxDao: OutboxDao,
             rearmer: SyncReminderRearmer,
-        ): PullRunner = PullRunner(api, db, taskDao, subtaskDao, projectDao, settingsDao, syncStateDao, outboxDao, rearmer)
+        ): PullRunner = PullRunner(
+            api, db, taskDao, subtaskDao, projectDao,
+            noteDao, noteGroupDao, focusSessionDao, dailyPlanDao,
+            settingsDao, syncStateDao, outboxDao, rearmer,
+        )
 
         /**
          * The connectivity probe the SyncEngine @Inject constructor (P3) takes as its `isOnline`

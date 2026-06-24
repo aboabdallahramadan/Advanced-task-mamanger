@@ -34,6 +34,7 @@ class PullRunnerRecoveryTest {
         outbox = OutboxRepository(env.db.outboxDao(), env.json, clock)
         runner = PullRunner(
             env.api, env.db, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
+            env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
             env.db.settingsDao(), env.db.syncStateDao(), env.db.outboxDao(), rearmer,
         )
     }
