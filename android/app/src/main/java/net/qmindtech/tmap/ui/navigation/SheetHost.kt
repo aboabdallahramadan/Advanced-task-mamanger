@@ -7,14 +7,19 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import net.qmindtech.tmap.ui.capture.QuickCaptureSheet
+import net.qmindtech.tmap.ui.notes.NoteEditorSheet
 import net.qmindtech.tmap.ui.taskeditor.TaskEditorSheet
 
 /**
  * Holds capture/editor bottom-sheet state, driven by [SheetCommands] (openCapture/openTaskEditor).
  *
  * Wired in P1:
- *  - [SheetRequest.Capture] → [QuickCaptureSheet] (rapid-fire NL capture, stays open after submit)
- *  - [SheetRequest.Editor]  → [TaskEditorSheet] (full field editor; taskId null = create mode)
+ *  - [SheetRequest.Capture]    → [QuickCaptureSheet] (rapid-fire NL capture, stays open after submit)
+ *  - [SheetRequest.Editor]     → [TaskEditorSheet] (full field editor; taskId null = create mode)
+ *
+ * Wired in P4.7:
+ *  - [SheetRequest.NoteEditor] → [NoteEditorSheet] (note title + content + notebook/project assignment;
+ *                                 on dismiss [NoteEditorViewModel.discardIfEmpty] is called via the sheet)
  *
  * Collector note: the flow has extraBufferCapacity = 4, so requests emitted before this
  * composable enters the composition are buffered and replayed when collection starts.
@@ -34,6 +39,10 @@ fun SheetHost() {
         is SheetRequest.Editor -> TaskEditorSheet(
             taskId = req.taskId,
             onDismiss = { active = null },
+        )
+        is SheetRequest.NoteEditor -> NoteEditorSheet(
+            noteId = req.noteId,
+            onClose = { active = null },
         )
         null -> Unit
     }

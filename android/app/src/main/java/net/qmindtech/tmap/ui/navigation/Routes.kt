@@ -68,6 +68,7 @@ private const val TAG = "SheetCommands"
 sealed interface SheetRequest {
     data object Capture : SheetRequest
     data class Editor(val taskId: String) : SheetRequest
+    data class NoteEditor(val noteId: String) : SheetRequest
 }
 
 /**
@@ -103,4 +104,8 @@ fun NavController.openTaskEditor(taskId: String) {
 
 fun NavController.openCapture() {
     SheetCommands.request(SheetRequest.Capture)
+}
+
+fun NavController.openNoteEditor(noteId: String) {
+    SheetCommands.request(SheetRequest.NoteEditor(noteId))
 }

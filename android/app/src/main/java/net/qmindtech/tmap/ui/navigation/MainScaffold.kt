@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import net.qmindtech.tmap.ui.browse.BrowseScreen
 import net.qmindtech.tmap.ui.components.TmapFab
+import net.qmindtech.tmap.ui.notes.NotesScreen
 import net.qmindtech.tmap.ui.projects.ProjectDetailScreen
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.TmapBackground
@@ -133,7 +134,11 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                             },
                         )
                     }
-                    composable(Route.Notes.route) { NotesPlaceholder() }
+                    composable(Route.Notes.route) {
+                        NotesScreen(
+                            onOpenNote = { noteId -> navController.openNoteEditor(noteId) },
+                        )
+                    }
                     composable(Route.You.route) { YouPlaceholder() }
                     composable(Route.Planning.route) { PlanningPlaceholder() }
                     composable(Route.Settings.route) { SettingsPlaceholder() }
@@ -154,6 +159,7 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                         ProjectDetailScreen(
                             onBack = { navController.popBackStack() },
                             onOpenTask = { taskId -> navController.openTaskEditor(taskId) },
+                            onOpenNote = { noteId -> navController.openNoteEditor(noteId) },
                         )
                     }
 

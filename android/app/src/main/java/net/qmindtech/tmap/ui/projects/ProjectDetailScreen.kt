@@ -34,6 +34,8 @@ import net.qmindtech.tmap.ui.components.EmptyState
 import net.qmindtech.tmap.ui.components.ProgressRing
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.components.TaskCard
+import net.qmindtech.tmap.ui.notes.NoteCard
+import net.qmindtech.tmap.ui.notes.NoteCardUi
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapType
 
@@ -49,6 +51,7 @@ import net.qmindtech.tmap.ui.theme.LocalTmapType
 fun ProjectDetailScreen(
     onBack: () -> Unit,
     onOpenTask: (taskId: String) -> Unit,
+    onOpenNote: (noteId: String) -> Unit = {},
     viewModel: ProjectDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -136,10 +139,23 @@ fun ProjectDetailScreen(
                         onClick = { onOpenTask(item.task.id) },
                     )
                 }
-                // P4-NOTES-SLOT: P4 (Notes UI) will render this project's notes here —
-                // a "Notes" SectionLabel + NoteCard list backed by NoteRepository.observeAll(projectId).
-                // Intentionally empty until the Notes domain (P3 data + P4 UI) lands; do not wire before then.
-                item(key = "p4-notes-slot") { /* P4-NOTES-SLOT reserved */ }
+                // P4.7: project's notes section — NoteCard list via NoteRepository.observeAll(null, projectId).
+                item(key = "notes-section") {
+                    ProjectNotesSection(
+                        notes = state.notes.map { note ->
+                            NoteCardUi(
+                                id = note.id,
+                                title = note.title.ifBlank { "Untitled" },
+                                snippet = net.qmindtech.tmap.ui.notes.noteSnippet(note.content),
+                                projectColor = null,
+                                projectName = null,
+                                updatedAt = note.updatedAt,
+                                pinned = note.pinnedAt != null,
+                            )
+                        },
+                        onOpenNote = onOpenNote,
+                    )
+                }
             }
         }
     }
@@ -182,5 +198,51 @@ fun ProjectDetailScreen(
                 }
             },
         )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ProjectNotesSection — P4.7 hook (brief §6.8/§6.10)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Renders this project's notes below the task list inside [ProjectDetailScreen].
+ *
+ * Shows a "Notes" [SectionLabel], then either a [NoteCard] per note or an empty-state
+ * text message when [notes] is empty. Card tap calls [onOpenNote] with the note id —
+ * which routes to [NoteEditorSheet] via SheetHost / SheetCommands.
+ *
+ * [notes] are pre-mapped to [NoteCardUi] by the caller so this composable remains stateless
+ * (data flows through [ProjectDetailViewModel.uiState.notes]).
+ */
+@Composable
+fun ProjectNotesSection(
+    notes: List<NoteCardUi>,
+    onOpenNote: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = LocalTmapColors.current
+    val type = LocalTmapType.current
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        SectionLabel("Notes", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
+        if (notes.isEmpty()) {
+            Text(
+                text = "No notes for this project yet.",
+                style = type.meta,
+                color = colors.textTertiary,
+                modifier = Modifier.padding(vertical = 8.dp),
+            )
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                notes.forEach { note ->
+                    NoteCard(
+                        note = note,
+                        onClick = { onOpenNote(note.id) },
+                        onTogglePin = {},
+                    )
+                }
+            }
+        }
     }
 }

@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.qmindtech.tmap.data.local.entities.NoteEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.data.repository.NoteRepository
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.ui.browse.BrowseTaskItem
@@ -25,6 +27,7 @@ data class ProjectDetailUiState(
   val total: Int = 0,
   val done: Int = 0,
   val items: List<BrowseTaskItem> = emptyList(),
+  val notes: List<NoteEntity> = emptyList(),
 ) {
   val progress: Float get() = if (total == 0) 0f else done.toFloat() / total
 }
@@ -34,6 +37,7 @@ class ProjectDetailViewModel @Inject constructor(
   savedStateHandle: SavedStateHandle,
   private val taskRepo: TaskRepository,
   private val projectRepo: ProjectRepository,
+  private val noteRepo: NoteRepository,
 ) : ViewModel() {
 
   private val projectId: String =
@@ -44,7 +48,8 @@ class ProjectDetailViewModel @Inject constructor(
       taskRepo.observeAll(),
       projectRepo.observeAll(),
       projectRepo.observeProgress(),
-    ) { tasks, projects, progress ->
+      noteRepo.observeAll(groupId = null, projectId = projectId),
+    ) { tasks, projects, progress, notes ->
       val project = projects.firstOrNull { it.id == projectId }
       val pr = progress.firstOrNull { it.projectId == projectId }
       // Project-scoped, manual-rank list reusing the Browse engine.
@@ -55,6 +60,7 @@ class ProjectDetailViewModel @Inject constructor(
         total = pr?.total ?: 0,
         done = pr?.done ?: 0,
         items = groups.flatMap { it.items },
+        notes = notes.sortedByDescending { it.updatedAt },
       )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProjectDetailUiState())
 
