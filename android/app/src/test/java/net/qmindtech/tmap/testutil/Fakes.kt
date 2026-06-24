@@ -164,3 +164,34 @@ class FakeSubtaskRepo(
 
   fun setByTask(v: List<SubtaskEntity>) = byTask.let { it.value = v }
 }
+
+fun fakeNote(
+  id: String,
+  groupId: String? = null,
+  projectId: String? = null,
+  title: String = "Note $id",
+  content: String = "",
+  rank: String? = null,
+  pinnedAt: Instant? = null,
+  createdAt: Instant = EPOCH,
+  updatedAt: Instant = EPOCH,
+  changeSeq: Long = 0,
+): net.qmindtech.tmap.data.local.entities.NoteEntity =
+  net.qmindtech.tmap.data.local.entities.NoteEntity(
+    id = id, groupId = groupId, projectId = projectId, title = title, content = content,
+    rank = rank, createdAt = createdAt, updatedAt = updatedAt, changeSeq = changeSeq,
+    deletedAt = null, pinnedAt = pinnedAt,
+  )
+
+fun fakeNoteGroup(
+  id: String,
+  name: String = "Notebook $id",
+  emoji: String = "📓",
+  projectId: String? = null,
+  rank: String? = null,
+  createdAt: Instant = EPOCH,
+): net.qmindtech.tmap.data.local.entities.NoteGroupEntity =
+  net.qmindtech.tmap.data.local.entities.NoteGroupEntity(
+    id = id, name = name, emoji = emoji, projectId = projectId, rank = rank,
+    createdAt = createdAt, updatedAt = createdAt, changeSeq = 0, deletedAt = null,
+  )
