@@ -72,6 +72,21 @@
             </intent-filter>
         </receiver>
 
+        <!-- Today Agenda home-screen widget (P8.6). exported=true is required: the AppWidget host
+             system service binds this receiver to deliver APPWIDGET_UPDATE and related broadcasts.
+             The provider XML defines size constraints, resize behaviour, and update interval. -->
+        <receiver
+            android:name=".widget.TodayAgendaWidgetReceiver"
+            android:exported="true"
+            android:label="TMap — Today">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_today_agenda" />
+        </receiver>
+
         <!-- Trampoline for the Quick Capture widget. Launched by class ref (not VIEW filter); opens
              the system speech recognizer on mic tap, then forwards tmap://capture to MainActivity. -->
         <activity

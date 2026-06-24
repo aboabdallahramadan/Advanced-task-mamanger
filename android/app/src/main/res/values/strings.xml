@@ -7,4 +7,6 @@
     <string name="nav_browse">Browse</string>
     <string name="nav_notes">Notes</string>
     <string name="nav_you">You</string>
+    <!-- Widget descriptions -->
+    <string name="widget_today_agenda_desc">Your day at a glance — tick tasks off from the home screen.</string>
 </resources>
