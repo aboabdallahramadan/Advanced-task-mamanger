@@ -17,8 +17,10 @@ import net.qmindtech.tmap.data.repository.TaskEdit
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.ui.components.toUi
 import net.qmindtech.tmap.util.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import javax.inject.Inject
 
 @HiltViewModel
@@ -32,12 +34,15 @@ class TodayViewModel @Inject constructor(
 
   private val todayTasksFlow = taskRepo.observeToday(clock.today())
 
+  @Volatile private var lastTasks: List<TaskEntity> = emptyList()
+
   val uiState: StateFlow<TodayUiState> =
     combine(
       todayTasksFlow,
       projectRepo.observeAll(),
       mode,
     ) { tasks, projects, m ->
+      lastTasks = tasks
       val projectsById = projects.associateBy { it.id }
       val sorted = tasks.sortedWith(
         compareBy<TaskEntity>({ it.rank ?: "zzzzzz" }, { it.scheduledStart ?: Instant.MAX }, { it.createdAt }),
@@ -82,5 +87,22 @@ class TodayViewModel @Inject constructor(
 
   fun moveToDay(taskId: String, date: LocalDate) {
     viewModelScope.launch { taskRepo.moveToDay(taskId, date) }
+  }
+
+  fun timeblock(taskId: String, start: LocalTime) {
+    val task = lastTasks.firstOrNull { it.id == taskId } ?: return
+    val duration = task.durationMinutes ?: 60
+    val startInstant = clock.today().atTime(start).atZone(clock.zone()).toInstant()
+    val endInstant = startInstant.plus(Duration.ofMinutes(duration.toLong()))
+    viewModelScope.launch {
+      taskRepo.update(
+        taskId,
+        TaskEdit(
+          scheduledStart = startInstant,
+          scheduledEnd = endInstant,
+          durationMinutes = duration,
+        ),
+      )
+    }
   }
 }
