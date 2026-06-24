@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SettingEntity
@@ -15,9 +16,11 @@ import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.data.repository.DailyPlanRepository
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.SettingsRepository
+import net.qmindtech.tmap.data.repository.TaskEdit
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.ui.components.parseProjectColor
 import net.qmindtech.tmap.util.Clock
+import java.time.Instant
 import java.time.LocalDate
 import javax.inject.Inject
 
@@ -94,6 +97,49 @@ class PlanningViewModel @Inject constructor(
       picked.value - taskId
     } else {
       picked.value + taskId
+    }
+  }
+
+  fun scheduleFromInbox(taskId: String) {
+    viewModelScope.launch {
+      taskRepo.update(taskId, TaskEdit(status = TaskStatus.Planned, plannedDate = today))
+    }
+    if (!picked.value.contains(taskId)) picked.value = picked.value + taskId
+  }
+
+  fun sendToBacklog(taskId: String) {
+    viewModelScope.launch { taskRepo.update(taskId, TaskEdit(status = TaskStatus.Backlog)) }
+  }
+
+  fun assignProject(taskId: String, projectId: String) {
+    viewModelScope.launch { taskRepo.update(taskId, TaskEdit(projectId = projectId)) }
+  }
+
+  fun deleteTask(taskId: String) {
+    viewModelScope.launch { taskRepo.delete(taskId) }
+    picked.value = picked.value - taskId
+  }
+
+  fun assignTime(taskId: String, start: Instant, end: Instant) {
+    viewModelScope.launch {
+      taskRepo.update(
+        taskId,
+        TaskEdit(scheduledStart = start, scheduledEnd = end, status = TaskStatus.Scheduled),
+      )
+    }
+  }
+
+  fun commit(onDone: () -> Unit = {}) {
+    val ids = picked.value
+    val minutes = uiState.value.plannedMinutes
+    viewModelScope.launch {
+      ids.forEach { id ->
+        taskRepo.update(id, TaskEdit(status = TaskStatus.Planned, plannedDate = today))
+      }
+      // DailyPlanRepository.upsert stamps committedAt internally (write-through → outbox, offline-safe).
+      dailyPlanRepo.upsert(today, ids, minutes)
+      committed.value = true
+      onDone()
     }
   }
 }
