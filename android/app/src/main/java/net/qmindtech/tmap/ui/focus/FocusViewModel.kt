@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.util.Clock
@@ -68,6 +69,13 @@ class FocusViewModel @Inject constructor(
         val (next, rest) = advanceQueue(queue.value)
         queue.value = rest
         if (next != null) controller.start(next, controller.state.value.project, controller.state.value.lengthMin)
+    }
+
+    /** Mark the bound task done (if any) and end the interval (used by the screen's ✓ control). */
+    fun markDone() {
+        val id = controller.state.value.taskId
+        if (id != null) viewModelScope.launch { taskRepo.markDone(id) }
+        controller.end()
     }
 
     fun currentTaskIdForTest(): String? = controller.state.value.taskId

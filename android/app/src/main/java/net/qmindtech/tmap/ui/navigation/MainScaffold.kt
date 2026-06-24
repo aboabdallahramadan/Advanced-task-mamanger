@@ -151,7 +151,19 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                         arguments = listOf(
                             navArgument(Route.Focus.ARG_TASK_ID) { type = NavType.StringType },
                         ),
-                    ) { FocusPlaceholder() }
+                    ) { entry ->
+                        val raw = entry.arguments?.getString(Route.Focus.ARG_TASK_ID)
+                        val taskId = raw?.takeIf { it != Route.Focus.NEW_SENTINEL }
+                        val context = androidx.compose.ui.platform.LocalContext.current
+                        androidx.compose.runtime.DisposableEffect(Unit) {
+                            net.qmindtech.tmap.ui.focus.FocusService.start(context)
+                            onDispose { net.qmindtech.tmap.ui.focus.FocusService.stop(context) }
+                        }
+                        net.qmindtech.tmap.ui.focus.FocusScreen(
+                            taskId = taskId,
+                            onExit = { navController.popBackStack() },
+                        )
+                    }
                     composable(
                         route = Route.ProjectDetail.PATTERN,
                         arguments = listOf(
