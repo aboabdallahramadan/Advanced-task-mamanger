@@ -21,6 +21,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,11 @@ fun NoteEditorSheet(
     onClose: () -> Unit,
     viewModel: NoteEditorViewModel = hiltViewModel(),
 ) {
+    // When opened as a sheet the ViewModel's SavedStateHandle has no noteId injected by the
+    // nav graph, so we drive loading imperatively.  load() is idempotent when called with the
+    // same id and the state is already populated.
+    LaunchedEffect(noteId) { viewModel.load(noteId) }
+
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     fun dismiss() {

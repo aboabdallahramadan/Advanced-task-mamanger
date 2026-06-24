@@ -27,6 +27,7 @@ class NoteEditorViewModel @Inject constructor(
     private val rawId: String? = savedStateHandle.get<String?>("noteId")
     private val initialNoteId: String? = rawId?.takeIf { it.isNotBlank() && it != "new" }
 
+    // Mutable so load() can override the value set by SavedStateHandle (sheet usage).
     private var noteId: String? = initialNoteId
     private var observeJob: Job? = null
 
@@ -46,7 +47,31 @@ class NoteEditorViewModel @Inject constructor(
     val uiState: StateFlow<NoteEditorUiState> = _state.asStateFlow()
 
     init {
-        startObserving(initialNoteId)
+        load(initialNoteId)
+    }
+
+    /**
+     * Called by [NoteEditorSheet] when the sheet is opened with a specific noteId (sheet path
+     * bypasses SavedStateHandle injection, so the composable passes the id explicitly).
+     *
+     * `null` / `"new"` → create-mode.  Any other non-blank string → edit-mode.
+     *
+     * This is safe to call in a [LaunchedEffect] — it replaces the active observation job
+     * only if the id is actually different from the current one.
+     */
+    fun load(id: String?) {
+        val resolved = id?.takeIf { it.isNotBlank() && it != "new" }
+        if (resolved == noteId && _state.value.title.isNotBlank()) return  // already loaded
+        noteId = resolved
+        // Reset loadedBlank tracking for the new note.
+        loadedBlank = false
+        loadedBlankSet = false
+        _state.value = if (resolved == null) {
+            NoteEditorUiState(isEdit = false, loading = false)
+        } else {
+            NoteEditorUiState()
+        }
+        startObserving(resolved)
     }
 
     private fun startObserving(id: String?) {

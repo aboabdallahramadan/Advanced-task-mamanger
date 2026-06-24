@@ -217,6 +217,9 @@ class FakeNoteRepo(
   val reordered = mutableListOf<List<String>>()
   var nextId = "note-new"
 
+  // Per-id flows for testing multi-note observation scenarios.
+  private val perIdFlows = mutableMapOf<String, MutableStateFlow<net.qmindtech.tmap.data.local.entities.NoteEntity?>>()
+
   override fun observeAll(
     groupId: String?,
     projectId: String?,
@@ -227,7 +230,18 @@ class FakeNoteRepo(
 
   override fun observe(
     id: String,
-  ): kotlinx.coroutines.flow.Flow<net.qmindtech.tmap.data.local.entities.NoteEntity?> = singleFlow
+  ): kotlinx.coroutines.flow.Flow<net.qmindtech.tmap.data.local.entities.NoteEntity?> =
+    perIdFlows[id] ?: singleFlow
+
+  /** Sets up a per-id flow so [observe] returns a flow scoped to [entity.id]. */
+  fun setForId(entity: net.qmindtech.tmap.data.local.entities.NoteEntity) {
+    perIdFlows.getOrPut(entity.id) { MutableStateFlow(null) }.value = entity
+  }
+
+  /** Emits a new value on the per-id flow for [id] (must have been set via [setForId] first). */
+  fun emitForId(id: String, entity: net.qmindtech.tmap.data.local.entities.NoteEntity?) {
+    perIdFlows[id]?.value = entity
+  }
 
   override suspend fun create(
     title: String,

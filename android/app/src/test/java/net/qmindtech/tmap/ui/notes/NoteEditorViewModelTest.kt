@@ -13,6 +13,7 @@ import net.qmindtech.tmap.testutil.FakeProjectRepo
 import net.qmindtech.tmap.testutil.fakeNote
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -33,6 +34,15 @@ class NoteEditorViewModelTest {
         )
 
     private fun createVm(notes: FakeNoteRepo): NoteEditorViewModel =
+        NoteEditorViewModel(
+            noteRepo = notes,
+            noteGroupRepo = FakeNoteGroupRepo(),
+            projectRepo = FakeProjectRepo(),
+            savedStateHandle = SavedStateHandle(mapOf("noteId" to null)),
+        )
+
+    /** Simulates the sheet path: ViewModel created with no SavedStateHandle noteId. */
+    private fun sheetVm(notes: FakeNoteRepo): NoteEditorViewModel =
         NoteEditorViewModel(
             noteRepo = notes,
             noteGroupRepo = FakeNoteGroupRepo(),
@@ -207,4 +217,84 @@ class NoteEditorViewModelTest {
         assertEquals(true, vm.uiState.value.isEdit)
         assertEquals(true, vm.uiState.value.saved)
     }
+
+    // ── load() — sheet path (SavedStateHandle has no noteId) ──────────────────
+
+    @Test fun load_existing_note_switches_to_edit_mode_and_populates_state() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.singleFlow.value = fakeNote(id = "n1", title = "Meeting notes", content = "Action items")
+        val vm = sheetVm(notes)
+        assertEquals(false, vm.uiState.value.isEdit)
+
+        vm.load("n1")
+
+        assertEquals(true, vm.uiState.value.isEdit)
+        assertEquals("Meeting notes", vm.uiState.value.title)
+        assertEquals("Action items", vm.uiState.value.content)
+        assertFalse(vm.uiState.value.loading)
+    }
+
+    @Test fun load_existing_note_with_content_sets_loadedBlank_false_so_discard_does_not_delete() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.singleFlow.value = fakeNote(id = "n1", title = "Important note", content = "Keep this")
+        val vm = sheetVm(notes)
+        vm.load("n1")
+
+        // Note had content when loaded → loadedBlank=false → discardIfEmpty must NOT delete.
+        vm.discardIfEmpty()
+        assertTrue(notes.deleted.isEmpty())
+    }
+
+    @Test fun load_existing_blank_note_sets_loadedBlank_true_so_discard_deletes() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.singleFlow.value = fakeNote(id = "n2", title = "", content = "")
+        val vm = sheetVm(notes)
+        vm.load("n2")
+
+        // Note was blank when loaded (eagerly created) → loadedBlank=true → discardIfEmpty deletes.
+        vm.discardIfEmpty()
+        assertEquals(listOf("n2"), notes.deleted)
+    }
+
+    @Test fun load_null_stays_in_create_mode() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        val vm = sheetVm(notes)
+        vm.load(null)
+        assertEquals(false, vm.uiState.value.isEdit)
+        assertEquals("", vm.uiState.value.title)
+    }
+
+    @Test fun load_new_sentinel_stays_in_create_mode() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        val vm = sheetVm(notes)
+        vm.load("new")
+        assertEquals(false, vm.uiState.value.isEdit)
+    }
+
+    // ── observe-job cancellation regression ───────────────────────────────────
+
+    /**
+     * Regression: load("a") then load("b") must cancel the "a" collector so that
+     * a later emission on "a"'s flow cannot overwrite _state with stale data.
+     */
+    @Test fun load_cancels_prior_observe_so_stale_note_a_emit_does_not_overwrite_note_b() =
+        runTest(testDispatcher) {
+            val notes = FakeNoteRepo()
+            notes.setForId(fakeNote(id = "a", title = "Note A"))
+            notes.setForId(fakeNote(id = "b", title = "Note B"))
+
+            val vm = sheetVm(notes)
+
+            vm.load("a")
+            assertEquals("Note A", vm.uiState.value.title)
+
+            vm.load("b")
+            assertEquals("Note B", vm.uiState.value.title)
+
+            // Emit an update to note "a" — the prior observeJob must be cancelled so this
+            // emission does NOT overwrite the state that now belongs to note "b".
+            notes.emitForId("a", fakeNote(id = "a", title = "Note A — updated"))
+
+            assertEquals("Note B", vm.uiState.value.title)
+        }
 }

@@ -36,6 +36,7 @@ import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.components.TaskCard
 import net.qmindtech.tmap.ui.notes.NoteCard
 import net.qmindtech.tmap.ui.notes.NoteCardUi
+import net.qmindtech.tmap.ui.notes.noteSnippet
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapType
 
@@ -51,7 +52,7 @@ import net.qmindtech.tmap.ui.theme.LocalTmapType
 fun ProjectDetailScreen(
     onBack: () -> Unit,
     onOpenTask: (taskId: String) -> Unit,
-    onOpenNote: (noteId: String) -> Unit = {},
+    onOpenNote: (noteId: String) -> Unit,
     viewModel: ProjectDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -146,7 +147,7 @@ fun ProjectDetailScreen(
                             NoteCardUi(
                                 id = note.id,
                                 title = note.title.ifBlank { "Untitled" },
-                                snippet = net.qmindtech.tmap.ui.notes.noteSnippet(note.content),
+                                snippet = noteSnippet(note.content),
                                 projectColor = null,
                                 projectName = null,
                                 updatedAt = note.updatedAt,
