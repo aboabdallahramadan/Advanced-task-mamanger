@@ -47,11 +47,18 @@ class TodayViewModel @Inject constructor(
       val starts = sorted.associate { it.id to it.scheduledStart?.atZone(clock.zone())?.toLocalTime() }
       val uis = sorted.map { it.toUi(projectsById[it.projectId], zone = clock.zone()) }
       val nowTime = clock.now().atZone(clock.zone()).toLocalTime()
+      // Build timeline blocks: only tasks that have a scheduled start time.
+      val timelineBlocks = sorted.mapNotNull { task ->
+        val startTime = task.scheduledStart?.atZone(clock.zone())?.toLocalTime() ?: return@mapNotNull null
+        val ui = task.toUi(projectsById[task.projectId], zone = clock.zone())
+        TimelineBlock(ui = ui, start = startTime, durationMin = task.durationMinutes ?: 60)
+      }
       TodayUiState(
         loading = false,
         dateEyebrow = eyebrowFor(clock.today()),
         greeting = greetingFor(nowTime),
         groups = groupToday(uis, starts),
+        timelineBlocks = timelineBlocks,
         progress = computeProgress(tasks),
         mode = m,
       )

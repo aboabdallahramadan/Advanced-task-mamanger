@@ -43,6 +43,7 @@ data class TodayUiState(
   val dateEyebrow: String = "",
   val greeting: String = "",
   val groups: List<TodayGroup> = emptyList(),
+  val timelineBlocks: List<TimelineBlock> = emptyList(),
   val progress: TodayProgress = TodayProgress(0, 0, 0),
   val mode: TodayMode = TodayMode.List,
 )

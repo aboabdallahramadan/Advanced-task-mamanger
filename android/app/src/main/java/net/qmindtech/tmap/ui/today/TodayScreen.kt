@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ViewList
-import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
@@ -41,6 +40,7 @@ import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 import net.qmindtech.tmap.ui.theme.LocalTmapType
+import java.time.LocalTime
 
 /**
  * Today screen — rebuilt to Midnight Calm spec (daily-core.html ①).
@@ -188,11 +188,12 @@ fun TodayScreen(
                     state.loading -> Unit // loading skeleton deferred to P8
 
                     state.mode == TodayMode.Timeline ->
-                        EmptyState(
-                            icon = Icons.Outlined.CalendarToday,
-                            title = "Timeline coming soon",
-                            subtitle = "Switch to List to see today's tasks.",
-                            modifier = Modifier.padding(top = spacing.xxl),
+                        TimelineContent(
+                            blocks = state.timelineBlocks,
+                            now = LocalTime.now(),
+                            onClick = onOpenTask,
+                            onTimeblock = viewModel::timeblock,
+                            modifier = Modifier.fillMaxSize(),
                         )
 
                     state.groups.isEmpty() ->
