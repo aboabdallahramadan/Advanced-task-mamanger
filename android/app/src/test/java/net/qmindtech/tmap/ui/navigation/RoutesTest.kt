@@ -15,6 +15,11 @@ class RoutesTest {
     }
 
     @Test
+    fun planningRouteStringIsPinned() {
+        assertEquals("planning", Route.Planning.route)
+    }
+
+    @Test
     fun settingsRouteStringIsPinned() {
         assertEquals("settings", Route.Settings.route)
     }
