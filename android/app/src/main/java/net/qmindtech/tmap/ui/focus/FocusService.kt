@@ -88,12 +88,3 @@ class FocusService : Service() {
         }
     }
 }
-
-/**
- * Formats seconds as mm:ss (e.g. 1500 → "25:00"). Temporary until P6.6 lands the shared formatter
- * in this package; at that point, delete this declaration and use the shared one.
- */
-internal fun mmss(seconds: Int): String {
-    val s = seconds.coerceAtLeast(0)
-    return "%02d:%02d".format(s / 60, s % 60)
-}
