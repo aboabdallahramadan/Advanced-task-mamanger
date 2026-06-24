@@ -140,7 +140,11 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                         )
                     }
                     composable(Route.You.route) { YouPlaceholder() }
-                    composable(Route.Planning.route) { PlanningPlaceholder() }
+                    composable(Route.Planning.route) {
+                        net.qmindtech.tmap.ui.planning.PlanningScreen(
+                            onClose = { navController.popBackStack() },
+                        )
+                    }
                     composable(Route.Settings.route) { SettingsPlaceholder() }
                     composable(
                         route = Route.Focus.PATTERN,
