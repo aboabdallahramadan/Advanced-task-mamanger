@@ -45,6 +45,7 @@ class TodayViewModel @Inject constructor(
         compareBy<TaskEntity>({ it.rank ?: "zzzzzz" }, { it.scheduledStart ?: Instant.MAX }, { it.createdAt }),
       )
       val starts = sorted.associate { it.id to it.scheduledStart?.atZone(clock.zone())?.toLocalTime() }
+      val durations = sorted.associate { it.id to it.durationMinutes }
       val uis = sorted.map { it.toUi(projectsById[it.projectId], zone = clock.zone()) }
       val nowTime = clock.now().atZone(clock.zone()).toLocalTime()
       // Build timeline blocks: only tasks that have a scheduled start time.
@@ -61,6 +62,8 @@ class TodayViewModel @Inject constructor(
         timelineBlocks = timelineBlocks,
         progress = computeProgress(tasks),
         mode = m,
+        scheduledStarts = starts,
+        durations = durations,
       )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TodayUiState())
 

@@ -46,7 +46,31 @@ data class TodayUiState(
   val timelineBlocks: List<TimelineBlock> = emptyList(),
   val progress: TodayProgress = TodayProgress(0, 0, 0),
   val mode: TodayMode = TodayMode.List,
+  /** Resolved local start time per task id (null = no scheduled start). Used by [timelineBlocksFrom]. */
+  val scheduledStarts: Map<String, LocalTime?> = emptyMap(),
+  /** Duration in minutes per task id (null = not set). Used by [timelineBlocksFrom]. */
+  val durations: Map<String, Int?> = emptyMap(),
 )
+
+/**
+ * Pure projection: flatten the grouped Today state into timeline blocks for the scheduled tasks.
+ * A task contributes a block only when it has a resolved local start time.
+ *
+ * Sorted ascending by start. Default duration when null = 60 min.
+ */
+fun timelineBlocksFrom(
+  groups: List<TodayGroup>,
+  scheduledStarts: Map<String, LocalTime?>,
+  durations: Map<String, Int?>,
+): List<TimelineBlock> =
+  groups.asSequence()
+    .flatMap { it.tasks.asSequence() }
+    .mapNotNull { ui ->
+      val start = scheduledStarts[ui.id] ?: return@mapNotNull null
+      TimelineBlock(ui = ui, start = start, durationMin = durations[ui.id] ?: 60)
+    }
+    .sortedBy { it.start }
+    .toList()
 
 private const val DEFAULT_TASK_MINUTES = 30
 
