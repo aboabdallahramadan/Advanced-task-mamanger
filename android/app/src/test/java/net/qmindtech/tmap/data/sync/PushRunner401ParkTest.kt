@@ -32,7 +32,11 @@ class PushRunner401ParkTest {
     fun setUp() {
         env = SyncTestEnv()
         outbox = OutboxRepository(env.db.outboxDao(), env.json, clock)
-        runner = PushRunner(env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(), env.db.syncStateDao(), env.json, { })
+        runner = PushRunner(
+            env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
+            env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
+            env.db.syncStateDao(), env.json, { },
+        )
     }
 
     @After

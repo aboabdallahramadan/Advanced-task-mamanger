@@ -8,6 +8,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.qmindtech.tmap.data.local.AppDatabase
+import net.qmindtech.tmap.data.local.dao.DailyPlanDao
+import net.qmindtech.tmap.data.local.dao.FocusSessionDao
+import net.qmindtech.tmap.data.local.dao.NoteDao
+import net.qmindtech.tmap.data.local.dao.NoteGroupDao
 import net.qmindtech.tmap.data.local.dao.OutboxDao
 import net.qmindtech.tmap.data.local.dao.ProjectDao
 import net.qmindtech.tmap.data.local.dao.SettingsDao
@@ -44,4 +48,16 @@ object DatabaseModule {
 
     @Provides
     fun provideSyncStateDao(db: AppDatabase): SyncStateDao = db.syncStateDao()
+
+    @Provides
+    fun provideNoteDao(db: AppDatabase): NoteDao = db.noteDao()
+
+    @Provides
+    fun provideNoteGroupDao(db: AppDatabase): NoteGroupDao = db.noteGroupDao()
+
+    @Provides
+    fun provideFocusSessionDao(db: AppDatabase): FocusSessionDao = db.focusSessionDao()
+
+    @Provides
+    fun provideDailyPlanDao(db: AppDatabase): DailyPlanDao = db.dailyPlanDao()
 }

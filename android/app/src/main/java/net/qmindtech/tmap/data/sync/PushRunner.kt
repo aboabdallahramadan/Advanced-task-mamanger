@@ -6,16 +6,24 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.qmindtech.tmap.data.local.EntityType
 import net.qmindtech.tmap.data.local.OpType
+import net.qmindtech.tmap.data.local.dao.DailyPlanDao
+import net.qmindtech.tmap.data.local.dao.FocusSessionDao
+import net.qmindtech.tmap.data.local.dao.NoteDao
+import net.qmindtech.tmap.data.local.dao.NoteGroupDao
 import net.qmindtech.tmap.data.local.dao.ProjectDao
 import net.qmindtech.tmap.data.local.dao.SubtaskDao
 import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
 import net.qmindtech.tmap.data.local.entities.OutboxOp
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
+import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.CreateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
 import net.qmindtech.tmap.data.remote.dto.ReorderItem
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteGroupRequest
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
@@ -75,6 +83,10 @@ class PushRunner(
     private val taskDao: TaskDao,
     private val subtaskDao: SubtaskDao,
     private val projectDao: ProjectDao,
+    private val noteDao: NoteDao,
+    private val noteGroupDao: NoteGroupDao,
+    private val focusSessionDao: FocusSessionDao,
+    private val dailyPlanDao: DailyPlanDao,
     private val syncStateDao: SyncStateDao,
     private val json: Json,
     private val backoff: suspend (attempt: Int) -> Unit,
@@ -167,11 +179,10 @@ class PushRunner(
             EntityType.SUBTASK -> subtaskDao.deleteById(id)
             EntityType.PROJECT -> projectDao.deleteById(id)
             EntityType.SETTINGS -> Unit
-            // P3.x: NOTE/NOTE_GROUP/FOCUS_SESSION/DAILY_PLAN DAOs not yet wired — stubs added by later P3 tasks.
-            EntityType.NOTE -> error("P3.x: wire NoteDao.deleteById")
-            EntityType.NOTE_GROUP -> error("P3.x: wire NoteGroupDao.deleteById")
-            EntityType.FOCUS_SESSION -> error("P3.x: wire FocusSessionDao.deleteById")
-            EntityType.DAILY_PLAN -> error("P3.x: wire DailyPlanDao.deleteById")
+            EntityType.NOTE -> noteDao.deleteById(id)
+            EntityType.NOTE_GROUP -> noteGroupDao.deleteById(id)
+            EntityType.FOCUS_SESSION -> focusSessionDao.deleteById(id)
+            EntityType.DAILY_PLAN -> dailyPlanDao.deleteByDate(java.time.LocalDate.parse(id))
         }
     }
 
@@ -210,10 +221,20 @@ class PushRunner(
                 OpType.DELETE -> requireOk(api.deleteProject(op.entityId).code(), op)
                 OpType.REORDER -> requireOk(api.reorderProjects(json.decodeFromString(reorderSerializer, op.payloadJson)).code(), op)
             }
+            EntityType.NOTE -> when (op.opType) {
+                OpType.CREATE -> api.createNote(json.decodeFromString(CreateNoteRequest.serializer(), op.payloadJson))
+                OpType.UPDATE -> api.updateNote(op.entityId, json.decodeFromString(UpdateNoteRequest.serializer(), op.payloadJson))
+                OpType.DELETE -> requireOk(api.deleteNote(op.entityId).code(), op)
+                OpType.REORDER -> requireOk(api.reorderNotes(json.decodeFromString(reorderSerializer, op.payloadJson)).code(), op)
+            }
+            EntityType.NOTE_GROUP -> when (op.opType) {
+                OpType.CREATE -> api.createNoteGroup(json.decodeFromString(CreateNoteGroupRequest.serializer(), op.payloadJson))
+                OpType.UPDATE -> api.updateNoteGroup(op.entityId, json.decodeFromString(UpdateNoteGroupRequest.serializer(), op.payloadJson))
+                OpType.DELETE -> requireOk(api.deleteNoteGroup(op.entityId).code(), op)
+                OpType.REORDER -> requireOk(api.reorderNoteGroups(json.decodeFromString(reorderSerializer, op.payloadJson)).code(), op)
+            }
             EntityType.SETTINGS -> error("settings are pushed via SettingsRepository.saveSettings, not the outbox replay")
-            // P3.x: NOTE/NOTE_GROUP/FOCUS_SESSION/DAILY_PLAN API calls not yet wired — stubs filled by later P3 tasks.
-            EntityType.NOTE -> error("P3.x: wire NOTE dispatch")
-            EntityType.NOTE_GROUP -> error("P3.x: wire NOTE_GROUP dispatch")
+            // P3.18: FOCUS_SESSION/DAILY_PLAN dispatch wired in the next task.
             EntityType.FOCUS_SESSION -> error("P3.x: wire FOCUS_SESSION dispatch")
             EntityType.DAILY_PLAN -> error("P3.x: wire DAILY_PLAN dispatch")
         }
@@ -285,11 +306,20 @@ class PushRunner(
                 }
             }
             EntityType.SETTINGS -> Unit
-            // P3.x: NOTE/NOTE_GROUP/FOCUS_SESSION/DAILY_PLAN adopt not yet wired — stubs filled by later P3 tasks.
-            EntityType.NOTE -> error("P3.x: wire NOTE adoptExisting")
-            EntityType.NOTE_GROUP -> error("P3.x: wire NOTE_GROUP adoptExisting")
-            EntityType.FOCUS_SESSION -> error("P3.x: wire FOCUS_SESSION adoptExisting")
-            EntityType.DAILY_PLAN -> error("P3.x: wire DAILY_PLAN adoptExisting")
+            EntityType.NOTE -> {
+                noteDao.getById(ghostId)?.let { ghost ->
+                    noteDao.deleteById(ghostId)
+                    noteDao.upsertAll(listOf(ghost.copy(id = existingId)))
+                }
+            }
+            EntityType.NOTE_GROUP -> {
+                noteGroupDao.getById(ghostId)?.let { ghost ->
+                    noteGroupDao.deleteById(ghostId)
+                    noteGroupDao.upsertAll(listOf(ghost.copy(id = existingId)))
+                }
+            }
+            EntityType.FOCUS_SESSION -> Unit  // append-only, never CREATEs a 409-conflicting id worth remapping
+            EntityType.DAILY_PLAN -> Unit     // date-keyed; no id remap/adopt (spec §7.6)
         }
         outbox.remapEntityId(ghostId, existingId)
         outbox.delete(createOp.localSeq)

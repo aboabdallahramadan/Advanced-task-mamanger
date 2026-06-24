@@ -30,7 +30,11 @@ class SyncEngineTest {
     fun setUp() {
         env = SyncTestEnv()
         outbox = OutboxRepository(env.db.outboxDao(), env.json, clock)
-        push = PushRunner(env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(), env.db.syncStateDao(), env.json, { })
+        push = PushRunner(
+            env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
+            env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
+            env.db.syncStateDao(), env.json, { },
+        )
         pull = PullRunner(env.api, env.db, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
             env.db.settingsDao(), env.db.syncStateDao(), env.db.outboxDao(), rearmer)
         holder = SyncStatusHolder()
@@ -128,6 +132,7 @@ class SyncEngineTest {
         }
         val pushWithBackoff = PushRunner(
             env.api, outbox, env.db.taskDao(), env.db.subtaskDao(), env.db.projectDao(),
+            env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
             env.db.syncStateDao(), env.json, { },
         )
         val engine = SyncEngine(pushWithBackoff, pull, holder, isOnline = { true })

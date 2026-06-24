@@ -16,6 +16,10 @@ import net.qmindtech.tmap.data.auth.AuthRepositoryImpl
 import net.qmindtech.tmap.data.auth.KeystoreTokenStore
 import net.qmindtech.tmap.data.auth.TokenStore
 import net.qmindtech.tmap.data.local.AppDatabase
+import net.qmindtech.tmap.data.local.dao.DailyPlanDao
+import net.qmindtech.tmap.data.local.dao.FocusSessionDao
+import net.qmindtech.tmap.data.local.dao.NoteDao
+import net.qmindtech.tmap.data.local.dao.NoteGroupDao
 import net.qmindtech.tmap.data.local.dao.OutboxDao
 import net.qmindtech.tmap.data.local.dao.ProjectDao
 import net.qmindtech.tmap.data.local.dao.SettingsDao
@@ -94,9 +98,17 @@ abstract class AppModule {
             taskDao: TaskDao,
             subtaskDao: SubtaskDao,
             projectDao: ProjectDao,
+            noteDao: NoteDao,
+            noteGroupDao: NoteGroupDao,
+            focusSessionDao: FocusSessionDao,
+            dailyPlanDao: DailyPlanDao,
             syncStateDao: SyncStateDao,
             json: Json,
-        ): PushRunner = PushRunner(api, outbox, taskDao, subtaskDao, projectDao, syncStateDao, json, ::syncBackoff)
+        ): PushRunner = PushRunner(
+            api, outbox, taskDao, subtaskDao, projectDao,
+            noteDao, noteGroupDao, focusSessionDao, dailyPlanDao,
+            syncStateDao, json, ::syncBackoff,
+        )
 
         @Provides @Singleton
         fun providePullRunner(
