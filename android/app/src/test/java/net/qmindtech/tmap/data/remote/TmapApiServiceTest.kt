@@ -3,8 +3,11 @@ package net.qmindtech.tmap.data.remote
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
+import net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest
+import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
 import net.qmindtech.tmap.data.remote.dto.LoginRequest
+import net.qmindtech.tmap.data.remote.dto.UpsertDailyPlanRequest
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -90,5 +93,58 @@ class TmapApiServiceTest {
         val recorded = server.takeRequest()
         assertEquals("GET", recorded.method)
         assertEquals("/api/v1/sync?since=100&cursor=105&limit=500", recorded.path)
+    }
+
+    @Test
+    fun `createNote posts to the notes path`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201).setBody(
+            """{"id":"n1","groupId":null,"projectId":null,"title":"t","content":"c","rank":null,
+               "createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z"}"""))
+        val res = api.createNote(CreateNoteRequest(id = "n1", title = "t", content = "c"))
+        assertEquals("/api/v1/notes", server.takeRequest().path)
+        assertEquals("n1", res.id)
+    }
+
+    @Test
+    fun `getNotes passes groupId and projectId query params`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody("[]"))
+        api.getNotes(groupId = "g1", projectId = null)
+        assertEquals("/api/v1/notes?groupId=g1", server.takeRequest().path)
+    }
+
+    @Test
+    fun `reorderNotes patches the reorder path`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(204))
+        val res = api.reorderNotes(emptyList())
+        val recorded = server.takeRequest()
+        assertEquals("PATCH", recorded.method)
+        assertEquals("/api/v1/notes/reorder", recorded.path)
+        assertTrue(res.isSuccessful)
+    }
+
+    @Test
+    fun `createFocusSession posts to the focus-sessions path`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(201).setBody(
+            """{"id":"f1","taskId":"t1","project":"العمل","startedAt":"2026-06-18T09:00:00Z",
+               "endedAt":"2026-06-18T09:25:00Z","minutes":25,"date":"2026-06-18",
+               "createdAt":"2026-06-18T09:25:00Z","updatedAt":"2026-06-18T09:25:00Z"}"""))
+        val res = api.createFocusSession(net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest(
+            id = "f1", taskId = "t1", project = "العمل", startedAt = "2026-06-18T09:00:00Z",
+            endedAt = "2026-06-18T09:25:00Z", minutes = 25, date = "2026-06-18"))
+        assertEquals("/api/v1/focus-sessions", server.takeRequest().path)
+        assertEquals(25, res.minutes)
+    }
+
+    @Test
+    fun `putDailyPlan upserts by date path`() = runBlocking {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(
+            """{"date":"2026-06-18","committedAt":"2026-06-18T07:00:00Z",
+               "plannedTaskIds":["a"],"plannedMinutes":30}"""))
+        val res = api.putDailyPlan("2026-06-18",
+            UpsertDailyPlanRequest(committedAt = "2026-06-18T07:00:00Z", plannedTaskIds = listOf("a"), plannedMinutes = 30))
+        val recorded = server.takeRequest()
+        assertEquals("PUT", recorded.method)
+        assertEquals("/api/v1/daily-plans/2026-06-18", recorded.path)
+        assertEquals("2026-06-18", res.date)
     }
 }

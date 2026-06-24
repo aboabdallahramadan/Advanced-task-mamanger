@@ -1,11 +1,18 @@
 package net.qmindtech.tmap.data.remote
 
 import net.qmindtech.tmap.data.remote.dto.AuthTokenResponse
+import net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest
+import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
+import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.CreateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.DailyPlanResponse
+import net.qmindtech.tmap.data.remote.dto.FocusSessionResponse
 import net.qmindtech.tmap.data.remote.dto.LoginRequest
 import net.qmindtech.tmap.data.remote.dto.LogoutRequest
+import net.qmindtech.tmap.data.remote.dto.NoteGroupResponse
+import net.qmindtech.tmap.data.remote.dto.NoteResponse
 import net.qmindtech.tmap.data.remote.dto.ProjectResponse
 import net.qmindtech.tmap.data.remote.dto.RefreshRequest
 import net.qmindtech.tmap.data.remote.dto.RegisterRequest
@@ -15,9 +22,12 @@ import net.qmindtech.tmap.data.remote.dto.SettingsResponse
 import net.qmindtech.tmap.data.remote.dto.SubtaskResponse
 import net.qmindtech.tmap.data.remote.dto.SyncResponse
 import net.qmindtech.tmap.data.remote.dto.TaskResponse
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteGroupRequest
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.UpsertDailyPlanRequest
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.DELETE
@@ -89,4 +99,53 @@ interface TmapApiService {
         @Query("cursor") cursor: Long?,
         @Query("limit") limit: Int,
     ): SyncResponse
+
+    // ── Notes ──────────────────────────────────────────────
+    @GET("api/v1/notes")
+    suspend fun getNotes(
+        @Query("groupId") groupId: String? = null,
+        @Query("projectId") projectId: String? = null,
+    ): List<NoteResponse>
+
+    @GET("api/v1/notes/{id}")
+    suspend fun getNote(@Path("id") id: String): NoteResponse
+
+    @POST("api/v1/notes")
+    suspend fun createNote(@Body b: CreateNoteRequest): NoteResponse
+
+    @PATCH("api/v1/notes/{id}")
+    suspend fun updateNote(@Path("id") id: String, @Body b: UpdateNoteRequest): NoteResponse
+
+    @DELETE("api/v1/notes/{id}")
+    suspend fun deleteNote(@Path("id") id: String): Response<Unit>
+
+    @PATCH("api/v1/notes/reorder")
+    suspend fun reorderNotes(@Body b: List<ReorderItem>): Response<Unit>
+
+    // ── Note-groups ────────────────────────────────────────
+    @GET("api/v1/note-groups")
+    suspend fun getNoteGroups(@Query("projectId") projectId: String? = null): List<NoteGroupResponse>
+
+    @POST("api/v1/note-groups")
+    suspend fun createNoteGroup(@Body b: CreateNoteGroupRequest): NoteGroupResponse
+
+    @PATCH("api/v1/note-groups/{id}")
+    suspend fun updateNoteGroup(@Path("id") id: String, @Body b: UpdateNoteGroupRequest): NoteGroupResponse
+
+    @DELETE("api/v1/note-groups/{id}")
+    suspend fun deleteNoteGroup(@Path("id") id: String): Response<Unit>
+
+    @PATCH("api/v1/note-groups/reorder")
+    suspend fun reorderNoteGroups(@Body b: List<ReorderItem>): Response<Unit>
+
+    // ── Focus-sessions (append-only) ───────────────────────
+    @POST("api/v1/focus-sessions")
+    suspend fun createFocusSession(@Body b: CreateFocusSessionRequest): FocusSessionResponse
+
+    // ── Daily-plans (date-keyed upsert) ────────────────────
+    @GET("api/v1/daily-plans/{date}")
+    suspend fun getDailyPlan(@Path("date") date: String): DailyPlanResponse
+
+    @PUT("api/v1/daily-plans/{date}")
+    suspend fun putDailyPlan(@Path("date") date: String, @Body b: UpsertDailyPlanRequest): DailyPlanResponse
 }
