@@ -44,6 +44,8 @@ import net.qmindtech.tmap.data.repository.SubtaskRepositoryImpl
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.data.repository.TaskRepositoryImpl
 import net.qmindtech.tmap.data.sync.OutboxRepository
+import net.qmindtech.tmap.notifications.ReminderScheduler
+import net.qmindtech.tmap.widget.WidgetUpdater
 import net.qmindtech.tmap.data.sync.PullRunner
 import net.qmindtech.tmap.data.sync.PushRunner
 import net.qmindtech.tmap.data.sync.SyncReminderRearmer
@@ -69,9 +71,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class AppModule {
-
-    @Binds @Singleton
-    abstract fun bindTaskRepository(impl: TaskRepositoryImpl): TaskRepository
 
     @Binds @Singleton
     abstract fun bindProjectRepository(impl: ProjectRepositoryImpl): ProjectRepository
@@ -145,10 +144,34 @@ abstract class AppModule {
             syncStateDao: SyncStateDao,
             outboxDao: OutboxDao,
             rearmer: SyncReminderRearmer,
+            @ApplicationContext context: Context,
         ): PullRunner = PullRunner(
             api, db, taskDao, subtaskDao, projectDao,
             noteDao, noteGroupDao, focusSessionDao, dailyPlanDao,
             settingsDao, syncStateDao, outboxDao, rearmer,
+            onWidgetRefresh = { WidgetUpdater.updateAll(context) },
+        )
+
+        /**
+         * Provides the TaskRepository implementation with a real widget-refresh callback. The
+         * callback calls [WidgetUpdater.updateAll] so that any today-affecting local write (create,
+         * update, markDone, delete) triggers an immediate optimistic re-render of all four widgets.
+         * Using @Provides instead of @Binds because the [onWidgetRefresh] lambda carries a captured
+         * [Context] that cannot be auto-injected by Hilt.
+         */
+        @Provides @Singleton
+        fun provideTaskRepository(
+            taskDao: TaskDao,
+            subtaskDao: SubtaskDao,
+            outbox: OutboxRepository,
+            db: AppDatabase,
+            syncScheduler: SyncScheduler,
+            clock: Clock,
+            reminder: ReminderScheduler,
+            @ApplicationContext context: Context,
+        ): TaskRepository = TaskRepositoryImpl(
+            taskDao, subtaskDao, outbox, db, syncScheduler, clock, reminder,
+            onWidgetRefresh = { WidgetUpdater.updateAll(context) },
         )
 
         /**

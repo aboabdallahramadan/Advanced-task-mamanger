@@ -62,6 +62,12 @@ class PullRunner(
     private val syncStateDao: SyncStateDao,
     private val outboxDao: OutboxDao,
     private val rearmer: SyncReminderRearmer,
+    /**
+     * Called after each successful pull to refresh all Glance widgets. Defaults to a no-op so
+     * unit tests can construct [PullRunner] without an Android [android.content.Context] or Glance.
+     * The real Hilt binding supplies a lambda that calls [net.qmindtech.tmap.widget.WidgetUpdater.updateAll].
+     */
+    private val onWidgetRefresh: suspend () -> Unit = {},
 ) {
     suspend fun pullAll(): PullOutcome {
         val changedTasks = mutableListOf<TaskEntity>()
@@ -140,6 +146,8 @@ class PullRunner(
         }
 
         rearmer.reconcile(changedTasks, deletedTaskIds)
+        // Widgets read the same Room DB — refresh them now that the pull applied remote changes.
+        onWidgetRefresh()
         return PullOutcome(applied = applied, pages = pages, fullResynced = fullResynced)
     }
 

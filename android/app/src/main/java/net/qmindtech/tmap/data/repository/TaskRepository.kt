@@ -78,7 +78,7 @@ interface TaskRepository {
  * outbox, then arms/cancels the reminder and requests an expedited (debounced) sync. Creates use a
  * client UUID so the queued op is idempotent-by-id.
  */
-class TaskRepositoryImpl @Inject constructor(
+class TaskRepositoryImpl constructor(
     private val taskDao: TaskDao,
     private val subtaskDao: SubtaskDao,
     private val outbox: OutboxRepository,
@@ -86,6 +86,13 @@ class TaskRepositoryImpl @Inject constructor(
     private val syncScheduler: SyncScheduler,
     private val clock: Clock,
     private val reminder: ReminderScheduler,
+    /**
+     * Called after each today-affecting mutation to refresh all Glance widgets optimistically.
+     * Defaults to a no-op so unit tests can construct [TaskRepositoryImpl] without an Android
+     * [android.content.Context] or Glance. The real Hilt binding (via [AppModule]) supplies a
+     * lambda that calls [net.qmindtech.tmap.widget.WidgetUpdater.updateAll].
+     */
+    private val onWidgetRefresh: suspend () -> Unit = {},
 ) : TaskRepository {
 
     override fun observeAll(): Flow<List<TaskEntity>> = taskDao.observeAll()
@@ -131,6 +138,7 @@ class TaskRepositoryImpl @Inject constructor(
         }
         reminder.arm(entity)
         syncScheduler.requestExpeditedSync()
+        onWidgetRefresh()
         return id
     }
 
@@ -161,6 +169,7 @@ class TaskRepositoryImpl @Inject constructor(
         }
         reminder.arm(updated)
         syncScheduler.requestExpeditedSync()
+        onWidgetRefresh()
     }
 
     override suspend fun markDone(id: String) {
@@ -176,6 +185,7 @@ class TaskRepositoryImpl @Inject constructor(
         }
         reminder.cancel(id)
         syncScheduler.requestExpeditedSync()
+        onWidgetRefresh()
     }
 
     override suspend fun delete(id: String) {
@@ -186,6 +196,7 @@ class TaskRepositoryImpl @Inject constructor(
         }
         reminder.cancel(id)
         syncScheduler.requestExpeditedSync()
+        onWidgetRefresh()
     }
 
     override suspend fun defer(id: String, toDate: LocalDate) = moveToDay(id, toDate)
