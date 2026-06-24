@@ -106,7 +106,7 @@ class PushRunnerFocusDailyPlanTest {
         val outcome = runner.drain()
         // The illegal op throws in dispatch -> classified Network -> phase aborts WITHOUT pushing it,
         // leaving the queue intact (no silent data loss, no wedge of well-formed ops on the next cycle).
-        assertTrue(outcome.networkAborted || outcome.pushed >= 0)
+        assertTrue(outcome.networkAborted)
         // It is never sent as a real focus-session DELETE (no such endpoint).
         assertEquals(0, env.server.requestCount)
     }
