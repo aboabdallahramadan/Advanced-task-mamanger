@@ -4,7 +4,10 @@ import kotlinx.coroutines.test.runTest
 import net.qmindtech.tmap.data.local.EntityType
 import net.qmindtech.tmap.data.local.OpType
 import net.qmindtech.tmap.data.local.entities.NoteEntity
+import net.qmindtech.tmap.data.local.entities.NoteGroupEntity
+import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.util.Clock
 import org.junit.After
@@ -96,5 +99,71 @@ class PushRunnerNotesTest {
         assertEquals(1, outcome.rejected)
         assertNull(env.db.noteDao().getById("bad")) // orphan CREATE row cleaned up
         assertEquals(0, outbox.countUnparked())
+    }
+
+    // ── NOTE_GROUP helpers ────────────────────────────────────────────────────
+
+    private fun ghostNoteGroup(id: String) = NoteGroupEntity(
+        id = id, name = "ghost group", emoji = "📝", projectId = null, rank = null,
+        createdAt = Instant.parse("2026-06-18T00:00:00Z"),
+        updatedAt = Instant.parse("2026-06-18T00:00:00Z"),
+        changeSeq = 0, deletedAt = null,
+    )
+
+    private fun noteGroupRow(id: String) =
+        """{"id":"$id","name":"g","emoji":"📝","projectId":null,"rank":null,"createdAt":"2026-06-18T00:00:00Z","updatedAt":"2026-06-18T00:00:00Z"}"""
+
+    // ── NOTE_GROUP tests ──────────────────────────────────────────────────────
+
+    @Test
+    fun `a note-group CREATE drains to POST api-v1-note-groups`() = runTest {
+        outbox.enqueueRaw(
+            EntityType.NOTE_GROUP, "ng1", OpType.CREATE,
+            env.json.encodeToString(
+                CreateNoteGroupRequest.serializer(),
+                CreateNoteGroupRequest(id = "ng1", name = "g", emoji = "📝"),
+            ),
+        )
+        env.server.enqueue(env.jsonResponse(201, noteGroupRow("ng1")))
+
+        val outcome = runner.drain()
+
+        assertEquals(1, outcome.pushed)
+        assertEquals(0, outbox.countUnparked())
+        val req = env.server.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/api/v1/note-groups", req.path)
+    }
+
+    @Test
+    fun `a note-group CREATE 409 remaps the ghost row and the following UPDATE`() = runTest {
+        env.db.noteGroupDao().upsertAll(listOf(ghostNoteGroup("ghost-ng")))
+        outbox.enqueueRaw(
+            EntityType.NOTE_GROUP, "ghost-ng", OpType.CREATE,
+            env.json.encodeToString(
+                CreateNoteGroupRequest.serializer(),
+                CreateNoteGroupRequest(id = "ghost-ng", name = "g", emoji = "📝"),
+            ),
+        )
+        outbox.enqueueRaw(
+            EntityType.NOTE_GROUP, "ghost-ng", OpType.UPDATE,
+            env.json.encodeToString(
+                UpdateNoteGroupRequest.serializer(),
+                UpdateNoteGroupRequest(name = "renamed"),
+            ),
+        )
+        env.server.enqueue(env.jsonResponse(409, """{"title":"Conflict","status":409,"extensions":{"existingId":"server-ng1"}}"""))
+        env.server.enqueue(env.jsonResponse(200, noteGroupRow("server-ng1")))
+
+        val outcome = runner.drain()
+
+        assertEquals(1, outcome.adopted)
+        assertEquals(1, outcome.pushed)
+        assertNull(env.db.noteGroupDao().getById("ghost-ng"))
+        assertNotNull(env.db.noteGroupDao().getById("server-ng1"))
+        env.server.takeRequest() // the 409 POST
+        val updateReq = env.server.takeRequest()
+        assertEquals("/api/v1/note-groups/server-ng1", updateReq.path)
+        assertEquals("PATCH", updateReq.method)
     }
 }
