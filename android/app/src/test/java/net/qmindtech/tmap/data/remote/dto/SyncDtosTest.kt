@@ -24,7 +24,10 @@ class SyncDtosTest {
               "recurrenceDetached":false,"recurrenceOriginalDate":null,"completedAt":null,
               "createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z",
               "changeSeq":7,"deletedAt":"2026-06-18T09:00:00Z"}],
-              "notes":[{"id":"n1"}],"recurrenceRules":[{"id":"r1"}]},
+              "notes":[{"id":"n1","groupId":null,"projectId":null,"title":"t","content":"c",
+                "rank":null,"createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z",
+                "changeSeq":1}],
+              "recurrenceRules":[{"id":"r1","changeSeq":2}]},
              "nextSince":7,"hasMore":true}
         """.trimIndent()
         val r = json.decodeFromString<SyncResponse>(wire)
@@ -63,5 +66,37 @@ class SyncDtosTest {
     fun `RefreshRequest serializes the body shape`() {
         assertEquals("""{"refreshToken":"ref"}""",
             json.encodeToString(RefreshRequest(refreshToken = "ref")))
+    }
+
+    @Test
+    fun `SyncChanges decodes the four new domains plus tolerated recurrenceRules`() {
+        val wire = """
+            {"changes":{
+              "notes":[{"id":"n1","groupId":"g1","projectId":null,"title":"t","content":"c",
+                "rank":"0001","createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z",
+                "changeSeq":4,"deletedAt":null}],
+              "noteGroups":[{"id":"g1","name":"دفتر","emoji":"📓","projectId":null,"rank":"0001",
+                "createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z","changeSeq":2}],
+              "focusSessions":[{"id":"f1","taskId":"t1","project":"العمل",
+                "startedAt":"2026-06-18T09:00:00Z","endedAt":"2026-06-18T09:25:00Z","minutes":25,
+                "date":"2026-06-18","createdAt":"2026-06-18T09:25:00Z","updatedAt":"2026-06-18T09:25:00Z",
+                "changeSeq":6,"deletedAt":null}],
+              "dailyPlans":[{"date":"2026-06-18","committedAt":"2026-06-18T07:00:00Z",
+                "plannedTaskIds":["t1","t2"],"plannedMinutes":120,"changeSeq":8,"deletedAt":null}],
+              "recurrenceRules":[{"id":"r1","changeSeq":3}]
+            },"nextSince":9,"hasMore":false}
+        """.trimIndent()
+        val r = json.decodeFromString<SyncResponse>(wire)
+        assertEquals(1, r.changes.notes.size)
+        assertEquals("g1", r.changes.notes[0].groupId)
+        assertEquals(1, r.changes.noteGroups.size)
+        assertEquals("العمل", r.changes.focusSessions[0].project)
+        assertEquals(listOf("t1", "t2"), r.changes.dailyPlans[0].plannedTaskIds)
+        assertEquals("2026-06-18", r.changes.dailyPlans[0].date)
+        assertEquals(1, r.changes.recurrenceRules.size)
+        // Backward-compat: an old payload missing the new arrays still decodes them as empty.
+        val old = json.decodeFromString<SyncResponse>("""{"changes":{},"nextSince":0,"hasMore":false}""")
+        assertEquals(0, old.changes.notes.size)
+        assertEquals(0, old.changes.dailyPlans.size)
     }
 }
