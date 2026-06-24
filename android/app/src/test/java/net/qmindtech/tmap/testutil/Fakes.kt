@@ -296,3 +296,60 @@ class FakeNoteGroupRepo(
 
   override suspend fun reorder(ids: List<String>) { reordered += ids }
 }
+
+// --- P5.3: planning-ViewModel test doubles ---
+
+fun fakeDailyPlan(
+  date: java.time.LocalDate,
+  committedAt: java.time.Instant = EPOCH,
+  plannedTaskIds: List<String> = emptyList(),
+  plannedMinutes: Int = 0,
+  changeSeq: Long = 0,
+): net.qmindtech.tmap.data.local.entities.DailyPlanEntity =
+  net.qmindtech.tmap.data.local.entities.DailyPlanEntity(
+    date = date, committedAt = committedAt, plannedTaskIds = plannedTaskIds,
+    plannedMinutes = plannedMinutes, changeSeq = changeSeq, deletedAt = null,
+  )
+
+data class DailyPlanUpsert(
+  val date: java.time.LocalDate,
+  val plannedTaskIds: List<String>,
+  val plannedMinutes: Int,
+)
+
+class FakeDailyPlanRepo(
+  private val flow: MutableStateFlow<net.qmindtech.tmap.data.local.entities.DailyPlanEntity?> =
+    MutableStateFlow(null),
+) : net.qmindtech.tmap.data.repository.DailyPlanRepository {
+  val upserts = mutableListOf<DailyPlanUpsert>()
+  private val rangeFlow: MutableStateFlow<List<net.qmindtech.tmap.data.local.entities.DailyPlanEntity>> =
+    MutableStateFlow(emptyList())
+
+  override fun observe(date: java.time.LocalDate): Flow<net.qmindtech.tmap.data.local.entities.DailyPlanEntity?> = flow
+  override fun observeRange(
+    start: java.time.LocalDate,
+    end: java.time.LocalDate,
+  ): Flow<List<net.qmindtech.tmap.data.local.entities.DailyPlanEntity>> = rangeFlow
+  override suspend fun upsert(date: java.time.LocalDate, plannedTaskIds: List<String>, plannedMinutes: Int) {
+    upserts += DailyPlanUpsert(date, plannedTaskIds, plannedMinutes)
+  }
+
+  fun set(v: net.qmindtech.tmap.data.local.entities.DailyPlanEntity?) { flow.value = v }
+  fun setRange(v: List<net.qmindtech.tmap.data.local.entities.DailyPlanEntity>) { rangeFlow.value = v }
+}
+
+class FakeSettingsRepo(
+  private val rows: MutableStateFlow<List<net.qmindtech.tmap.data.local.entities.SettingEntity>> =
+    MutableStateFlow(emptyList()),
+) : net.qmindtech.tmap.data.repository.SettingsRepository {
+  var lastSavedMap: Map<String, String>? = null
+  var lastSavedTimeZone: String? = null
+  var saveCount = 0
+
+  override fun observe(): Flow<List<net.qmindtech.tmap.data.local.entities.SettingEntity>> = rows
+  override suspend fun save(settings: Map<String, String>, timeZoneId: String?) {
+    lastSavedMap = settings; lastSavedTimeZone = timeZoneId; saveCount++
+  }
+
+  fun set(v: List<net.qmindtech.tmap.data.local.entities.SettingEntity>) { rows.value = v }
+}
