@@ -9,4 +9,5 @@
     <string name="nav_you">You</string>
     <!-- Widget descriptions -->
     <string name="widget_today_agenda_desc">Your day at a glance — tick tasks off from the home screen.</string>
+    <string name="widget_quick_capture_desc">A permanent capture bar — tap to add, mic for voice.</string>
 </resources>
