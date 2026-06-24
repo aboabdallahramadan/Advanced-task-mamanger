@@ -21,10 +21,8 @@ private fun Placeholder(title: String) {
 
 @Composable fun TodayPlaceholder() = Placeholder("Today")
 @Composable fun InboxPlaceholder() = Placeholder("Inbox")
-@Composable fun BrowsePlaceholder() = Placeholder("Browse")
 @Composable fun NotesPlaceholder() = Placeholder("Notes")
 @Composable fun YouPlaceholder() = Placeholder("You")
 @Composable fun PlanningPlaceholder() = Placeholder("Plan my day")
 @Composable fun FocusPlaceholder() = Placeholder("Focus")
-@Composable fun ProjectDetailPlaceholder() = Placeholder("Project")
 @Composable fun SettingsPlaceholder() = Placeholder("Settings")

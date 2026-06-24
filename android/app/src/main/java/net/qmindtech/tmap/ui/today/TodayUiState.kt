@@ -11,8 +11,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 // ---------------------------------------------------------------------------
-// Legacy shared types — used by InboxViewModel, BacklogViewModel, TaskFilter
-// until those screens are rebuilt in later phases.  Do NOT remove.
+// Shared list-item type used by TodayViewModel and other list screens.
 // ---------------------------------------------------------------------------
 
 data class TaskListItem(val task: TaskEntity, val projectName: String?)
