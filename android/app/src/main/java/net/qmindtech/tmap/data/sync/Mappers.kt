@@ -1,13 +1,21 @@
 package net.qmindtech.tmap.data.sync
 
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.entities.NoteEntity
+import net.qmindtech.tmap.data.local.entities.NoteGroupEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SettingEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
+import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.CreateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.NoteGroupResponse
+import net.qmindtech.tmap.data.remote.dto.NoteGroupSyncRow
+import net.qmindtech.tmap.data.remote.dto.NoteResponse
+import net.qmindtech.tmap.data.remote.dto.NoteSyncRow
 import net.qmindtech.tmap.data.remote.dto.ProjectResponse
 import net.qmindtech.tmap.data.remote.dto.ProjectSyncRow
 import net.qmindtech.tmap.data.remote.dto.SettingSyncRow
@@ -15,6 +23,8 @@ import net.qmindtech.tmap.data.remote.dto.SubtaskResponse
 import net.qmindtech.tmap.data.remote.dto.SubtaskSyncRow
 import net.qmindtech.tmap.data.remote.dto.TaskResponse
 import net.qmindtech.tmap.data.remote.dto.TaskSyncRow
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteGroupRequest
+import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
@@ -184,4 +194,60 @@ object Mappers {
 
     // ── Settings ───────────────────────────────────────────
     fun SettingSyncRow.toEntity(): SettingEntity = SettingEntity(key = key, value = value, changeSeq = changeSeq)
+
+    // ── Notes ──────────────────────────────────────────────
+    fun NoteResponse.toEntity(changeSeq: Long = 0L, pinnedAt: Instant? = null): NoteEntity = NoteEntity(
+        id = id,
+        groupId = groupId,
+        projectId = projectId,
+        title = title,
+        content = content,
+        rank = rank,
+        createdAt = parseInstant(createdAt)!!,
+        updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq,
+        deletedAt = null,
+        pinnedAt = pinnedAt,
+    )
+
+    fun NoteSyncRow.toEntity(): NoteEntity = NoteEntity(
+        id = id,
+        groupId = groupId,
+        projectId = projectId,
+        title = title,
+        content = content,
+        rank = rank,
+        createdAt = parseInstant(createdAt)!!,
+        updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq,
+        deletedAt = parseInstant(deletedAt),
+        pinnedAt = null, // local-only; PullRunner preserves any existing local pin on upsert
+    )
+
+    fun NoteEntity.toCreateRequest(): CreateNoteRequest = CreateNoteRequest(
+        id = id, groupId = groupId, projectId = projectId, title = title, content = content, rank = rank,
+    )
+
+    fun NoteEntity.toUpdateRequest(): UpdateNoteRequest = UpdateNoteRequest(
+        groupId = groupId, projectId = projectId, title = title, content = content, rank = rank,
+    )
+
+    // ── Note-groups ────────────────────────────────────────
+    fun NoteGroupResponse.toEntity(changeSeq: Long = 0L): NoteGroupEntity = NoteGroupEntity(
+        id = id, name = name, emoji = emoji, projectId = projectId, rank = rank,
+        createdAt = parseInstant(createdAt)!!, updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq, deletedAt = null,
+    )
+
+    fun NoteGroupSyncRow.toEntity(): NoteGroupEntity = NoteGroupEntity(
+        id = id, name = name, emoji = emoji, projectId = projectId, rank = rank,
+        createdAt = parseInstant(createdAt)!!, updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq, deletedAt = parseInstant(deletedAt),
+    )
+
+    fun NoteGroupEntity.toCreateRequest(): CreateNoteGroupRequest =
+        CreateNoteGroupRequest(id = id, name = name, emoji = emoji, projectId = projectId, rank = rank)
+
+    fun NoteGroupEntity.toUpdateRequest(): UpdateNoteGroupRequest =
+        UpdateNoteGroupRequest(name = name, emoji = emoji, projectId = projectId, rank = rank)
 }

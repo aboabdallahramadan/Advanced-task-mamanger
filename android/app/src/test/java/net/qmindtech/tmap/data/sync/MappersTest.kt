@@ -154,4 +154,51 @@ class MappersTest {
         assertEquals("09:00", e.value)
         assertEquals(3L, e.changeSeq)
     }
+
+    @Test
+    fun `NoteSyncRow maps to entity carrying deletedAt and leaving pinnedAt null`() {
+        val row = net.qmindtech.tmap.data.remote.dto.NoteSyncRow(
+            id = "n1", groupId = "g1", projectId = null, title = "t", content = "c",
+            rank = "0001", createdAt = "2026-06-18T08:00:00Z", updatedAt = "2026-06-18T08:30:00Z",
+            changeSeq = 5, deletedAt = "2026-06-18T09:00:00Z",
+        )
+        val e = row.toEntity()
+        assertEquals("n1", e.id)
+        assertEquals("g1", e.groupId)
+        assertEquals(5L, e.changeSeq)
+        assertEquals(Instant.parse("2026-06-18T09:00:00Z"), e.deletedAt)
+        assertNull(e.pinnedAt) // pin is local-only; never sourced from the wire
+    }
+
+    @Test
+    fun `NoteEntity maps to create and update requests`() {
+        val e = net.qmindtech.tmap.data.local.entities.NoteEntity(
+            id = "n1", groupId = "g1", projectId = null, title = "t", content = "c",
+            rank = "0001", createdAt = Instant.parse("2026-06-18T08:00:00Z"),
+            updatedAt = Instant.parse("2026-06-18T08:00:00Z"), changeSeq = 0, deletedAt = null, pinnedAt = null,
+        )
+        assertEquals("n1", e.toCreateRequest().id)
+        assertEquals("g1", e.toCreateRequest().groupId)
+        assertEquals("c", e.toUpdateRequest().content)
+    }
+
+    @Test
+    fun `NoteGroup round-trips response to entity to requests`() {
+        val r = net.qmindtech.tmap.data.remote.dto.NoteGroupResponse(
+            id = "g1", name = "دفتر", emoji = "📓", projectId = null, rank = "0001",
+            createdAt = "2026-06-18T08:00:00Z", updatedAt = "2026-06-18T08:00:00Z",
+        )
+        val e = r.toEntity(changeSeq = 4)
+        assertEquals("دفتر", e.name)
+        assertEquals(4L, e.changeSeq)
+        assertEquals("دفتر", e.toCreateRequest().name)
+        assertEquals("📓", e.toUpdateRequest().emoji)
+
+        val syncRow = net.qmindtech.tmap.data.remote.dto.NoteGroupSyncRow(
+            id = "g2", name = "X", emoji = "📁", projectId = null, rank = "0002",
+            createdAt = "2026-06-18T08:00:00Z", updatedAt = "2026-06-18T08:00:00Z",
+            changeSeq = 6, deletedAt = null,
+        )
+        assertEquals(6L, syncRow.toEntity().changeSeq)
+    }
 }
