@@ -62,4 +62,11 @@ class ConvertersTest {
         assertEquals(TaskStatus.Done, c.toTaskStatus("done"))
         assertEquals(TaskStatus.Inbox, c.toTaskStatus("garbage"))
     }
+
+    @Test
+    fun `string list round-trips an ordered planned-task-id list for DailyPlan`() {
+        val ids = listOf("a-1", "b-2", "c-3")
+        assertEquals(ids, c.toStringList(c.fromStringList(ids)))
+        assertEquals(emptyList<String>(), c.toStringList(c.fromStringList(emptyList())))
+    }
 }
