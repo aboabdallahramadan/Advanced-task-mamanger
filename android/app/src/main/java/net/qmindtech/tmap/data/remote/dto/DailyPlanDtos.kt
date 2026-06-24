@@ -2,10 +2,10 @@ package net.qmindtech.tmap.data.remote.dto
 
 import kotlinx.serialization.Serializable
 
-/** PUT /daily-plans/{date} upsert body (spec §7.6) — last-writer-wins, full plannedTaskIds replace. */
+/** PUT /daily-plans/{date} upsert body (spec §7.6) — last-writer-wins, full plannedTaskIds replace.
+ *  committedAt is NOT sent — the server stamps it from its own clock. */
 @Serializable
 data class UpsertDailyPlanRequest(
-    val committedAt: String,
     val plannedTaskIds: List<String>,
     val plannedMinutes: Int,
 )

@@ -24,10 +24,9 @@ class FocusDailyPlanDtosTest {
     @Test
     fun `UpsertDailyPlanRequest serializes ordered plannedTaskIds`() {
         val body = json.encodeToString(UpsertDailyPlanRequest.serializer(),
-            UpsertDailyPlanRequest(committedAt = "2026-06-18T07:00:00Z",
-                plannedTaskIds = listOf("a", "b"), plannedMinutes = 120))
+            UpsertDailyPlanRequest(plannedTaskIds = listOf("a", "b"), plannedMinutes = 120))
         assertEquals(
-            """{"committedAt":"2026-06-18T07:00:00Z","plannedTaskIds":["a","b"],"plannedMinutes":120}""",
+            """{"plannedTaskIds":["a","b"],"plannedMinutes":120}""",
             body,
         )
     }
