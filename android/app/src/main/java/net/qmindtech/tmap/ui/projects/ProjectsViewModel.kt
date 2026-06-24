@@ -8,34 +8,44 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.dao.ProjectProgress
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.repository.ProjectRepository
-import net.qmindtech.tmap.data.repository.TaskRepository
 import javax.inject.Inject
 
-data class ProjectRow(val project: ProjectEntity, val openTaskCount: Int)
+data class ProjectRow(val project: ProjectEntity, val total: Int, val done: Int) {
+  val openTaskCount: Int get() = total - done
+  val progress: Float get() = if (total == 0) 0f else done.toFloat() / total
+}
+
+data class ProjectsHeader(val projectCount: Int, val doneTotal: Int, val taskTotal: Int)
 
 data class ProjectsUiState(
   val loading: Boolean = true,
   val rows: List<ProjectRow> = emptyList(),
+  val header: ProjectsHeader = ProjectsHeader(0, 0, 0),
 )
 
 @HiltViewModel
 class ProjectsViewModel @Inject constructor(
   private val projectRepo: ProjectRepository,
-  taskRepo: TaskRepository,
 ) : ViewModel() {
 
   val uiState: StateFlow<ProjectsUiState> =
-    combine(projectRepo.observeAll(), taskRepo.observeAll()) { projects, tasks ->
-      val openByProject = tasks
-        .filter { it.status != TaskStatus.Done && it.status != TaskStatus.Archived && it.projectId != null }
-        .groupingBy { it.projectId!! }
-        .eachCount()
+    combine(projectRepo.observeAll(), projectRepo.observeProgress()) { projects, progress ->
+      val byId: Map<String, ProjectProgress> = progress.associateBy { it.projectId }
+      val rows = projects.map { p ->
+        val pr = byId[p.id]
+        ProjectRow(p, total = pr?.total ?: 0, done = pr?.done ?: 0)
+      }
       ProjectsUiState(
         loading = false,
-        rows = projects.map { ProjectRow(it, openByProject[it.id] ?: 0) },
+        rows = rows,
+        header = ProjectsHeader(
+          projectCount = projects.size,
+          doneTotal = rows.sumOf { it.done },
+          taskTotal = rows.sumOf { it.total },
+        ),
       )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ProjectsUiState())
 
