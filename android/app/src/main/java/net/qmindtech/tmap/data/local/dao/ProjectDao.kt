@@ -12,6 +12,9 @@ interface ProjectDao {
     @Query("SELECT * FROM projects ORDER BY rank IS NULL, rank")
     fun observeAll(): Flow<List<ProjectEntity>>
 
+    @Query("SELECT * FROM projects ORDER BY rank IS NULL, rank")
+    suspend fun getAll(): List<ProjectEntity>
+
     @Query("SELECT * FROM projects WHERE id = :id")
     suspend fun getById(id: String): ProjectEntity?
 

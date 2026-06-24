@@ -20,6 +20,17 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE plannedDate = :date AND isRecurrenceTemplate = 0 ORDER BY rank IS NULL, rank")
     fun observeByPlannedDate(date: LocalDate): Flow<List<TaskEntity>>
 
+    @Query("SELECT * FROM tasks WHERE plannedDate = :date AND isRecurrenceTemplate = 0 ORDER BY rank IS NULL, rank")
+    suspend fun getByPlannedDate(date: LocalDate): List<TaskEntity>
+
+    @Query(
+        "SELECT plannedDate AS date, " +
+            "MAX(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) AS anyDone " +
+            "FROM tasks WHERE plannedDate IS NOT NULL AND isRecurrenceTemplate = 0 " +
+            "GROUP BY plannedDate",
+    )
+    suspend fun completionByDate(): List<DateCompletion>
+
     @Query("SELECT * FROM tasks WHERE id = :id")
     fun observeById(id: String): Flow<TaskEntity?>
 
@@ -35,3 +46,6 @@ interface TaskDao {
     @Query("DELETE FROM tasks")
     suspend fun clear()
 }
+
+/** Room projection for [TaskDao.completionByDate]. */
+data class DateCompletion(val date: LocalDate, val anyDone: Int)
