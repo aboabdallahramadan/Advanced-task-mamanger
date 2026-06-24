@@ -14,10 +14,11 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChecklistRtl
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -76,7 +78,7 @@ fun ProjectDetailScreen(
             }
 
             if (state.project?.emoji?.isNotBlank() == true) {
-                Text(text = state.project!!.emoji, style = MaterialTheme.typography.titleMedium)
+                Text(text = state.project!!.emoji, style = type.heading)
             }
 
             Text(
@@ -156,14 +158,28 @@ fun ProjectDetailScreen(
 
     // ── Delete confirm dialog ─────────────────────────────────────────────────
     if (deleteConfirmOpen) {
-        ProjectEditDialog(
-            initial = state.project,
-            onDismiss = { deleteConfirmOpen = false },
-            onSave = { _, _, _ -> deleteConfirmOpen = false },
-            onDelete = {
-                viewModel.delete()
-                deleteConfirmOpen = false
-                onBack()
+        AlertDialog(
+            onDismissRequest = { deleteConfirmOpen = false },
+            containerColor = colors.surfaceRaised,
+            title = {
+                Text("Delete project?", style = type.heading, color = colors.textPrimary)
+            },
+            text = {
+                Text("Delete this project? Its tasks will be kept.", color = colors.textSecondary)
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.delete()
+                    deleteConfirmOpen = false
+                    onBack()
+                }) {
+                    Text("Delete", color = colors.danger, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteConfirmOpen = false }) {
+                    Text("Cancel", color = colors.textSecondary)
+                }
             },
         )
     }
