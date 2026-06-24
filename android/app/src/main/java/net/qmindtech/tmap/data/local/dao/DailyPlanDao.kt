@@ -19,6 +19,9 @@ interface DailyPlanDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(rows: List<DailyPlanEntity>)
 
+    @Query("SELECT * FROM daily_plans WHERE date BETWEEN :start AND :end ORDER BY date")
+    fun observeRange(start: LocalDate, end: LocalDate): Flow<List<DailyPlanEntity>>
+
     @Query("DELETE FROM daily_plans WHERE date = :date")
     suspend fun deleteByDate(date: LocalDate)
 
