@@ -141,7 +141,7 @@ class TmapApiServiceTest {
             """{"date":"2026-06-18","committedAt":"2026-06-18T07:00:00Z",
                "plannedTaskIds":["a"],"plannedMinutes":30}"""))
         val res = api.putDailyPlan("2026-06-18",
-            UpsertDailyPlanRequest(committedAt = "2026-06-18T07:00:00Z", plannedTaskIds = listOf("a"), plannedMinutes = 30))
+            UpsertDailyPlanRequest(plannedTaskIds = listOf("a"), plannedMinutes = 30))
         val recorded = server.takeRequest()
         assertEquals("PUT", recorded.method)
         assertEquals("/api/v1/daily-plans/2026-06-18", recorded.path)

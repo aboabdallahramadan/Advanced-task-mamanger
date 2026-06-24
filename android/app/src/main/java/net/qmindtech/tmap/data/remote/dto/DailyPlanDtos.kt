@@ -5,7 +5,6 @@ import kotlinx.serialization.Serializable
 /** PUT /daily-plans/{date} upsert body (spec §7.6) — last-writer-wins, full plannedTaskIds replace. */
 @Serializable
 data class UpsertDailyPlanRequest(
-    val committedAt: String? = null,
     val plannedTaskIds: List<String>,
     val plannedMinutes: Int,
 )
