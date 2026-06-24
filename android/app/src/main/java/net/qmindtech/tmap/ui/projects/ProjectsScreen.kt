@@ -29,7 +29,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.ui.components.EmptyState
 import net.qmindtech.tmap.ui.components.ProjectDot
 import net.qmindtech.tmap.ui.components.SecondaryButton
@@ -57,7 +56,6 @@ fun ProjectsScreen(
     val spacing = LocalTmapSpacing.current
     val type = LocalTmapType.current
     var creating by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<ProjectEntity?>(null) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // ── Header: "N projects · done/total" + "+ New" button ─────────────────
@@ -156,6 +154,7 @@ fun ProjectsScreen(
     }
 
     // ── Dialogs ──────────────────────────────────────────────────────────────
+    // Edit/delete are now reachable via ProjectDetailScreen; only "create new" lives here.
     if (creating) {
         ProjectEditDialog(
             initial = null,
@@ -163,20 +162,6 @@ fun ProjectsScreen(
             onSave = { name, color, emoji ->
                 viewModel.create(name, color, emoji)
                 creating = false
-            },
-        )
-    }
-    editing?.let { proj ->
-        ProjectEditDialog(
-            initial = proj,
-            onDismiss = { editing = null },
-            onSave = { name, color, emoji ->
-                viewModel.update(proj.id, name, color, emoji)
-                editing = null
-            },
-            onDelete = {
-                viewModel.delete(proj.id)
-                editing = null
             },
         )
     }

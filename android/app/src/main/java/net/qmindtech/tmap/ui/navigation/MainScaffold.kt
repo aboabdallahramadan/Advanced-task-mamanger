@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import net.qmindtech.tmap.ui.browse.BrowseScreen
 import net.qmindtech.tmap.ui.components.TmapFab
+import net.qmindtech.tmap.ui.projects.ProjectDetailScreen
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.TmapBackground
 import net.qmindtech.tmap.ui.today.TodayScreen
@@ -149,7 +150,12 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                                 type = NavType.StringType
                             },
                         ),
-                    ) { ProjectDetailPlaceholder() }
+                    ) {
+                        ProjectDetailScreen(
+                            onBack = { navController.popBackStack() },
+                            onOpenTask = { taskId -> navController.openTaskEditor(taskId) },
+                        )
+                    }
 
                     // Reminder deep link (tmap://task/{taskId}) — spec §5 / P7 reminder flow.
                     // Navigates to Today then raises the editor sheet for the linked task.
