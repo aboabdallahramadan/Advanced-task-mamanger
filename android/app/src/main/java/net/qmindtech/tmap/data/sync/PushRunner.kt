@@ -168,10 +168,10 @@ class PushRunner(
             EntityType.PROJECT -> projectDao.deleteById(id)
             EntityType.SETTINGS -> Unit
             // P3.x: NOTE/NOTE_GROUP/FOCUS_SESSION/DAILY_PLAN DAOs not yet wired — stubs added by later P3 tasks.
-            EntityType.NOTE -> TODO("P3.x: wire NoteDao.deleteById")
-            EntityType.NOTE_GROUP -> TODO("P3.x: wire NoteGroupDao.deleteById")
-            EntityType.FOCUS_SESSION -> TODO("P3.x: wire FocusSessionDao.deleteById")
-            EntityType.DAILY_PLAN -> TODO("P3.x: wire DailyPlanDao.deleteById")
+            EntityType.NOTE -> error("P3.x: wire NoteDao.deleteById")
+            EntityType.NOTE_GROUP -> error("P3.x: wire NoteGroupDao.deleteById")
+            EntityType.FOCUS_SESSION -> error("P3.x: wire FocusSessionDao.deleteById")
+            EntityType.DAILY_PLAN -> error("P3.x: wire DailyPlanDao.deleteById")
         }
     }
 
@@ -212,10 +212,10 @@ class PushRunner(
             }
             EntityType.SETTINGS -> error("settings are pushed via SettingsRepository.saveSettings, not the outbox replay")
             // P3.x: NOTE/NOTE_GROUP/FOCUS_SESSION/DAILY_PLAN API calls not yet wired — stubs filled by later P3 tasks.
-            EntityType.NOTE -> TODO("P3.x: wire NOTE dispatch")
-            EntityType.NOTE_GROUP -> TODO("P3.x: wire NOTE_GROUP dispatch")
-            EntityType.FOCUS_SESSION -> TODO("P3.x: wire FOCUS_SESSION dispatch")
-            EntityType.DAILY_PLAN -> TODO("P3.x: wire DAILY_PLAN dispatch")
+            EntityType.NOTE -> error("P3.x: wire NOTE dispatch")
+            EntityType.NOTE_GROUP -> error("P3.x: wire NOTE_GROUP dispatch")
+            EntityType.FOCUS_SESSION -> error("P3.x: wire FOCUS_SESSION dispatch")
+            EntityType.DAILY_PLAN -> error("P3.x: wire DAILY_PLAN dispatch")
         }
     }
 
@@ -286,10 +286,10 @@ class PushRunner(
             }
             EntityType.SETTINGS -> Unit
             // P3.x: NOTE/NOTE_GROUP/FOCUS_SESSION/DAILY_PLAN adopt not yet wired — stubs filled by later P3 tasks.
-            EntityType.NOTE -> TODO("P3.x: wire NOTE adoptExisting")
-            EntityType.NOTE_GROUP -> TODO("P3.x: wire NOTE_GROUP adoptExisting")
-            EntityType.FOCUS_SESSION -> TODO("P3.x: wire FOCUS_SESSION adoptExisting")
-            EntityType.DAILY_PLAN -> TODO("P3.x: wire DAILY_PLAN adoptExisting")
+            EntityType.NOTE -> error("P3.x: wire NOTE adoptExisting")
+            EntityType.NOTE_GROUP -> error("P3.x: wire NOTE_GROUP adoptExisting")
+            EntityType.FOCUS_SESSION -> error("P3.x: wire FOCUS_SESSION adoptExisting")
+            EntityType.DAILY_PLAN -> error("P3.x: wire DAILY_PLAN adoptExisting")
         }
         outbox.remapEntityId(ghostId, existingId)
         outbox.delete(createOp.localSeq)
