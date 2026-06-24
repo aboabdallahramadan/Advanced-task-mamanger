@@ -1,4 +1,4 @@
-package net.qmindtech.tmap.data.repository
+﻿package net.qmindtech.tmap.data.repository
 
 import app.cash.turbine.test
 import kotlinx.coroutines.flow.first
@@ -164,6 +164,16 @@ class TaskRepositoryImplTest {
         repo.create(TaskDraft(title = "tomorrow", status = TaskStatus.Planned, plannedDate = fixedToday.plusDays(1)))
         val titles = repo.observeToday(fixedToday).first().map { it.title }
         assertEquals(listOf("today-1"), titles)
+    }
+
+    @Test
+    fun `addActualTime increments the local actualTimeMinutes and enqueues an UPDATE`() = runTest {
+        val id = repo.create(TaskDraft(title = "focus me"))
+        scheduler.expeditedCount = 0
+        repo.addActualTime(id, 25)
+        repo.addActualTime(id, 10)
+        assertEquals(35, db.taskDao().getById(id)!!.actualTimeMinutes)
+        assertEquals(OpType.UPDATE, db.outboxDao().allForTest().last { it.entityId == id }.opType)
     }
 
     /** Reads every queued op (parked or not) by repeatedly peeking + deleting a copy db is not safe; use the dao. */
