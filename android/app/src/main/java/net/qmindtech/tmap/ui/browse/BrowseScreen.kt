@@ -147,9 +147,9 @@ fun BrowseScreen(
     // Content area
     when (state.segment) {
       BrowseSegment.Projects -> {
-        // Projects segment: render existing ProjectsScreen.
-        // ProjectsScreen manages its own FAB + edit dialogs.
-        ProjectsScreen()
+        // Projects segment: Scaffold-free content composable — no inner Scaffold,
+        // no TopAppBar, no FAB (global TmapFab lives in MainScaffold).
+        ProjectsScreen(onOpenProject = onOpenProject)
       }
       else -> {
         if (!state.loading && state.totalCount == 0) {
