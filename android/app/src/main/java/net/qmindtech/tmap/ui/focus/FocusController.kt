@@ -65,6 +65,10 @@ class FocusController @Inject constructor(
         tickJob = scope.launch {
             while (isActive && _state.value.remainingSeconds > 0) {
                 delay(1_000)
+                // Guard AFTER the delay: pause() sets phase = Paused so this check skips the
+                // decrement immediately on the next tick boundary (max 1 s lag, acceptable for
+                // production; the test verifies remaining is frozen across a 10 s paused window).
+                // end() cancels the Job so isActive becomes false and the loop exits cleanly.
                 if (_state.value.phase != FocusPhase.Running) continue
                 val next = _state.value.remainingSeconds - 1
                 _state.update { it.copy(remainingSeconds = next) }
@@ -95,8 +99,20 @@ class FocusController @Inject constructor(
         }
     }
 
-    fun end() { /* P6.4 */
+    fun pause() {
+        if (_state.value.phase != FocusPhase.Running) return
+        _state.update { it.copy(phase = FocusPhase.Paused) }
+    }
+
+    fun resume() {
+        if (_state.value.phase != FocusPhase.Paused) return
+        _state.update { it.copy(phase = FocusPhase.Running) }
+    }
+
+    /** End the interval early: cancel the ticker, drop to Idle, log nothing (spec §6.5). Idempotent. */
+    fun end() {
         tickJob?.cancel()
         tickJob = null
+        _state.update { it.copy(phase = FocusPhase.Idle, remainingSeconds = 0) }
     }
 }

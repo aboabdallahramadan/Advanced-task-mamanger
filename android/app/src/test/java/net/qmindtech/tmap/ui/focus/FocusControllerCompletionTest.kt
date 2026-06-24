@@ -45,6 +45,9 @@ class FocusControllerCompletionTest {
         assertEquals("Work", s.project)
         assertEquals(1, s.minutes)
         assertEquals(LocalDate.parse("2026-06-21"), s.date)
+        // FixedClock always returns the same instant, so startedAt == endedAt == the fixed clock instant.
+        assertEquals(Instant.parse("2026-06-21T09:00:00Z"), s.startedAt)
+        assertEquals(Instant.parse("2026-06-21T09:00:00Z"), s.endedAt)
         assertEquals(listOf("t1" to 1), tasks.actualTimeAdds)
     }
 
