@@ -102,6 +102,22 @@
                 android:resource="@xml/widget_quick_capture" />
         </receiver>
 
+        <!-- Up Next / Focus 2×2 home-screen widget (P8.8). Shows the next incomplete task and a
+             one-tap "◉ Focus" button that deep-links to tmap://focus/{taskId}. The live-countdown
+             branch is stubbed (focusRemainingLabel always null) — see TODO(P6) in UpNextFocusWidget.
+             exported=true is required: the AppWidget host system service binds this receiver. -->
+        <receiver
+            android:name=".widget.UpNextFocusWidgetReceiver"
+            android:exported="true"
+            android:label="TMap — Up Next">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_up_next" />
+        </receiver>
+
         <!-- Trampoline for the Quick Capture widget. Launched by class ref (not VIEW filter); opens
              the system speech recognizer on mic tap, then forwards tmap://capture to MainActivity. -->
         <activity
