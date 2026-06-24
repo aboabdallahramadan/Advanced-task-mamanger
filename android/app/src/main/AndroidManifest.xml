@@ -118,6 +118,22 @@
                 android:resource="@xml/widget_up_next" />
         </receiver>
 
+        <!-- Progress & Streak 2×2 home-screen widget (P8.9). Shows today's completion ring (amber
+             arc bitmap, built via ProgressRingBitmap), a center "%" label, "🔥 N-day streak", and
+             "X of Y done today". Tap → tmap://today. exported=true is required: the AppWidget host
+             system service binds this receiver to deliver APPWIDGET_UPDATE broadcasts. -->
+        <receiver
+            android:name=".widget.ProgressStreakWidgetReceiver"
+            android:exported="true"
+            android:label="TMap — Progress">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_progress_streak" />
+        </receiver>
+
         <!-- Trampoline for the Quick Capture widget. Launched by class ref (not VIEW filter); opens
              the system speech recognizer on mic tap, then forwards tmap://capture to MainActivity. -->
         <activity
