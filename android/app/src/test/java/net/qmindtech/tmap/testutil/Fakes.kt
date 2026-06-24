@@ -195,3 +195,90 @@ fun fakeNoteGroup(
     id = id, name = name, emoji = emoji, projectId = projectId, rank = rank,
     createdAt = createdAt, updatedAt = createdAt, changeSeq = 0, deletedAt = null,
   )
+
+data class NoteDraftRecord(
+  val title: String,
+  val content: String,
+  val groupId: String?,
+  val projectId: String?,
+)
+
+class FakeNoteRepo(
+  val allFlow: MutableStateFlow<List<net.qmindtech.tmap.data.local.entities.NoteEntity>> =
+    MutableStateFlow(emptyList()),
+  val singleFlow: MutableStateFlow<net.qmindtech.tmap.data.local.entities.NoteEntity?> =
+    MutableStateFlow(null),
+) : net.qmindtech.tmap.data.repository.NoteRepository {
+  var lastObserveAllArgs: Pair<String?, String?>? = null
+  val created = mutableListOf<NoteDraftRecord>()
+  val updated = mutableListOf<String>()
+  val deleted = mutableListOf<String>()
+  val pinned = mutableListOf<Pair<String, Boolean>>()
+  val reordered = mutableListOf<List<String>>()
+  var nextId = "note-new"
+
+  override fun observeAll(
+    groupId: String?,
+    projectId: String?,
+  ): kotlinx.coroutines.flow.Flow<List<net.qmindtech.tmap.data.local.entities.NoteEntity>> {
+    lastObserveAllArgs = groupId to projectId
+    return allFlow
+  }
+
+  override fun observe(
+    id: String,
+  ): kotlinx.coroutines.flow.Flow<net.qmindtech.tmap.data.local.entities.NoteEntity?> = singleFlow
+
+  override suspend fun create(
+    title: String,
+    content: String,
+    groupId: String?,
+    projectId: String?,
+  ): String {
+    created += NoteDraftRecord(title, content, groupId, projectId)
+    return nextId
+  }
+
+  override suspend fun update(
+    id: String,
+    title: String?,
+    content: String?,
+    groupId: String?,
+    projectId: String?,
+  ) {
+    updated += id
+  }
+
+  override suspend fun delete(id: String) { deleted += id }
+
+  override suspend fun setPinned(id: String, pinned: Boolean) { this.pinned += id to pinned }
+
+  override suspend fun reorder(ids: List<String>) { reordered += ids }
+}
+
+class FakeNoteGroupRepo(
+  val allFlow: MutableStateFlow<List<net.qmindtech.tmap.data.local.entities.NoteGroupEntity>> =
+    MutableStateFlow(emptyList()),
+) : net.qmindtech.tmap.data.repository.NoteGroupRepository {
+  val created = mutableListOf<Triple<String, String, String?>>()
+  val updated = mutableListOf<String>()
+  val deleted = mutableListOf<String>()
+  val reordered = mutableListOf<List<String>>()
+  var nextId = "group-new"
+
+  override fun observeAll(): kotlinx.coroutines.flow.Flow<List<net.qmindtech.tmap.data.local.entities.NoteGroupEntity>> =
+    allFlow
+
+  override suspend fun create(name: String, emoji: String, projectId: String?): String {
+    created += Triple(name, emoji, projectId)
+    return nextId
+  }
+
+  override suspend fun update(id: String, name: String?, emoji: String?, projectId: String?) {
+    updated += id
+  }
+
+  override suspend fun delete(id: String) { deleted += id }
+
+  override suspend fun reorder(ids: List<String>) { reordered += ids }
+}
