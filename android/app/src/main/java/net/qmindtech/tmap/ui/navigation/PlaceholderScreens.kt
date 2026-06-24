@@ -24,5 +24,4 @@ private fun Placeholder(title: String) {
 @Composable fun NotesPlaceholder() = Placeholder("Notes")
 @Composable fun YouPlaceholder() = Placeholder("You")
 @Composable fun PlanningPlaceholder() = Placeholder("Plan my day")
-@Composable fun FocusPlaceholder() = Placeholder("Focus")
 @Composable fun SettingsPlaceholder() = Placeholder("Settings")

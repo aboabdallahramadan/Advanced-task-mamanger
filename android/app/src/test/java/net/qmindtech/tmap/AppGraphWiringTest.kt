@@ -10,6 +10,9 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import net.qmindtech.tmap.data.auth.AuthRepository
 import net.qmindtech.tmap.data.auth.SessionState
+import net.qmindtech.tmap.ui.focus.FocusController
+import net.qmindtech.tmap.ui.focus.FocusPhase
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -40,6 +43,9 @@ class AppGraphWiringTest {
 
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var focusController: FocusController
 
     @Before
     fun setUp() {
@@ -73,5 +79,14 @@ class AppGraphWiringTest {
         assertNotNull("WorkManager configuration must expose a worker factory", config.workerFactory)
         WorkManagerTestInitHelper.initializeTestWorkManager(ctx, config)
         assertNotNull(WorkManagerTestInitHelper.getTestDriver(ctx))
+    }
+
+    @Test
+    fun hiltGraph_resolvesFocusController_withInjectedDispatcherAndRepos() {
+        assertNotNull("FocusController must be injectable from the full graph", focusController)
+        assertEquals(
+            FocusPhase.Idle,
+            focusController.state.value.phase,
+        )
     }
 }

@@ -1,5 +1,6 @@
 package net.qmindtech.tmap.ui.focus
 
+import android.annotation.SuppressLint
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -32,6 +33,9 @@ class FocusService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    // POST_NOTIFICATIONS is declared in the manifest; this runs inside a foreground service whose
+    // notification was already shown via startForeground — tick-updates don't need a runtime gate.
+    @SuppressLint("MissingPermission")
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val initial = controller.state.value
         startForegroundCompat(
