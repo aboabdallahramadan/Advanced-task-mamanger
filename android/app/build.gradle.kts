@@ -109,6 +109,10 @@ dependencies {
     // DataStore
     implementation(libs.datastore.preferences)
 
+    // Glance widgets
+    implementation(libs.glance.appwidget)
+    implementation(libs.glance.material3)
+
     // Desugaring
     coreLibraryDesugaring(libs.desugar.jdk.libs)
 
