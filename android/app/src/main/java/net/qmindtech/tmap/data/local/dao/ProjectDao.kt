@@ -23,4 +23,18 @@ interface ProjectDao {
 
     @Query("DELETE FROM projects")
     suspend fun clear()
+
+    @Query(
+        """
+        SELECT projectId AS projectId,
+               COUNT(*) AS total,
+               SUM(CASE WHEN status = 'Done' THEN 1 ELSE 0 END) AS done
+        FROM tasks
+        WHERE projectId IS NOT NULL
+          AND isRecurrenceTemplate = 0
+          AND status != 'Archived'
+        GROUP BY projectId
+        """
+    )
+    fun observeProgress(): Flow<List<ProjectProgress>>
 }

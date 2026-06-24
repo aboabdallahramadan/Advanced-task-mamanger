@@ -6,7 +6,9 @@ import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import net.qmindtech.tmap.data.local.AppDatabase
+import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
+import net.qmindtech.tmap.data.local.entities.TaskEntity
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -26,6 +28,14 @@ class ProjectDaoTest {
     private fun project(id: String, rank: String?) = ProjectEntity(
         id = id, name = "حجوزات عيادات", color = "#4F8DF7", emoji = "📋",
         rank = rank, actualTimeMinutes = 0, createdAt = now, updatedAt = now, changeSeq = 0,
+    )
+
+    private fun task(id: String, projectId: String?, status: TaskStatus, template: Boolean = false) = TaskEntity(
+        id = id, title = "t-$id", notes = null, projectId = projectId, labels = emptyList(),
+        source = "android", status = status, plannedDate = null, scheduledStart = null, scheduledEnd = null,
+        durationMinutes = null, actualTimeMinutes = 0, priority = null, reminderMinutes = null, rank = null,
+        dueDate = null, recurrenceRuleId = null, isRecurrenceTemplate = template, recurrenceDetached = false,
+        recurrenceOriginalDate = null, completedAt = null, createdAt = now, updatedAt = now, changeSeq = 0,
     )
 
     @Before
@@ -61,5 +71,25 @@ class ProjectDaoTest {
         dao.upsertAll(listOf(project("p1", "0|a:")))
         dao.clear()
         assertEquals(emptyList<ProjectEntity>(), dao.observeAll().first())
+    }
+
+    @Test
+    fun `observeProgress aggregates done over total per project, excluding archived and templates`() = runTest {
+        dao.upsertAll(listOf(project("p1", "0001"), project("p2", "0002")))
+        db.taskDao().upsertAll(
+            listOf(
+                task("a", "p1", TaskStatus.Planned),
+                task("b", "p1", TaskStatus.Done),
+                task("c", "p1", TaskStatus.Archived),     // excluded
+                task("d", "p1", TaskStatus.Done, template = true), // excluded (template)
+                task("e", "p2", TaskStatus.Inbox),
+                task("f", null, TaskStatus.Planned),       // no project → not aggregated
+            )
+        )
+        val rows = dao.observeProgress().first().associateBy { it.projectId }
+        assertEquals(2, rows.getValue("p1").total) // a + b (archived + template excluded)
+        assertEquals(1, rows.getValue("p1").done)
+        assertEquals(1, rows.getValue("p2").total)
+        assertEquals(0, rows.getValue("p2").done)
     }
 }
