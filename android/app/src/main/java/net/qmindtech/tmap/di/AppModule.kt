@@ -27,6 +27,14 @@ import net.qmindtech.tmap.data.local.dao.SubtaskDao
 import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.repository.DailyPlanRepository
+import net.qmindtech.tmap.data.repository.DailyPlanRepositoryImpl
+import net.qmindtech.tmap.data.repository.FocusSessionRepository
+import net.qmindtech.tmap.data.repository.FocusSessionRepositoryImpl
+import net.qmindtech.tmap.data.repository.NoteGroupRepository
+import net.qmindtech.tmap.data.repository.NoteGroupRepositoryImpl
+import net.qmindtech.tmap.data.repository.NoteRepository
+import net.qmindtech.tmap.data.repository.NoteRepositoryImpl
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.ProjectRepositoryImpl
 import net.qmindtech.tmap.data.repository.SettingsRepository
@@ -70,6 +78,18 @@ abstract class AppModule {
 
     @Binds @Singleton
     abstract fun bindSubtaskRepository(impl: SubtaskRepositoryImpl): SubtaskRepository
+
+    @Binds @Singleton
+    abstract fun bindNoteRepository(impl: NoteRepositoryImpl): NoteRepository
+
+    @Binds @Singleton
+    abstract fun bindNoteGroupRepository(impl: NoteGroupRepositoryImpl): NoteGroupRepository
+
+    @Binds @Singleton
+    abstract fun bindFocusSessionRepository(impl: FocusSessionRepositoryImpl): FocusSessionRepository
+
+    @Binds @Singleton
+    abstract fun bindDailyPlanRepository(impl: DailyPlanRepositoryImpl): DailyPlanRepository
 
     @Binds @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository

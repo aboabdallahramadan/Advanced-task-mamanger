@@ -36,6 +36,10 @@ class DatabaseModuleTest {
         assertSame(db.settingsDao(), DatabaseModule.provideSettingsDao(db))
         assertSame(db.outboxDao(), DatabaseModule.provideOutboxDao(db))
         assertSame(db.syncStateDao(), DatabaseModule.provideSyncStateDao(db))
+        assertSame(db.noteDao(), DatabaseModule.provideNoteDao(db))
+        assertSame(db.noteGroupDao(), DatabaseModule.provideNoteGroupDao(db))
+        assertSame(db.focusSessionDao(), DatabaseModule.provideFocusSessionDao(db))
+        assertSame(db.dailyPlanDao(), DatabaseModule.provideDailyPlanDao(db))
     }
 
     @Test
