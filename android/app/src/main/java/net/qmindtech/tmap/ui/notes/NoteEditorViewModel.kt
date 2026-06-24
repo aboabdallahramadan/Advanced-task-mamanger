@@ -30,6 +30,15 @@ class NoteEditorViewModel @Inject constructor(
     private var noteId: String? = initialNoteId
     private var observeJob: Job? = null
 
+    /**
+     * True if the note was blank (title and content both empty) at the time it was first loaded.
+     * Used by [discardIfEmpty] to distinguish an eagerly-created blank note (safe to delete on
+     * dismiss) from a pre-existing note whose content the user manually cleared (must NOT delete).
+     * Set only once on the first non-null emission from the observe flow; user edits never flip it.
+     */
+    private var loadedBlank: Boolean = false
+    private var loadedBlankSet: Boolean = false
+
     private val _state = MutableStateFlow(
         if (initialNoteId == null) NoteEditorUiState(isEdit = false, loading = false)
         else NoteEditorUiState()
@@ -52,6 +61,10 @@ class NoteEditorViewModel @Inject constructor(
                     Triple(note, groups, projects)
                 }.collect { (note, groups, projects) ->
                     if (note != null) {
+                        if (!loadedBlankSet) {
+                            loadedBlank = note.title.isBlank() && note.content.isBlank()
+                            loadedBlankSet = true
+                        }
                         _state.value = note.toEditorState(groups, projects)
                     } else {
                         _state.update { it.copy(loading = false, groups = groups, projects = projects) }
@@ -89,11 +102,13 @@ class NoteEditorViewModel @Inject constructor(
         val id = noteId
         viewModelScope.launch {
             if (id == null) {
-                noteRepo.create(s.title.trim(), s.content, s.groupId, s.projectId)
+                val newId = noteRepo.create(s.title.trim(), s.content, s.groupId, s.projectId)
+                noteId = newId
+                _state.update { it.copy(noteId = newId, isEdit = true, saved = true) }
             } else {
                 noteRepo.update(id, title = s.title.trim(), content = s.content, groupId = s.groupId, projectId = s.projectId)
+                _state.update { it.copy(saved = true) }
             }
-            _state.update { it.copy(saved = true) }
             onDone()
         }
     }
@@ -105,13 +120,13 @@ class NoteEditorViewModel @Inject constructor(
 
     /**
      * Called by [NoteEditorSheet] when the sheet is dismissed.
-     * If the note was eagerly created (edit mode) but the user never typed anything,
-     * delete the empty note so it does not clutter the list or sync.
+     * Deletes the note ONLY if it was blank when loaded (eagerly-created, never typed into).
+     * A pre-existing note whose content the user manually cleared is NOT deleted here.
      */
     fun discardIfEmpty() {
         val id = noteId ?: return
         val s = _state.value
-        if (s.isEdit && s.title.isBlank() && s.content.isBlank()) {
+        if (s.isEdit && loadedBlank && s.title.isBlank() && s.content.isBlank()) {
             viewModelScope.launch { noteRepo.delete(id) }
         }
     }

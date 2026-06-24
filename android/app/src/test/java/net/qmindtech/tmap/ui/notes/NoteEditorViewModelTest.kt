@@ -156,6 +156,7 @@ class NoteEditorViewModelTest {
     }
 
     @Test fun discardIfEmpty_edit_mode_blank_deletes_note() = runTest(testDispatcher) {
+        // Note was eagerly created blank and was never typed into → delete on dismiss.
         val notes = FakeNoteRepo()
         notes.singleFlow.value = fakeNote(id = "n1", title = "", content = "")
         val vm = editVm(notes)
@@ -171,10 +172,39 @@ class NoteEditorViewModelTest {
         assertTrue(notes.deleted.isEmpty())
     }
 
+    /**
+     * Regression test for the data-loss bug: a pre-existing note loaded WITH content, then
+     * blanked by the user, must NOT be deleted on dismiss.
+     */
+    @Test fun discardIfEmpty_loaded_with_content_user_blanks_does_not_delete() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.singleFlow.value = fakeNote(id = "n1", title = "Important note", content = "Do not lose this")
+        val vm = editVm(notes)
+        // User clears all text before dismissing.
+        vm.onTitleChange("")
+        vm.onContentChange("")
+        vm.discardIfEmpty()
+        // loadedBlank was false (note had content when loaded) → must NOT delete.
+        assertTrue(notes.deleted.isEmpty())
+    }
+
     @Test fun discardIfEmpty_create_mode_is_noop() = runTest(testDispatcher) {
         val notes = FakeNoteRepo()
         val vm = createVm(notes)
         vm.discardIfEmpty()
         assertTrue(notes.deleted.isEmpty())
+    }
+
+    @Test fun save_create_promotes_noteId_and_isEdit() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.nextId = "created-id"
+        val vm = createVm(notes)
+        vm.onTitleChange("New note")
+        vm.onContentChange("Some content")
+        vm.save {}
+        // VM must no longer be in create-mode after a successful save.
+        assertEquals("created-id", vm.uiState.value.noteId)
+        assertEquals(true, vm.uiState.value.isEdit)
+        assertEquals(true, vm.uiState.value.saved)
     }
 }
