@@ -16,6 +16,7 @@ import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
 import net.qmindtech.tmap.data.local.entities.OutboxOp
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
@@ -27,6 +28,7 @@ import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.UpsertDailyPlanRequest
 import retrofit2.HttpException
 
 /** Pinned SP3 push constants. */
@@ -233,10 +235,16 @@ class PushRunner(
                 OpType.DELETE -> requireOk(api.deleteNoteGroup(op.entityId).code(), op)
                 OpType.REORDER -> requireOk(api.reorderNoteGroups(json.decodeFromString(reorderSerializer, op.payloadJson)).code(), op)
             }
+            EntityType.FOCUS_SESSION -> when (op.opType) {
+                OpType.CREATE -> api.createFocusSession(json.decodeFromString(CreateFocusSessionRequest.serializer(), op.payloadJson))
+                else -> error("focus-session is append-only; only CREATE is enqueued")
+            }
+            EntityType.DAILY_PLAN -> when (op.opType) {
+                // entityId is the ISO date; PUT upserts last-writer-wins (no id remap/adopt — spec §7.6).
+                OpType.UPDATE -> api.putDailyPlan(op.entityId, json.decodeFromString(UpsertDailyPlanRequest.serializer(), op.payloadJson))
+                else -> error("daily-plan is upserted as OpType.UPDATE keyed by date")
+            }
             EntityType.SETTINGS -> error("settings are pushed via SettingsRepository.saveSettings, not the outbox replay")
-            // P3.18: FOCUS_SESSION/DAILY_PLAN dispatch wired in the next task.
-            EntityType.FOCUS_SESSION -> error("P3.x: wire FOCUS_SESSION dispatch")
-            EntityType.DAILY_PLAN -> error("P3.x: wire DAILY_PLAN dispatch")
         }
     }
 
