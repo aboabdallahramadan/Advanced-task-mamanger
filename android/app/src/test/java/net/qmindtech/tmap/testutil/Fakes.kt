@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.dao.ProjectProgress
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
@@ -129,6 +130,7 @@ class FakeTaskRepo(
 
 class FakeProjectRepo(
   private val all: MutableStateFlow<List<ProjectEntity>> = MutableStateFlow(emptyList()),
+  private val progress: MutableStateFlow<List<ProjectProgress>> = MutableStateFlow(emptyList()),
 ) : ProjectRepository {
   val created = mutableListOf<Triple<String, String, String>>() // name,color,emoji
   val updated = mutableListOf<String>()
@@ -136,6 +138,7 @@ class FakeProjectRepo(
   val reordered = mutableListOf<List<String>>()
 
   override fun observeAll(): Flow<List<ProjectEntity>> = all
+  override fun observeProgress(): Flow<List<ProjectProgress>> = progress
   override suspend fun create(name: String, color: String, emoji: String): String {
     created += Triple(name, color, emoji); return "proj-${created.size}"
   }
@@ -144,6 +147,7 @@ class FakeProjectRepo(
   override suspend fun reorder(orderedIds: List<String>) { reordered += orderedIds }
 
   fun setAll(v: List<ProjectEntity>) = all.let { it.value = v }
+  fun setProgress(v: List<ProjectProgress>) = progress.let { it.value = v }
 }
 
 class FakeSubtaskRepo(

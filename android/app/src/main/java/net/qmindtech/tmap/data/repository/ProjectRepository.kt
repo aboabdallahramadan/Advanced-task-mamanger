@@ -7,6 +7,7 @@ import net.qmindtech.tmap.data.local.AppDatabase
 import net.qmindtech.tmap.data.local.EntityType
 import net.qmindtech.tmap.data.local.OpType
 import net.qmindtech.tmap.data.local.dao.ProjectDao
+import net.qmindtech.tmap.data.local.dao.ProjectProgress
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.ReorderItem
@@ -21,6 +22,7 @@ import javax.inject.Inject
 
 interface ProjectRepository {
     fun observeAll(): Flow<List<ProjectEntity>>
+    fun observeProgress(): Flow<List<ProjectProgress>>
     suspend fun create(name: String, color: String, emoji: String): String
     suspend fun update(id: String, name: String? = null, color: String? = null, emoji: String? = null)
     suspend fun delete(id: String)
@@ -41,6 +43,8 @@ class ProjectRepositoryImpl @Inject constructor(
 ) : ProjectRepository {
 
     override fun observeAll(): Flow<List<ProjectEntity>> = projectDao.observeAll()
+
+    override fun observeProgress(): Flow<List<ProjectProgress>> = projectDao.observeProgress()
 
     override suspend fun create(name: String, color: String, emoji: String): String {
         val now = clock.now()
