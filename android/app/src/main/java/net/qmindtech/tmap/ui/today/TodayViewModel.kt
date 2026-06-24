@@ -34,15 +34,12 @@ class TodayViewModel @Inject constructor(
 
   private val todayTasksFlow = taskRepo.observeToday(clock.today())
 
-  @Volatile private var lastTasks: List<TaskEntity> = emptyList()
-
   val uiState: StateFlow<TodayUiState> =
     combine(
       todayTasksFlow,
       projectRepo.observeAll(),
       mode,
     ) { tasks, projects, m ->
-      lastTasks = tasks
       val projectsById = projects.associateBy { it.id }
       val sorted = tasks.sortedWith(
         compareBy<TaskEntity>({ it.rank ?: "zzzzzz" }, { it.scheduledStart ?: Instant.MAX }, { it.createdAt }),
@@ -90,11 +87,11 @@ class TodayViewModel @Inject constructor(
   }
 
   fun timeblock(taskId: String, start: LocalTime) {
-    val task = lastTasks.firstOrNull { it.id == taskId } ?: return
-    val duration = task.durationMinutes ?: 60
-    val startInstant = clock.today().atTime(start).atZone(clock.zone()).toInstant()
-    val endInstant = startInstant.plus(Duration.ofMinutes(duration.toLong()))
     viewModelScope.launch {
+      val task = todayTasksFlow.first().firstOrNull { it.id == taskId } ?: return@launch
+      val duration = task.durationMinutes ?: 60
+      val startInstant = clock.today().atTime(start).atZone(clock.zone()).toInstant()
+      val endInstant = startInstant.plus(Duration.ofMinutes(duration.toLong()))
       taskRepo.update(
         taskId,
         TaskEdit(

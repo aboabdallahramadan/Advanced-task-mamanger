@@ -205,7 +205,6 @@ class TodayViewModelTest {
       listOf(fakeTask(id = "x", plannedDate = today, durationMinutes = 90)),
     )
     val (vm, repo) = vm(flow)
-    vm.uiState.test { expectMostRecentItem(); cancelAndIgnoreRemainingEvents() } // prime lastTasks
     vm.timeblock("x", LocalTime.of(10, 0))
     assertEquals(1, repo.updated.size)
     val (id, edit) = repo.updated.first()
@@ -221,7 +220,6 @@ class TodayViewModelTest {
       listOf(fakeTask(id = "y", plannedDate = today, durationMinutes = null)),
     )
     val (vm, repo) = vm(flow)
-    vm.uiState.test { expectMostRecentItem(); cancelAndIgnoreRemainingEvents() }
     vm.timeblock("y", LocalTime.of(9, 30))
     val edit = repo.updated.first().second
     assertEquals(Instant.parse("2026-06-21T09:30:00Z"), edit.scheduledStart)
@@ -232,7 +230,6 @@ class TodayViewModelTest {
   @Test fun timeblock_unknown_task_is_noop() = runTest(testDispatcher) {
     val flow = MutableStateFlow(listOf(fakeTask(id = "x", plannedDate = today)))
     val (vm, repo) = vm(flow)
-    vm.uiState.test { expectMostRecentItem(); cancelAndIgnoreRemainingEvents() }
     vm.timeblock("does-not-exist", LocalTime.of(10, 0))
     assertTrue(repo.updated.isEmpty())
   }
