@@ -13,6 +13,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.repository.FocusSessionRepository
 import net.qmindtech.tmap.data.repository.TaskRepository
+import net.qmindtech.tmap.di.FocusDispatcher
 import net.qmindtech.tmap.util.Clock
 import java.time.Instant
 import javax.inject.Inject
@@ -35,7 +36,7 @@ class FocusController @Inject constructor(
     private val focusSessions: FocusSessionRepository,
     private val tasks: TaskRepository,
     private val clock: Clock,
-    private val dispatcher: CoroutineDispatcher,
+    @FocusDispatcher private val dispatcher: CoroutineDispatcher,
 ) {
     private val scope = CoroutineScope(dispatcher + SupervisorJob())
 
