@@ -71,7 +71,7 @@ fun TimeboxStep(state: PlanningUiState, modifier: Modifier = Modifier) {
         }
         item {
             Text(
-                text = "Drag-to-time-block lands in the Timeline (P7).",
+                text = "Set a start time for each task.",
                 style = type.meta,
                 color = colors.textTertiary,
                 modifier = Modifier

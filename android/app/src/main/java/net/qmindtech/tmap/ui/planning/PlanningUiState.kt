@@ -1,7 +1,5 @@
 package net.qmindtech.tmap.ui.planning
 
-import net.qmindtech.tmap.data.local.entities.TaskEntity
-
 enum class PlanningStep {
     Reflect, TriageInbox, PickToday, Timebox;
 
