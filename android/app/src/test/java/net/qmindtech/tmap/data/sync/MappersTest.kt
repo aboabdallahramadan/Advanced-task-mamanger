@@ -10,6 +10,7 @@ import net.qmindtech.tmap.data.remote.dto.TaskResponse
 import net.qmindtech.tmap.data.remote.dto.TaskSyncRow
 import net.qmindtech.tmap.data.sync.Mappers.toCreateRequest
 import net.qmindtech.tmap.data.sync.Mappers.toEntity
+import net.qmindtech.tmap.data.sync.Mappers.toUpsertRequest
 import net.qmindtech.tmap.data.sync.Mappers.toUpdateRequest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -200,5 +201,42 @@ class MappersTest {
             changeSeq = 6, deletedAt = null,
         )
         assertEquals(6L, syncRow.toEntity().changeSeq)
+    }
+
+    @Test
+    fun `FocusSession round-trips sync-row and entity to create request`() {
+        val row = net.qmindtech.tmap.data.remote.dto.FocusSessionSyncRow(
+            id = "f1", taskId = "t1", project = "العمل", startedAt = "2026-06-18T09:00:00Z",
+            endedAt = "2026-06-18T09:25:00Z", minutes = 25, date = "2026-06-18",
+            createdAt = "2026-06-18T09:25:00Z", updatedAt = "2026-06-18T09:25:00Z",
+            changeSeq = 6, deletedAt = null,
+        )
+        val e = row.toEntity()
+        assertEquals(25, e.minutes)
+        assertEquals(LocalDate.parse("2026-06-18"), e.date)
+        assertEquals(Instant.parse("2026-06-18T09:00:00Z"), e.startedAt)
+        val req = e.toCreateRequest()
+        assertEquals("2026-06-18", req.date)
+        assertEquals("2026-06-18T09:25:00Z", req.endedAt)
+        assertEquals("العمل", req.project)
+    }
+
+    @Test
+    fun `DailyPlan round-trips sync-row and entity to upsert request`() {
+        val row = net.qmindtech.tmap.data.remote.dto.DailyPlanSyncRow(
+            date = "2026-06-18", committedAt = "2026-06-18T07:00:00Z",
+            plannedTaskIds = listOf("a", "b"), plannedMinutes = 120, changeSeq = 8, deletedAt = null,
+        )
+        val e = row.toEntity()
+        assertEquals(LocalDate.parse("2026-06-18"), e.date)
+        assertEquals(listOf("a", "b"), e.plannedTaskIds)
+        assertEquals(120, e.plannedMinutes)
+        assertEquals(8L, e.changeSeq)
+        // committedAt is preserved on the entity (sourced from the wire row)
+        assertEquals(Instant.parse("2026-06-18T07:00:00Z"), e.committedAt)
+        val req = e.toUpsertRequest()
+        // UpsertDailyPlanRequest has only plannedTaskIds + plannedMinutes (no committedAt)
+        assertEquals(listOf("a", "b"), req.plannedTaskIds)
+        assertEquals(120, req.plannedMinutes)
     }
 }

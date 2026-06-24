@@ -1,17 +1,24 @@
 package net.qmindtech.tmap.data.sync
 
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.entities.DailyPlanEntity
+import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.NoteEntity
 import net.qmindtech.tmap.data.local.entities.NoteGroupEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SettingEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.CreateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.DailyPlanResponse
+import net.qmindtech.tmap.data.remote.dto.DailyPlanSyncRow
+import net.qmindtech.tmap.data.remote.dto.FocusSessionResponse
+import net.qmindtech.tmap.data.remote.dto.FocusSessionSyncRow
 import net.qmindtech.tmap.data.remote.dto.NoteGroupResponse
 import net.qmindtech.tmap.data.remote.dto.NoteGroupSyncRow
 import net.qmindtech.tmap.data.remote.dto.NoteResponse
@@ -28,6 +35,7 @@ import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.UpsertDailyPlanRequest
 import java.time.Instant
 import java.time.LocalDate
 
@@ -250,4 +258,44 @@ object Mappers {
 
     fun NoteGroupEntity.toUpdateRequest(): UpdateNoteGroupRequest =
         UpdateNoteGroupRequest(name = name, emoji = emoji, projectId = projectId, rank = rank)
+
+    // ── Focus-sessions ─────────────────────────────────────
+    fun FocusSessionResponse.toEntity(changeSeq: Long = 0L): FocusSessionEntity = FocusSessionEntity(
+        id = id, taskId = taskId, project = project,
+        startedAt = parseInstant(startedAt)!!, endedAt = parseInstant(endedAt)!!,
+        minutes = minutes, date = parseDate(date)!!,
+        createdAt = parseInstant(createdAt)!!, updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq, deletedAt = null,
+    )
+
+    fun FocusSessionSyncRow.toEntity(): FocusSessionEntity = FocusSessionEntity(
+        id = id, taskId = taskId, project = project,
+        startedAt = parseInstant(startedAt)!!, endedAt = parseInstant(endedAt)!!,
+        minutes = minutes, date = parseDate(date)!!,
+        createdAt = parseInstant(createdAt)!!, updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq, deletedAt = parseInstant(deletedAt),
+    )
+
+    fun FocusSessionEntity.toCreateRequest(): CreateFocusSessionRequest = CreateFocusSessionRequest(
+        id = id, taskId = taskId, project = project,
+        startedAt = formatInstant(startedAt)!!, endedAt = formatInstant(endedAt)!!,
+        minutes = minutes, date = formatDate(date)!!,
+    )
+
+    // ── Daily-plans (date-keyed) ───────────────────────────
+    fun DailyPlanResponse.toEntity(changeSeq: Long = 0L): DailyPlanEntity = DailyPlanEntity(
+        date = parseDate(date)!!, committedAt = parseInstant(committedAt)!!,
+        plannedTaskIds = plannedTaskIds, plannedMinutes = plannedMinutes,
+        changeSeq = changeSeq, deletedAt = null,
+    )
+
+    fun DailyPlanSyncRow.toEntity(): DailyPlanEntity = DailyPlanEntity(
+        date = parseDate(date)!!, committedAt = parseInstant(committedAt)!!,
+        plannedTaskIds = plannedTaskIds, plannedMinutes = plannedMinutes,
+        changeSeq = changeSeq, deletedAt = parseInstant(deletedAt),
+    )
+
+    fun DailyPlanEntity.toUpsertRequest(): UpsertDailyPlanRequest = UpsertDailyPlanRequest(
+        plannedTaskIds = plannedTaskIds, plannedMinutes = plannedMinutes,
+    )
 }
