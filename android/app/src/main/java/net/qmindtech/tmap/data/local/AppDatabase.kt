@@ -3,6 +3,7 @@ package net.qmindtech.tmap.data.local
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import net.qmindtech.tmap.data.local.dao.DailyPlanDao
 import net.qmindtech.tmap.data.local.dao.FocusSessionDao
 import net.qmindtech.tmap.data.local.dao.NoteDao
 import net.qmindtech.tmap.data.local.dao.NoteGroupDao
@@ -12,6 +13,7 @@ import net.qmindtech.tmap.data.local.dao.SettingsDao
 import net.qmindtech.tmap.data.local.dao.SubtaskDao
 import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
+import net.qmindtech.tmap.data.local.entities.DailyPlanEntity
 import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.NoteEntity
 import net.qmindtech.tmap.data.local.entities.NoteGroupEntity
@@ -33,6 +35,7 @@ import net.qmindtech.tmap.data.local.entities.TaskEntity
         NoteEntity::class,
         NoteGroupEntity::class,
         FocusSessionEntity::class,
+        DailyPlanEntity::class,
     ],
     // v3 adds the four SP4 new-domain tables (notes, note_groups, focus_sessions, daily_plans).
     // fallbackToDestructiveMigration() (DatabaseModule) wipes + full-resyncs an older install on first
@@ -52,4 +55,5 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun noteGroupDao(): NoteGroupDao
     abstract fun focusSessionDao(): FocusSessionDao
+    abstract fun dailyPlanDao(): DailyPlanDao
 }
