@@ -10,6 +10,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
+    <!-- Android 11+ package visibility: allow querying the system speech recognizer. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
         android:name=".TmapApplication"
         android:allowBackup="false"
@@ -28,12 +35,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Reminder tap deep-link: tmap://task/{taskId} -> Routes.TaskEditor (P5 NavHost binds it). -->
+            <!-- Widget deep-links (P8): tmap://task/{id}, tmap://today, tmap://focus/{taskId?},
+                 tmap://capture — all route to MainActivity; SheetHost/NavHost dispatch them. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="tmap" android:host="task" />
+                <data android:scheme="tmap" android:host="today" />
+                <data android:scheme="tmap" android:host="focus" />
+                <data android:scheme="tmap" android:host="capture" />
             </intent-filter>
         </activity>
 
@@ -60,6 +71,15 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- Trampoline for the Quick Capture widget. Launched by class ref (not VIEW filter); opens
+             the system speech recognizer on mic tap, then forwards tmap://capture to MainActivity. -->
+        <activity
+            android:name=".widget.CaptureTrampolineActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Disable the default WorkManager initializer so TmapApplication's
              Configuration.Provider (with the HiltWorkerFactory) drives WorkManager. -->
