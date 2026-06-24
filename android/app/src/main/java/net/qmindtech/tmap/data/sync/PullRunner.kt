@@ -14,6 +14,8 @@ import net.qmindtech.tmap.data.local.dao.SyncStateDao
 import net.qmindtech.tmap.data.local.dao.TaskDao
 import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.data.remote.dto.DailyPlanSyncRow
+import net.qmindtech.tmap.data.remote.dto.FocusSessionSyncRow
 import net.qmindtech.tmap.data.remote.dto.NoteGroupSyncRow
 import net.qmindtech.tmap.data.remote.dto.NoteSyncRow
 import net.qmindtech.tmap.data.remote.dto.ProjectSyncRow
@@ -224,6 +226,21 @@ class PullRunner(
                 if (shadow.contains(row.id)) continue
                 if (row.deletedAt != null) noteGroupDao.deleteById(row.id)
                 else noteGroupDao.upsertAll(listOf(row.toEntity()))
+                applied = true
+            }
+            // Focus-sessions (append-only on the client; pull still applies upserts/tombstones).
+            for (row: FocusSessionSyncRow in changes.focusSessions) {
+                if (shadow.contains(row.id)) continue
+                if (row.deletedAt != null) focusSessionDao.deleteById(row.id)
+                else focusSessionDao.upsertAll(listOf(row.toEntity()))
+                applied = true
+            }
+            // Daily-plans — keyed by DATE (the outbox entityId is the date string, so the shadow set
+            // is checked against row.date, not a Guid id).
+            for (row: DailyPlanSyncRow in changes.dailyPlans) {
+                if (shadow.contains(row.date)) continue
+                if (row.deletedAt != null) dailyPlanDao.deleteByDate(java.time.LocalDate.parse(row.date))
+                else dailyPlanDao.upsertAll(listOf(row.toEntity()))
                 applied = true
             }
         }
