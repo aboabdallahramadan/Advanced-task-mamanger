@@ -5,9 +5,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.dao.ProjectProgress
+import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.data.repository.FocusSessionRepository
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.SubtaskRepository
 import net.qmindtech.tmap.data.repository.TaskDraft
@@ -93,7 +95,7 @@ class FakeTaskRepo(
   val deferred = mutableListOf<Pair<String, LocalDate>>()
   val movedToDay = mutableListOf<Pair<String, LocalDate>>()
   val reordered = mutableListOf<List<String>>()
-  val actualTimeAdded = mutableListOf<Pair<String, Int>>()
+  val actualTimeAdds = mutableListOf<Pair<String, Int>>()
   var nextId = "new-id"
 
   // Per-id flows for testing multi-task observation scenarios.
@@ -111,7 +113,7 @@ class FakeTaskRepo(
   override suspend fun defer(id: String, toDate: LocalDate) { deferred += id to toDate }
   override suspend fun moveToDay(id: String, date: LocalDate) { movedToDay += id to date }
   override suspend fun reorder(orderedIds: List<String>) { reordered += orderedIds }
-  override suspend fun addActualTime(id: String, minutes: Int) { actualTimeAdded += id to minutes }
+  override suspend fun addActualTime(id: String, minutes: Int) { actualTimeAdds += id to minutes }
 
   fun setAll(v: List<TaskEntity>) = all.let { it.value = v }
   fun setByStatus(v: List<TaskEntity>) = byStatus.let { it.value = v }
@@ -163,6 +165,26 @@ class FakeSubtaskRepo(
   override suspend fun delete(id: String) { deleted += id }
 
   fun setByTask(v: List<SubtaskEntity>) = byTask.let { it.value = v }
+}
+
+/** Records [FocusSessionRepository.create] calls without a Room DB. Shared across all focus tests. */
+class FakeFocusSessionRepo : FocusSessionRepository {
+  data class Created(
+    val taskId: String?, val project: String, val startedAt: Instant,
+    val endedAt: Instant, val minutes: Int, val date: LocalDate,
+  )
+  val created = mutableListOf<Created>()
+  var nextId = 0
+  override suspend fun create(
+    taskId: String?, project: String, startedAt: Instant,
+    endedAt: Instant, minutes: Int, date: LocalDate,
+  ): String {
+    created += Created(taskId, project, startedAt, endedAt, minutes, date)
+    return "fs-${++nextId}"
+  }
+  override fun observeForTask(taskId: String): Flow<List<FocusSessionEntity>> = MutableStateFlow(emptyList())
+  override fun observeForDateRange(start: LocalDate, end: LocalDate): Flow<List<FocusSessionEntity>> =
+    MutableStateFlow(emptyList())
 }
 
 fun fakeNote(

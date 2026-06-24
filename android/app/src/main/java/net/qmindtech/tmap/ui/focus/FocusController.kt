@@ -76,8 +76,24 @@ class FocusController @Inject constructor(
         }
     }
 
-    /** Filled in by P6.3 (interval completion) and P6.4 (pause/resume/end). */
-    private suspend fun onIntervalComplete() { /* P6.3 */ }
+    /** Persists the just-completed interval as a FocusSession, credits task time, and advances the counter (P6.3). */
+    private suspend fun onIntervalComplete() {
+        val s = _state.value
+        val endedAt = clock.now()
+        focusSessions.create(
+            taskId = s.taskId,
+            project = s.project,
+            startedAt = intervalStartedAt,
+            endedAt = endedAt,
+            minutes = s.lengthMin,
+            date = clock.today(),
+        )
+        // The backend does not auto-aggregate; mirror the focus time onto the task locally (spec §6.5).
+        s.taskId?.let { tasks.addActualTime(it, s.lengthMin) }
+        _state.update {
+            it.copy(phase = FocusPhase.Completed, completedSessions = it.completedSessions + 1)
+        }
+    }
 
     fun end() { /* P6.4 */
         tickJob?.cancel()

@@ -2,16 +2,13 @@ package net.qmindtech.tmap.ui.focus
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
-import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
-import net.qmindtech.tmap.data.repository.FocusSessionRepository
+import net.qmindtech.tmap.testutil.FakeFocusSessionRepo
 import net.qmindtech.tmap.testutil.FakeTaskRepo
 import net.qmindtech.tmap.testutil.FixedClock
 import org.junit.After
@@ -19,27 +16,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import java.time.Instant
-import java.time.LocalDate
-
-/** Records FocusSessionRepository.create calls without a Room DB. */
-class FakeFocusSessionRepo : FocusSessionRepository {
-    data class Created(
-        val taskId: String?, val project: String, val startedAt: Instant,
-        val endedAt: Instant, val minutes: Int, val date: LocalDate,
-    )
-    val created = mutableListOf<Created>()
-    var nextId = 0
-    override suspend fun create(
-        taskId: String?, project: String, startedAt: Instant,
-        endedAt: Instant, minutes: Int, date: LocalDate,
-    ): String {
-        created += Created(taskId, project, startedAt, endedAt, minutes, date)
-        return "fs-${++nextId}"
-    }
-    override fun observeForTask(taskId: String): Flow<List<FocusSessionEntity>> = MutableStateFlow(emptyList())
-    override fun observeForDateRange(start: LocalDate, end: LocalDate): Flow<List<FocusSessionEntity>> =
-        MutableStateFlow(emptyList())
-}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FocusControllerStartTest {
