@@ -30,9 +30,15 @@ import net.qmindtech.tmap.ui.browse.BrowseScreen
 import net.qmindtech.tmap.ui.components.TmapFab
 import net.qmindtech.tmap.ui.notes.NotesScreen
 import net.qmindtech.tmap.ui.projects.ProjectDetailScreen
+import net.qmindtech.tmap.ui.settings.AboutSettingsScreen
+import net.qmindtech.tmap.ui.settings.AccountSettingsScreen
+import net.qmindtech.tmap.ui.settings.AppearanceSettingsScreen
+import net.qmindtech.tmap.ui.settings.DataSyncSettingsScreen
+import net.qmindtech.tmap.ui.settings.NotificationsSettingsScreen
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.TmapBackground
 import net.qmindtech.tmap.ui.today.TodayScreen
+import net.qmindtech.tmap.ui.you.SettingsEntry
 import net.qmindtech.tmap.ui.you.YouScreen
 
 /**
@@ -142,9 +148,33 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                     }
                     composable(Route.You.route) {
                         YouScreen(
-                            // P9.10 will replace this stub with real route navigation.
-                            onOpenSettings = { /* settings routes wired in P9.10 */ },
+                            onOpenSettings = { entry ->
+                                navController.navigate(
+                                    when (entry) {
+                                        SettingsEntry.Notifications -> Route.SettingsNotifications.route
+                                        SettingsEntry.Appearance -> Route.SettingsAppearance.route
+                                        SettingsEntry.Account -> Route.SettingsAccount.route
+                                        SettingsEntry.DataAndSync -> Route.SettingsDataSync.route
+                                        SettingsEntry.About -> Route.SettingsAbout.route
+                                    },
+                                )
+                            },
                         )
+                    }
+                    composable(Route.SettingsNotifications.route) {
+                        NotificationsSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Route.SettingsAppearance.route) {
+                        AppearanceSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Route.SettingsAccount.route) {
+                        AccountSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Route.SettingsDataSync.route) {
+                        DataSyncSettingsScreen(onBack = { navController.popBackStack() })
+                    }
+                    composable(Route.SettingsAbout.route) {
+                        AboutSettingsScreen(onBack = { navController.popBackStack() })
                     }
                     composable(Route.Planning.route) {
                         net.qmindtech.tmap.ui.planning.PlanningScreen(

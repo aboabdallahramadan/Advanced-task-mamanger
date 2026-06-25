@@ -52,6 +52,13 @@ sealed interface Route {
     // Auth destinations (the gate lives in TmapApp; these are here for completeness/deeplinks).
     data object Login : Route { override val route = "login" }
     data object Register : Route { override val route = "register" }
+
+    // Settings sub-screen destinations (reached from YouScreen via SettingsEntry rows).
+    data object SettingsNotifications : Route { override val route = "settings/notifications" }
+    data object SettingsAppearance : Route { override val route = "settings/appearance" }
+    data object SettingsAccount : Route { override val route = "settings/account" }
+    data object SettingsDataSync : Route { override val route = "settings/data_sync" }
+    data object SettingsAbout : Route { override val route = "settings/about" }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
