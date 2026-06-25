@@ -9,4 +9,6 @@
     android:maxResizeWidth="320dp"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen"
+    android:previewLayout="@layout/widget_preview_quick_capture"
+    android:previewImage="@mipmap/ic_launcher"
     android:description="@string/widget_quick_capture_desc" />

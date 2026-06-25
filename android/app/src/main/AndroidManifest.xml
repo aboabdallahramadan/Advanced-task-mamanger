@@ -141,6 +141,7 @@
             android:name=".widget.CaptureTrampolineActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Disable the default WorkManager initializer so TmapApplication's

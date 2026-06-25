@@ -4,8 +4,11 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.glance.ColorFilter
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
+import androidx.glance.Image
+import androidx.glance.ImageProvider
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.action.actionStartActivity
@@ -22,11 +25,12 @@ import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
+import net.qmindtech.tmap.R
 
 /**
  * Quick Capture Glance widget (P8.7). A permanent 1-row capture bar:
  *   - Amber "+" tile → [CaptureTrampolineActivity] with [WidgetLinks.capture] (normal capture).
- *   - Mic glyph at the end → [CaptureTrampolineActivity] with [WidgetLinks.capture(voice=true)]
+ *   - Mic icon at the end → [CaptureTrampolineActivity] with [WidgetLinks.capture(voice=true)]
  *     (launches system speech recognizer; fallback to empty capture if none installed).
  *
  * No sign-in gate is strictly required (capture works offline), but the [SignedOutState] affordance
@@ -73,7 +77,7 @@ class QuickCaptureWidget : GlanceAppWidget() {
                                 fontSize = 13.sp,
                             ),
                         )
-                        // Mic glyph — separate click target for voice capture
+                        // Mic icon — separate click target for voice capture
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = GlanceModifier
@@ -81,12 +85,11 @@ class QuickCaptureWidget : GlanceAppWidget() {
                                 .padding(2.dp)
                                 .clickable(actionStartActivity(captureIntent(context, voice = true))),
                         ) {
-                            Text(
-                                text = "🎙️",
-                                style = TextStyle(
-                                    color = WidgetColors.textTertiary,
-                                    fontSize = 15.sp,
-                                ),
+                            Image(
+                                provider = ImageProvider(R.drawable.ic_mic),
+                                contentDescription = "Add by voice",
+                                modifier = GlanceModifier.size(18.dp),
+                                colorFilter = ColorFilter.tint(WidgetColors.textSecondary),
                             )
                         }
                     }
@@ -96,8 +99,22 @@ class QuickCaptureWidget : GlanceAppWidget() {
     }
 
     private fun captureIntent(context: Context, voice: Boolean): Intent =
-        Intent(context, CaptureTrampolineActivity::class.java).apply {
-            action = Intent.ACTION_VIEW
-            data = WidgetLinks.capture(voice = voice)
-        }
+        buildCaptureIntent(context, voice)
+
+    companion object {
+        /**
+         * Builds the trampoline launch intent. Extracted as [internal] so the launch-isolation
+         * flags can be asserted in unit tests without a live widget host.
+         *
+         * The intent always targets [CaptureTrampolineActivity] and carries
+         * [Intent.FLAG_ACTIVITY_NEW_TASK] + [Intent.FLAG_ACTIVITY_MULTIPLE_TASK] so a tap from the
+         * widget always lands in a fresh, isolated task (never adopting the foreground app's task).
+         */
+        internal fun buildCaptureIntent(context: Context, voice: Boolean): Intent =
+            Intent(context, CaptureTrampolineActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
+                data = WidgetLinks.capture(voice = voice)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+            }
+    }
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Small hollow circle bullet for static widget preview task rows.
+     Hardcoded hex permitted: preview-only asset, not theme-bound. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="#00000000" />
+    <stroke
+        android:width="1.5dp"
+        android:color="#8A8780" />
+</shape>

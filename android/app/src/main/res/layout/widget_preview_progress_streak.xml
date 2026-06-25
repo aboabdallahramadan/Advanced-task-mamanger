@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static launcher-picker preview for the Progress & Streak widget.
+     RemoteViews-safe (LinearLayout/TextView only). Midnight Calm dark.
+     Hardcoded hex is intentional: previews cannot use the runtime theme. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="146dp"
+    android:layout_height="110dp"
+    android:background="@drawable/widget_preview_bg"
+    android:gravity="center"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="73%"
+        android:textColor="#E8A87C"
+        android:textSize="34sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="5-day streak"
+        android:textColor="#ECEAE4"
+        android:textSize="13sp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:text="3 of 6 done today"
+        android:textColor="#8A8780"
+        android:textSize="11sp" />
+</LinearLayout>

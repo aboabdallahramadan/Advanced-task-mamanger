@@ -7,4 +7,6 @@
     android:resizeMode="none"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
+    android:previewLayout="@layout/widget_preview_up_next"
+    android:previewImage="@mipmap/ic_launcher"
     android:description="@string/widget_up_next_desc" />

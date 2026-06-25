@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Reusable rounded dark card background for static widget previews.
+     Midnight Calm surface tone. Hardcoded hex is permitted here because
+     RemoteViews previews cannot reference the LocalTmap*/WidgetColors theme. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#202127" />
+    <corners android:radius="16dp" />
+</shape>

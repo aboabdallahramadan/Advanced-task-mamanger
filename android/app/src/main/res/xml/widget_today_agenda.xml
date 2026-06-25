@@ -11,4 +11,6 @@
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="1800000"
     android:widgetCategory="home_screen"
+    android:previewLayout="@layout/widget_preview_today_agenda"
+    android:previewImage="@mipmap/ic_launcher"
     android:description="@string/widget_today_agenda_desc" />
