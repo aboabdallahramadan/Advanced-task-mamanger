@@ -46,6 +46,7 @@ fun TmapTheme(content: @Composable () -> Unit) {
         LocalTmapSpacing provides TmapDefaultSpacing,
         LocalTmapType provides TmapDefaultType,
         LocalTmapMotion provides TmapDefaultMotion,
+        LocalReduceMotion provides rememberReduceMotion(),
     ) {
         MaterialTheme(
             colorScheme = TmapDarkColorScheme,

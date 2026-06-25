@@ -27,4 +27,17 @@ class ReduceMotionTest {
         assertEquals(220, effectiveDurationMillis(220, reduceMotion = false))
         assertEquals(180, effectiveDurationMillis(180, reduceMotion = false))
     }
+
+    // tmapTween delegates duration computation to effectiveDurationMillis; verify the pure path.
+    @Test
+    fun tmapTweenDurationCollapsesToZeroWhenReduceMotion() {
+        assertEquals(0, effectiveDurationMillis(220, reduceMotion = true))
+        assertEquals(0, effectiveDurationMillis(180, reduceMotion = true))
+    }
+
+    @Test
+    fun tmapTweenDurationUsesBaseWhenNotReduceMotion() {
+        assertEquals(220, effectiveDurationMillis(220, reduceMotion = false))
+        assertEquals(180, effectiveDurationMillis(180, reduceMotion = false))
+    }
 }
