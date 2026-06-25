@@ -90,7 +90,13 @@ fun SwipeableTaskCard(
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             scope.launch {
-                                when (resolveSwipe(semanticOffset, thresholdPx).action) {
+                                // Compute the semantic offset LIVE from the stable remembered
+                                // Animatable. The previous code closed over the recomposition-scoped
+                                // `semanticOffset` val captured when offsetX==0f (the pointerInput is
+                                // keyed only on task.id, so this lambda is built once), so resolveSwipe
+                                // always saw ~0f and returned None — the card only snapped back.
+                                val liveSemantic = if (isRtl) -offsetX.value else offsetX.value
+                                when (resolveSwipe(liveSemantic, thresholdPx).action) {
                                     SwipeAction.Complete -> { offsetX.snapTo(0f); onToggleComplete() }
                                     SwipeAction.DeferDelete -> { offsetX.snapTo(0f); onDefer() }
                                     SwipeAction.None -> if (reduceMotion) {
