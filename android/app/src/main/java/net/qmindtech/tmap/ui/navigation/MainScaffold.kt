@@ -33,6 +33,7 @@ import net.qmindtech.tmap.ui.projects.ProjectDetailScreen
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.TmapBackground
 import net.qmindtech.tmap.ui.today.TodayScreen
+import net.qmindtech.tmap.ui.you.YouScreen
 
 /**
  * Main app scaffold: 5-tab bottom nav (Daily-first, amber tint) + corner TmapFab (opens capture)
@@ -139,7 +140,12 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                             onOpenNote = { noteId -> navController.openNoteEditor(noteId) },
                         )
                     }
-                    composable(Route.You.route) { YouPlaceholder() }
+                    composable(Route.You.route) {
+                        YouScreen(
+                            // P9.10 will replace this stub with real route navigation.
+                            onOpenSettings = { /* settings routes wired in P9.10 */ },
+                        )
+                    }
                     composable(Route.Planning.route) {
                         net.qmindtech.tmap.ui.planning.PlanningScreen(
                             onClose = { navController.popBackStack() },
