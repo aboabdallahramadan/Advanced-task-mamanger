@@ -22,7 +22,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.ui.components.Chip
 import net.qmindtech.tmap.ui.components.EmptyState
@@ -47,7 +47,7 @@ fun InboxScreen(
     onOpenTask: (taskId: String) -> Unit,
     viewModel: InboxViewModel = hiltViewModel(),
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val colors = LocalTmapColors.current
     val type = LocalTmapType.current
     val spacing = LocalTmapSpacing.current

@@ -223,6 +223,7 @@ class TaskRepositoryImpl constructor(
         }
         reminder.arm(updated)
         syncScheduler.requestExpeditedSync()
+        onWidgetRefresh()
     }
 
     override suspend fun reorder(orderedIds: List<String>) {
@@ -243,6 +244,7 @@ class TaskRepositoryImpl constructor(
             }
         }
         syncScheduler.requestExpeditedSync()
+        onWidgetRefresh()
     }
 
     override suspend fun addActualTime(id: String, minutes: Int) {
@@ -259,5 +261,8 @@ class TaskRepositoryImpl constructor(
             )
         }
         syncScheduler.requestExpeditedSync()
+        // Defensive: no current widget reads actualTimeMinutes, but keep widgets in sync
+        // should that change so this mutation never silently leaves stale widget data.
+        onWidgetRefresh()
     }
 }
