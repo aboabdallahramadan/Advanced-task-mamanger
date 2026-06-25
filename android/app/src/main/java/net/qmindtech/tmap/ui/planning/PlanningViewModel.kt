@@ -44,17 +44,32 @@ class PlanningViewModel @Inject constructor(
   val uiState: StateFlow<PlanningUiState> =
     combine(
       taskRepo.observeToday(yesterday),
-      taskRepo.observeByStatus(TaskStatus.Inbox),
+      // kotlinx combine maxes at 5 typed args, so the 6th flow (Backlog) is folded into the
+      // inbox flow as a Pair — both feed the PickToday picker pool.
+      combine(
+        taskRepo.observeByStatus(TaskStatus.Inbox),
+        taskRepo.observeByStatus(TaskStatus.Backlog),
+      ) { inbox, backlog -> inbox to backlog },
       projectRepo.observeAll(),
       settingsRepo.observe(),
       combine(step, picked, committed) { s, p, c -> Triple(s, p, c) },
-    ) { yTasks, inboxTasks, projects, settings, local ->
-      project(yTasks, inboxTasks, projects, settings, local.first, local.second, local.third)
+    ) { yTasks, inboxAndBacklog, projects, settings, local ->
+      project(
+        yTasks,
+        inboxAndBacklog.first,
+        inboxAndBacklog.second,
+        projects,
+        settings,
+        local.first,
+        local.second,
+        local.third,
+      )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanningUiState())
 
   private fun project(
     yesterdayTasks: List<TaskEntity>,
     inboxTasks: List<TaskEntity>,
+    backlogTasks: List<TaskEntity>,
     projects: List<ProjectEntity>,
     settings: List<SettingEntity>,
     step: PlanningStep,
@@ -71,8 +86,9 @@ class PlanningViewModel @Inject constructor(
       )
     }
     val (done, undone) = yesterdayTasks.partition { it.status == TaskStatus.Done }
-    // The capacity sum needs the actual entities behind the picked ids (carry-over + inbox).
-    val pool = (yesterdayTasks + inboxTasks).associateBy { it.id }
+    // The capacity sum needs the actual entities behind the picked ids
+    // (carry-over + inbox + backlog — most of the user's task pool lives in backlog).
+    val pool = (yesterdayTasks + inboxTasks + backlogTasks).associateBy { it.id }
     val pickedTasks = pickedIds.mapNotNull { pool[it] }
     return PlanningUiState(
       loading = false,
@@ -82,6 +98,7 @@ class PlanningViewModel @Inject constructor(
       inbox = inboxTasks.map(::item),
       carryOver = undone.map(::item),
       inboxPicks = inboxTasks.map(::item),
+      backlogPicks = backlogTasks.map(::item),
       pickedIds = pickedIds,
       plannedMinutes = capacityOf(pickedTasks),
       workdayMinutes = workdayMinutes(settings),

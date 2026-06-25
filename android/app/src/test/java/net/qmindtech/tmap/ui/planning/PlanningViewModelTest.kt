@@ -110,9 +110,13 @@ class PlanningViewModelTest {
   private fun vm(
     yesterdayTasks: List<TaskEntity> = emptyList(),
     inbox: List<TaskEntity> = emptyList(),
+    backlog: List<TaskEntity> = emptyList(),
     settings: List<net.qmindtech.tmap.data.local.entities.SettingEntity> = emptyList(),
   ): Triple<PlanningViewModel, FakeTaskRepo, FakeDailyPlanRepo> {
+    // Inbox uses the shared byStatus fallback; Backlog gets a status-scoped flow so the VM can
+    // observe both statuses independently (FIX #4).
     val task = FakeTaskRepo(today = MutableStateFlow(yesterdayTasks), byStatus = MutableStateFlow(inbox))
+      .apply { setByStatus(TaskStatus.Backlog, backlog) }
     val projects = FakeProjectRepo().apply { setAll(listOf(fakeProject(id = "p1", name = "Work", color = "#6ea8fe"))) }
     val daily = FakeDailyPlanRepo()
     val set = FakeSettingsRepo().apply { set(settings) }
@@ -161,6 +165,47 @@ class PlanningViewModelTest {
       s = expectMostRecentItem()
       assertEquals(listOf("i"), s.pickedIds)
       assertEquals(90, s.plannedMinutes)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test fun pickToday_surfaces_backlog_and_toggleAdd_counts_backlog_minutes() = runTest {
+    val (vm, _, _) = vm(
+      backlog = listOf(fakeTask(id = "b", status = TaskStatus.Backlog, durationMinutes = 45, projectId = "p1")),
+      settings = listOf(net.qmindtech.tmap.data.local.entities.SettingEntity(KEY_WORKDAY_MINUTES, "360", 0)),
+    )
+    vm.uiState.test {
+      var s = expectMostRecentItem()
+      // A Backlog task surfaces in state.backlogPicks (FIX #4 — most of the pool lives here).
+      assertEquals(listOf("b"), s.backlogPicks.map { it.id })
+      assertEquals("Work", s.backlogPicks.single().projectName)
+      assertEquals(0, s.plannedMinutes)
+
+      // toggleAdd on a backlog id adds it to picked AND its duration counts toward plannedMinutes.
+      vm.toggleAdd("b")   // +45
+      s = expectMostRecentItem()
+      assertEquals(listOf("b"), s.pickedIds)
+      assertEquals(45, s.plannedMinutes)
+      assertEquals(true, s.backlogPicks.single { it.id == "b" }.added)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test fun commit_replans_picked_backlog_task_to_today() = runTest {
+    val (vm, task, daily) = vm(
+      backlog = listOf(fakeTask(id = "b", status = TaskStatus.Backlog, durationMinutes = 45)),
+    )
+    vm.uiState.test {
+      expectMostRecentItem()
+      vm.toggleAdd("b")
+      expectMostRecentItem()
+      vm.commit()
+      val edit = task.updated.single { it.first == "b" }.second
+      assertEquals(today, edit.plannedDate)
+      assertEquals(TaskStatus.Planned, edit.status)
+      val up = daily.upserts.single()
+      assertEquals(listOf("b"), up.plannedTaskIds)
+      assertEquals(45, up.plannedMinutes)
       cancelAndIgnoreRemainingEvents()
     }
   }

@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +32,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import net.qmindtech.tmap.ui.components.EmptyState
 import net.qmindtech.tmap.ui.components.ProjectDot
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.planning.PlanItemUi
@@ -46,6 +48,16 @@ fun PickTodayStep(
     onToggleAdd: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    if (state.carryOver.isEmpty() && state.inboxPicks.isEmpty() && state.backlogPicks.isEmpty()) {
+        EmptyState(
+            icon = Icons.Default.Inbox,
+            title = "Nothing to plan yet",
+            subtitle = "Capture a task or add some to your backlog.",
+            modifier = modifier,
+        )
+        return
+    }
+
     LazyColumn(modifier = modifier.fillMaxSize()) {
         if (state.carryOver.isNotEmpty()) {
             item {
@@ -71,6 +83,20 @@ fun PickTodayStep(
                 )
             }
             items(state.inboxPicks, key = { "inbox_${it.id}" }) { item ->
+                PlanRow(item = item, onToggleAdd = { onToggleAdd(item.id) })
+            }
+        }
+
+        if (state.backlogPicks.isNotEmpty()) {
+            item {
+                SectionLabel(
+                    text = "From your backlog",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
+                )
+            }
+            items(state.backlogPicks, key = { "backlog_${it.id}" }) { item ->
                 PlanRow(item = item, onToggleAdd = { onToggleAdd(item.id) })
             }
         }
@@ -195,6 +221,13 @@ private fun PickTodayStepPreview() {
                         id = "3", title = "Book dentist appointment",
                         projectName = "Health", projectColor = 0xFFF0A868,
                         durationMinutes = null, added = false,
+                    ),
+                ),
+                backlogPicks = listOf(
+                    PlanItemUi(
+                        id = "4", title = "Plan Q3 roadmap",
+                        projectName = "Work", projectColor = 0xFF6EA8FE,
+                        durationMinutes = 90, added = false,
                     ),
                 ),
                 pickedIds = listOf("2"),

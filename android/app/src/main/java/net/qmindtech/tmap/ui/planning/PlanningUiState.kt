@@ -53,9 +53,11 @@ data class PlanningUiState(
     val yesterdayUndone: List<PlanItemUi> = emptyList(),
     // TriageInbox:
     val inbox: List<PlanItemUi> = emptyList(),
-    // PickToday (carry-over = yesterday's undone; inboxPicks = inbox items; pick = ordered chosen set):
+    // PickToday (carry-over = yesterday's undone; inboxPicks = inbox items;
+    // backlogPicks = backlog items; pick = ordered chosen set):
     val carryOver: List<PlanItemUi> = emptyList(),
     val inboxPicks: List<PlanItemUi> = emptyList(),
+    val backlogPicks: List<PlanItemUi> = emptyList(),
     val pickedIds: List<String> = emptyList(),      // ordered; the day's plannedTaskIds
     // Capacity (live):
     val plannedMinutes: Int = 0,

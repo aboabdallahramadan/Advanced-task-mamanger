@@ -101,9 +101,14 @@ class FakeTaskRepo(
   // Per-id flows for testing multi-task observation scenarios.
   private val perIdFlows = mutableMapOf<String, MutableStateFlow<TaskEntity?>>()
 
+  // Per-status flows for callers (e.g. PlanningViewModel) that observe more than one status at
+  // once. When a status has no dedicated flow, observeByStatus falls back to the shared [byStatus]
+  // flow — preserving the single-status behaviour InboxViewModelTest/BrowseViewModelTest rely on.
+  private val perStatusFlows = mutableMapOf<TaskStatus, MutableStateFlow<List<TaskEntity>>>()
+
   override fun observeAll(): Flow<List<TaskEntity>> = all
   override fun observeToday(today: LocalDate): Flow<List<TaskEntity>> = this.today
-  override fun observeByStatus(s: TaskStatus): Flow<List<TaskEntity>> = byStatus
+  override fun observeByStatus(s: TaskStatus): Flow<List<TaskEntity>> = perStatusFlows[s] ?: byStatus
   override fun observe(id: String): Flow<TaskEntity?> =
     perIdFlows[id] ?: single
   override suspend fun create(draft: TaskDraft): String { created += draft; return nextId }
@@ -118,6 +123,11 @@ class FakeTaskRepo(
   fun setAll(v: List<TaskEntity>) = all.let { it.value = v }
   fun setByStatus(v: List<TaskEntity>) = byStatus.let { it.value = v }
   fun setSingle(v: TaskEntity?) = single.let { it.value = v }
+
+  /** Sets up a status-scoped flow so [observeByStatus] returns rows specific to [status]. */
+  fun setByStatus(status: TaskStatus, v: List<TaskEntity>) {
+    perStatusFlows.getOrPut(status) { MutableStateFlow(emptyList()) }.value = v
+  }
 
   /** Sets up a per-id flow so [observe] returns a flow scoped to [entity.id]. */
   fun setForId(entity: TaskEntity) {
