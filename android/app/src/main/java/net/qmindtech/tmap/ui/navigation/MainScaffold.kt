@@ -28,6 +28,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import net.qmindtech.tmap.ui.browse.BrowseScreen
 import net.qmindtech.tmap.ui.components.TmapFab
+import net.qmindtech.tmap.ui.inbox.InboxScreen
 import net.qmindtech.tmap.ui.notes.NotesScreen
 import net.qmindtech.tmap.ui.projects.ProjectDetailScreen
 import net.qmindtech.tmap.ui.settings.AboutSettingsScreen
@@ -130,7 +131,9 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                             },
                         )
                     }
-                    composable(Route.Inbox.route) { InboxPlaceholder() }
+                    composable(Route.Inbox.route) {
+                        InboxScreen(onOpenTask = { taskId -> navController.openTaskEditor(taskId) })
+                    }
                     composable(Route.Browse.route) {
                         BrowseScreen(
                             onOpenTask = { taskId -> navController.openTaskEditor(taskId) },
