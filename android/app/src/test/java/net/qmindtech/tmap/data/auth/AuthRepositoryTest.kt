@@ -144,7 +144,7 @@ class AuthRepositoryTest {
         // Now simulate cold restart with a fresh repo instance (same tokenStore)
         val repo2 = AuthRepositoryImpl(api, tokenStore, FixedClock(), scheduler)
         repo2.loadSession()
-        assertEquals(0, server.requestCount - 1) // loadSession must not make a network call beyond the login
+        assertEquals(1, server.requestCount) // login made 1 call; loadSession must not add any
         val s = repo2.session.value
         assertTrue(s is SessionState.Authenticated)
         s as SessionState.Authenticated
