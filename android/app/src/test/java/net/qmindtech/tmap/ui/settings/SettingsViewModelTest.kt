@@ -43,6 +43,13 @@ class SettingsViewModelTest {
     fun emit(v: List<SettingEntity>) { rows.value = v }
   }
 
+  private class FakeSyncScheduler : net.qmindtech.tmap.data.sync.SyncScheduler {
+    var expeditedCount = 0
+    override fun requestExpeditedSync() { expeditedCount++ }
+    override fun schedulePeriodic() {}
+    override fun cancelAll() {}
+  }
+
   private fun setting(key: String, value: String) = SettingEntity(key = key, value = value, changeSeq = 0)
 
   @Test fun toSettingsState_maps_rows_including_timezone_workhours_notifications() {
@@ -71,7 +78,7 @@ class SettingsViewModelTest {
   @Test fun uiState_loads_from_repository_observe() = runTest {
     val repo = FakeSettingsRepository()
     repo.emit(listOf(setting("__timeZoneId", "Europe/Berlin"), setting("workStartHour", "7")))
-    val vm = SettingsViewModel(repo)
+    val vm = SettingsViewModel(repo, FakeSyncScheduler())
     vm.uiState.test {
       val s = expectMostRecentItem()
       assertEquals(false, s.loading)
@@ -83,7 +90,7 @@ class SettingsViewModelTest {
 
   @Test fun save_dispatches_settings_map_and_timezone() = runTest {
     val repo = FakeSettingsRepository()
-    val vm = SettingsViewModel(repo)
+    val vm = SettingsViewModel(repo, FakeSyncScheduler())
     vm.onTimeZoneChange("Asia/Riyadh")
     vm.onWorkStartChange(6)
     vm.onWorkEndChange(18)
@@ -99,7 +106,7 @@ class SettingsViewModelTest {
 
   @Test fun save_clamps_hours_and_keeps_end_after_start() = runTest {
     val repo = FakeSettingsRepository()
-    val vm = SettingsViewModel(repo)
+    val vm = SettingsViewModel(repo, FakeSyncScheduler())
     vm.onWorkStartChange(30)   // > 23 → clamp to 23
     vm.onWorkEndChange(-4)     // < 0 → clamp to 0, then bumped to >= start
     vm.save()
@@ -107,5 +114,45 @@ class SettingsViewModelTest {
     assertEquals("23", map["workStartHour"])
     assertEquals("23", map["workEndHour"])  // end never before start
     assertTrue(map.containsKey("notificationsEnabled"))
+  }
+
+  @Test fun `toSettingsState maps workdayMinutes and defaultReminder with defaults`() {
+    val s = listOf(
+      setting("workdayMinutes", "420"),
+      setting("defaultReminderMinutes", "30"),
+    ).toSettingsState()
+    assertEquals(420, s.workdayMinutes)
+    assertEquals(30, s.defaultReminderMinutes)
+    // missing → defaults
+    val d = emptyList<SettingEntity>().toSettingsState()
+    assertEquals(360, d.workdayMinutes)
+    assertEquals(10, d.defaultReminderMinutes)
+  }
+
+  @Test fun `save persists workdayMinutes and defaultReminderMinutes`() = runTest {
+    val repo = FakeSettingsRepository()
+    val vm = SettingsViewModel(repo, FakeSyncScheduler())
+    vm.onWorkdayMinutesChange(480)
+    vm.onDefaultReminderChange(15)
+    vm.save()
+    val map = repo.lastSavedMap!!
+    assertEquals("480", map["workdayMinutes"])
+    assertEquals("15", map["defaultReminderMinutes"])
+  }
+
+  @Test fun `onWorkdayMinutesChange clamps to a sane positive range`() = runTest {
+    val repo = FakeSettingsRepository()
+    val vm = SettingsViewModel(repo, FakeSyncScheduler())
+    vm.onWorkdayMinutesChange(-50)
+    assertEquals(0, vm.uiState.value.workdayMinutes)
+    vm.onWorkdayMinutesChange(5000)
+    assertEquals(1440, vm.uiState.value.workdayMinutes) // capped at a full day
+  }
+
+  @Test fun `forceSync nudges the scheduler`() = runTest {
+    val scheduler = FakeSyncScheduler()
+    val vm = SettingsViewModel(FakeSettingsRepository(), scheduler)
+    vm.forceSync()
+    assertEquals(1, scheduler.expeditedCount)
   }
 }
