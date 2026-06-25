@@ -33,6 +33,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.PrimaryButton
 import net.qmindtech.tmap.ui.components.SecondaryButton
 import net.qmindtech.tmap.ui.components.SegmentedControl
@@ -196,13 +198,17 @@ fun TodayScreen(
                             modifier = Modifier.fillMaxSize(),
                         )
 
-                    state.groups.isEmpty() ->
+                    state.groups.isEmpty() -> {
+                        val copy = emptyCopyFor(EmptySurface.Today)
                         EmptyState(
                             icon = Icons.AutoMirrored.Outlined.ViewList,
-                            title = "Nothing planned today",
-                            subtitle = "Tap + to capture, or Plan my day.",
+                            title = copy.title,
+                            subtitle = copy.subtitle,
+                            actionLabel = copy.actionLabel,
+                            onAction = onPlanMyDay,
                             modifier = Modifier.padding(top = spacing.xxl),
                         )
+                    }
 
                     else -> TodayListContent(
                         groups = state.groups,

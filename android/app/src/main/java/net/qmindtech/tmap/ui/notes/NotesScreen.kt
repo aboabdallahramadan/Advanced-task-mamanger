@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.FilterChip
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.components.TmapFab
@@ -137,10 +139,17 @@ fun NotesContent(
             // ── 3a. Empty state ──────────────────────────────────────────────
             if (state.isEmpty) {
                 item(key = "empty") {
+                    val copy = if (state.selectedGroupId != null) {
+                        emptyCopyFor(EmptySurface.NotesGroup)
+                    } else {
+                        emptyCopyFor(EmptySurface.Notes)
+                    }
                     EmptyState(
                         icon = Icons.AutoMirrored.Outlined.StickyNote2,
-                        title = "No notes yet",
-                        subtitle = "Tap + to write one.",
+                        title = copy.title,
+                        subtitle = copy.subtitle,
+                        actionLabel = copy.actionLabel,
+                        onAction = if (copy.actionLabel != null) onNewNote else null,
                         modifier = Modifier.fillParentMaxHeight(0.6f),
                     )
                 }

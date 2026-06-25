@@ -30,6 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.ProjectDot
 import net.qmindtech.tmap.ui.components.SecondaryButton
 import net.qmindtech.tmap.ui.components.parseProjectColor
@@ -81,11 +83,12 @@ fun ProjectsScreen(
 
         // ── Content: empty state or card list ───────────────────────────────────
         if (!state.loading && state.rows.isEmpty()) {
+            val copy = emptyCopyFor(EmptySurface.Projects)
             EmptyState(
                 icon = Icons.Filled.Folder,
-                title = "No projects yet",
-                subtitle = "Create one to organize your tasks.",
-                actionLabel = "+ New project",
+                title = copy.title,
+                subtitle = copy.subtitle,
+                actionLabel = copy.actionLabel,
                 onAction = { creating = true },
             )
         } else {

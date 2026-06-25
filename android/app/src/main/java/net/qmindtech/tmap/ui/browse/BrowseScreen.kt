@@ -30,6 +30,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.Chip
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.FilterChip
 import net.qmindtech.tmap.ui.components.PriorityDisplay
 import net.qmindtech.tmap.ui.components.SectionLabel
@@ -153,12 +155,19 @@ fun BrowseScreen(
       }
       else -> {
         if (!state.loading && state.totalCount == 0) {
+          val isSearchOrFilter = state.filter.search.isNotBlank() || state.activeFilterCount > 0
+          val surface = when {
+            isSearchOrFilter -> EmptySurface.BrowseSearch
+            state.segment == BrowseSegment.Backlog -> EmptySurface.Backlog
+            else -> EmptySurface.Browse
+          }
+          val copy = emptyCopyFor(surface)
           EmptyState(
             icon = Icons.Filled.ViewAgenda,
-            title = "No tasks match",
-            subtitle = "Adjust your filters or search.",
-            actionLabel = if (state.activeFilterCount > 0) "Clear filters" else null,
-            onAction = if (state.activeFilterCount > 0) viewModel::clearFilters else null,
+            title = copy.title,
+            subtitle = copy.subtitle,
+            actionLabel = if (isSearchOrFilter && state.activeFilterCount > 0) "Clear filters" else copy.actionLabel,
+            onAction = if (isSearchOrFilter && state.activeFilterCount > 0) viewModel::clearFilters else null,
           )
         } else {
           LazyColumn(modifier = Modifier.fillMaxSize()) {

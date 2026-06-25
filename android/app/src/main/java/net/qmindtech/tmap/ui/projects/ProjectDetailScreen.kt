@@ -11,6 +11,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.filled.ChecklistRtl
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -31,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.ProgressRing
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.components.TaskCard
@@ -120,10 +123,11 @@ fun ProjectDetailScreen(
 
         // ── Task list / empty state ────────────────────────────────────────────
         if (!state.loading && state.items.isEmpty()) {
+            val copy = emptyCopyFor(EmptySurface.ProjectDetail)
             EmptyState(
                 icon = Icons.Filled.ChecklistRtl,
-                title = "No tasks in this project",
-                subtitle = "Add tasks and assign them here.",
+                title = copy.title,
+                subtitle = copy.subtitle,
             )
         } else {
             LazyColumn(
@@ -228,10 +232,11 @@ fun ProjectNotesSection(
     Column(modifier = modifier.fillMaxWidth()) {
         SectionLabel("Notes", modifier = Modifier.padding(top = 12.dp, bottom = 4.dp))
         if (notes.isEmpty()) {
-            Text(
-                text = "No notes for this project yet.",
-                style = type.meta,
-                color = colors.textTertiary,
+            val copy = emptyCopyFor(EmptySurface.NotesGroup)
+            EmptyState(
+                icon = Icons.AutoMirrored.Outlined.StickyNote2,
+                title = copy.title,
+                subtitle = copy.subtitle,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
         } else {

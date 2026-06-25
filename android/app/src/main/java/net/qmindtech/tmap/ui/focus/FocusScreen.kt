@@ -31,6 +31,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.ProgressRing
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
@@ -250,6 +253,13 @@ fun FocusScreen(
                     style = type.meta,
                     color = colors.textTertiary,
                     textAlign = TextAlign.Center,
+                )
+            } else if (state.taskTitle == null) {
+                val copy = emptyCopyFor(EmptySurface.FocusQueue)
+                EmptyState(
+                    icon = Icons.Filled.PlayArrow,
+                    title = copy.title,
+                    subtitle = copy.subtitle,
                 )
             }
         }

@@ -33,6 +33,8 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.ui.components.Chip
 import net.qmindtech.tmap.ui.components.EmptyState
+import net.qmindtech.tmap.ui.components.EmptySurface
+import net.qmindtech.tmap.ui.components.emptyCopyFor
 import net.qmindtech.tmap.ui.components.ProjectDot
 import net.qmindtech.tmap.ui.components.TaskUi
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
@@ -60,10 +62,11 @@ fun InboxScreen(
         )
 
         if (uiState.tasks.isEmpty() && !uiState.loading) {
+            val copy = emptyCopyFor(EmptySurface.Inbox)
             EmptyState(
                 icon = Icons.Filled.Inbox,
-                title = "Inbox Zero",
-                subtitle = "All clear — nothing waiting for a decision.",
+                title = copy.title,
+                subtitle = copy.subtitle,
             )
         } else {
             LazyColumn(
