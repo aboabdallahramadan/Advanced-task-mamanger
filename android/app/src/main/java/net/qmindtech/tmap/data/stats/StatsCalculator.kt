@@ -50,4 +50,33 @@ class StatsCalculator @Inject constructor(private val clock: Clock) {
             .filter { it.deletedAt == null && it.date in week }
             .sumOf { it.minutes }
     }
+
+    /**
+     * Consecutive "active" days ending at today, with a today-grace: an empty current day does not
+     * break a real streak — if today is inactive we anchor at yesterday. A day is active when it has
+     * a live committed DailyPlan OR a Done task completed on that date (in clock.zone()).
+     */
+    fun dayStreak(tasks: List<TaskEntity>, plans: List<DailyPlanEntity>): Int {
+        val active = buildSet {
+            plans.forEach { if (it.deletedAt == null) add(it.date) }
+            tasks.forEach { t ->
+                if (t.status == TaskStatus.Done) {
+                    t.completedAt?.atZone(clock.zone())?.toLocalDate()?.let { add(it) }
+                }
+            }
+        }
+        val today = clock.today()
+        val anchor = when {
+            today in active -> today
+            today.minusDays(1) in active -> today.minusDays(1)
+            else -> return 0
+        }
+        var count = 0
+        var day = anchor
+        while (day in active) {
+            count++
+            day = day.minusDays(1)
+        }
+        return count
+    }
 }

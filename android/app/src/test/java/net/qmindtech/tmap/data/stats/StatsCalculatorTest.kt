@@ -1,6 +1,7 @@
 package net.qmindtech.tmap.data.stats
 
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.entities.DailyPlanEntity
 import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.testutil.FixedClock
 import net.qmindtech.tmap.testutil.fakeTask
@@ -87,5 +88,43 @@ class StatsCalculatorTest {
             session("dead", LocalDate.of(2026, 6, 18), 999, deletedAt = Instant.parse("2026-06-18T10:00:00Z")),
         )
         assertEquals(40, calc.focusMinutesThisWeek(sessions))
+    }
+
+    // --- dayStreak tests (P9.4) ---
+
+    private fun plan(date: LocalDate, deletedAt: Instant? = null) = DailyPlanEntity(
+        date = date, committedAt = Instant.parse("2026-06-18T07:00:00Z"),
+        plannedTaskIds = listOf("x"), plannedMinutes = 60, changeSeq = 0L, deletedAt = deletedAt,
+    )
+    private fun done(id: String, date: LocalDate) =
+        fakeTask(id, status = TaskStatus.Done, completedAt = date.atTime(10, 0).toInstant(java.time.ZoneOffset.UTC))
+
+    @Test fun `dayStreak counts consecutive active days including today`() {
+        val plans = listOf(plan(today), plan(today.minusDays(1)), plan(today.minusDays(2)))
+        assertEquals(3, calc.dayStreak(emptyList(), plans))
+    }
+
+    @Test fun `dayStreak today-grace counts back from yesterday when today is inactive`() {
+        // today (Thu) has no activity; yesterday + the two before do.
+        val plans = listOf(plan(today.minusDays(1)), plan(today.minusDays(2)), plan(today.minusDays(3)))
+        assertEquals(3, calc.dayStreak(emptyList(), plans))
+    }
+
+    @Test fun `dayStreak breaks at the first gap`() {
+        // today + yesterday active, then a gap at day -2, then day -3 active (does not count).
+        val plans = listOf(plan(today), plan(today.minusDays(1)), plan(today.minusDays(3)))
+        assertEquals(2, calc.dayStreak(emptyList(), plans))
+    }
+
+    @Test fun `dayStreak is zero when neither today nor yesterday is active`() {
+        val plans = listOf(plan(today.minusDays(2)), plan(today.minusDays(3)))
+        assertEquals(0, calc.dayStreak(emptyList(), plans))
+    }
+
+    @Test fun `dayStreak counts task-completion days and unions with plans, ignoring tombstoned plans`() {
+        // today active via a completed task; yesterday via a (live) plan; day -2 only via a tombstoned plan → breaks.
+        val tasks = listOf(done("t1", today))
+        val plans = listOf(plan(today.minusDays(1)), plan(today.minusDays(2), deletedAt = Instant.parse("2026-06-18T08:00:00Z")))
+        assertEquals(2, calc.dayStreak(tasks, plans))
     }
 }
