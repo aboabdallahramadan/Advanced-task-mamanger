@@ -70,7 +70,7 @@ fun PlanningScreen(
  *  - [TmapBackground] (Midnight Calm vertical gradient) fills the screen.
  *  - Stepper header: back chevron [IconButton] + progress dots row; amber eyebrow + big heading.
  *  - Body: the current step's composable in a [Modifier.weight(1f)] region.
- *  - Bottom: [CapacityDock] pinned at the bottom; label reads "Plan my day →" on the final step.
+ *  - Bottom: [CapacityDock] pinned at the bottom; label reads "Plan my day" on the final step.
  */
 @Composable
 fun PlanningContent(
@@ -187,7 +187,7 @@ fun PlanningContent(
                 plannedMinutes = state.plannedMinutes,
                 workdayMinutes = state.workdayMinutes,
                 fraction = state.capacityFraction,
-                continueLabel = if (state.isLastStep) "Plan my day →" else "Continue →",
+                continueLabel = if (state.isLastStep) "Plan my day" else "Continue",
                 onContinue = { if (state.isLastStep) onCommit() else onNext() },
             )
         }

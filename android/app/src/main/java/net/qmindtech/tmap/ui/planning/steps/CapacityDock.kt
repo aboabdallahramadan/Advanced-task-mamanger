@@ -135,7 +135,7 @@ private fun CapacityDockPreview() {
             plannedMinutes = 195,
             workdayMinutes = 360,
             fraction = 0.54f,
-            continueLabel = "Continue →",
+            continueLabel = "Continue",
             onContinue = {},
         )
     }

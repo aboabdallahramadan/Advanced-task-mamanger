@@ -408,7 +408,7 @@ fun TaskEditorSheet(
                     }
                 }
                 Text(
-                    text = "→",
+                    text = "–",
                     style = type.meta,
                     color = colors.textTertiary,
                 )
