@@ -42,4 +42,12 @@ class StatsCalculator @Inject constructor(private val clock: Clock) {
                 t.completedAt?.atZone(clock.zone())?.toLocalDate()?.let { it in week } == true
         }
     }
+
+    /** Sum of `minutes` over non-tombstoned focus sessions dated within this ISO week. */
+    fun focusMinutesThisWeek(sessions: List<FocusSessionEntity>): Int {
+        val week = isoWeek()
+        return sessions
+            .filter { it.deletedAt == null && it.date in week }
+            .sumOf { it.minutes }
+    }
 }

@@ -1,6 +1,7 @@
 package net.qmindtech.tmap.data.stats
 
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.testutil.FixedClock
 import net.qmindtech.tmap.testutil.fakeTask
 import org.junit.Assert.assertEquals
@@ -55,5 +56,36 @@ class StatsCalculatorTest {
 
     @Test fun `doneThisWeek is zero when nothing completed this week`() {
         assertEquals(0, calc.doneThisWeek(emptyList()))
+    }
+
+    private fun session(id: String, date: LocalDate, minutes: Int, deletedAt: Instant? = null) =
+        FocusSessionEntity(
+            id = id, taskId = null, project = "Work",
+            startedAt = date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+            endedAt = date.atStartOfDay(java.time.ZoneOffset.UTC).toInstant(),
+            minutes = minutes, date = date,
+            createdAt = Instant.parse("2026-06-18T00:00:00Z"),
+            updatedAt = Instant.parse("2026-06-18T00:00:00Z"),
+            changeSeq = 0L, deletedAt = deletedAt,
+        )
+
+    @Test fun `focusMinutesThisWeek sums minutes of sessions dated within the ISO week`() {
+        val sessions = listOf(
+            session("a", LocalDate.of(2026, 6, 15), 25),  // Monday, in
+            session("b", LocalDate.of(2026, 6, 18), 50),  // Thursday, in
+            session("c", LocalDate.of(2026, 6, 21), 30),  // Sunday, in
+            session("prev", LocalDate.of(2026, 6, 14), 90), // previous Sunday, out
+            session("next", LocalDate.of(2026, 6, 22), 90), // next Monday, out
+        )
+        assertEquals(105, calc.focusMinutesThisWeek(sessions)) // 25 + 50 + 30
+    }
+
+    @Test fun `focusMinutesThisWeek ignores tombstoned sessions and empty input`() {
+        assertEquals(0, calc.focusMinutesThisWeek(emptyList()))
+        val sessions = listOf(
+            session("live", LocalDate.of(2026, 6, 18), 40),
+            session("dead", LocalDate.of(2026, 6, 18), 999, deletedAt = Instant.parse("2026-06-18T10:00:00Z")),
+        )
+        assertEquals(40, calc.focusMinutesThisWeek(sessions))
     }
 }
