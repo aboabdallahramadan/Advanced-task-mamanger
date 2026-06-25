@@ -5,6 +5,9 @@ import net.qmindtech.tmap.data.local.entities.DailyPlanEntity
 import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.util.Clock
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
 
 /**
@@ -22,5 +25,21 @@ class StatsCalculator @Inject constructor(private val clock: Clock) {
         if (plannedToday.isEmpty()) return 0f
         val done = plannedToday.count { it.status == TaskStatus.Done }
         return done.toFloat() / plannedToday.size.toFloat()
+    }
+
+    /** The Monday→Sunday ISO week (inclusive) containing [clock.today]. */
+    private fun isoWeek(): ClosedRange<LocalDate> {
+        val today = clock.today()
+        val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        return monday..monday.plusDays(6)
+    }
+
+    /** Count of [TaskStatus.Done] tasks whose completedAt date (in clock.zone()) is in this ISO week. */
+    fun doneThisWeek(tasks: List<TaskEntity>): Int {
+        val week = isoWeek()
+        return tasks.count { t ->
+            t.status == TaskStatus.Done &&
+                t.completedAt?.atZone(clock.zone())?.toLocalDate()?.let { it in week } == true
+        }
     }
 }

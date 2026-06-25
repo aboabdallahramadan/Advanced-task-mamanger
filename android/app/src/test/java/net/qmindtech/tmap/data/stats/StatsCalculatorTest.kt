@@ -36,4 +36,24 @@ class StatsCalculatorTest {
         val tasks = listOf(fakeTask("u", plannedDate = null, status = TaskStatus.Inbox))
         assertEquals(0.0f, calc.todayProgress(tasks), 0.0001f)
     }
+
+    @Test fun `doneThisWeek counts Done tasks completed within the ISO week of today`() {
+        val tasks = listOf(
+            // inside the window
+            fakeTask("mon", status = TaskStatus.Done, completedAt = Instant.parse("2026-06-15T00:00:00Z")),
+            fakeTask("thu", status = TaskStatus.Done, completedAt = Instant.parse("2026-06-18T09:30:00Z")),
+            fakeTask("sun", status = TaskStatus.Done, completedAt = Instant.parse("2026-06-21T23:59:59Z")),
+            // just outside: previous Sunday and next Monday
+            fakeTask("prevSun", status = TaskStatus.Done, completedAt = Instant.parse("2026-06-14T23:59:59Z")),
+            fakeTask("nextMon", status = TaskStatus.Done, completedAt = Instant.parse("2026-06-22T00:00:00Z")),
+            // Done but no completedAt, and not-Done — both excluded
+            fakeTask("noStamp", status = TaskStatus.Done, completedAt = null),
+            fakeTask("planned", status = TaskStatus.Planned, completedAt = Instant.parse("2026-06-18T10:00:00Z")),
+        )
+        assertEquals(3, calc.doneThisWeek(tasks))
+    }
+
+    @Test fun `doneThisWeek is zero when nothing completed this week`() {
+        assertEquals(0, calc.doneThisWeek(emptyList()))
+    }
 }
