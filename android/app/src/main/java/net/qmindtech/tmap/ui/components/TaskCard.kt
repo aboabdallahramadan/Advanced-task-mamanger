@@ -24,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -79,13 +81,14 @@ fun TaskCard(
                     color = if (task.isDone) colors.accent else colors.borderStrong,
                     shape = CircleShape,
                 )
+                .semantics { contentDescription = if (task.isDone) "Mark not done" else "Mark done" }
                 .clickable(onClick = onToggleComplete),
             contentAlignment = Alignment.Center,
         ) {
             if (task.isDone) {
                 Icon(
                     Icons.Filled.Check,
-                    contentDescription = "Mark not done",
+                    contentDescription = null, // label applied to parent Box semantics
                     tint = colors.onAccent,
                     modifier = Modifier.size(14.dp),
                 )

@@ -1,6 +1,7 @@
 package net.qmindtech.tmap.ui.auth
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +18,10 @@ import net.qmindtech.tmap.ui.theme.LocalTmapType
 
 // Mirrors the desktop role="alert" banner: assertive for errors, polite for the
 // transient network notice. Error uses the danger role; network uses the warning tone.
+//
+// GAP-B fix: the 12dp bottom gap (spacing between the banner and the next field) is now
+// applied to the outer Box so the semantics node covers only the visible banner pill —
+// TalkBack will no longer read the empty gap as part of this live-region.
 @Composable
 fun AuthBanner(text: String, isError: Boolean) {
     val colors = LocalTmapColors.current
@@ -24,15 +29,20 @@ fun AuthBanner(text: String, isError: Boolean) {
     val shapes = LocalTmapShapes.current
     val containerColor = if (isError) colors.danger.copy(alpha = 0.15f) else colors.surfaceRaised
     val textColor = if (isError) colors.danger else colors.textSecondary
-    Text(
-        text = text,
-        style = type.meta,
-        color = textColor,
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp)
-            .background(containerColor, RoundedCornerShape(shapes.well))
-            .semantics { liveRegion = if (isError) LiveRegionMode.Assertive else LiveRegionMode.Polite }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    )
+            .padding(bottom = 12.dp),
+    ) {
+        Text(
+            text = text,
+            style = type.meta,
+            color = textColor,
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(containerColor, RoundedCornerShape(shapes.well))
+                .semantics { liveRegion = if (isError) LiveRegionMode.Assertive else LiveRegionMode.Polite }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
 }

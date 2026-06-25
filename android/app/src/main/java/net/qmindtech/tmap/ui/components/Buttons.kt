@@ -119,7 +119,7 @@ fun TmapFab(
     ) {
         Icon(
             imageVector = Icons.Filled.Add,
-            contentDescription = "Add",
+            contentDescription = "Quick capture",
             tint = colors.onAccent,
         )
     }
