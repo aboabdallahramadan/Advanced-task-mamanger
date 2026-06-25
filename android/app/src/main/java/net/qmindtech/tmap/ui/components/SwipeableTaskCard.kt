@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.ui.theme.LocalReduceMotion
@@ -42,31 +44,37 @@ fun SwipeableTaskCard(
     val shapes = LocalTmapShapes.current
     val spacing = LocalTmapSpacing.current
     val reduceMotion = LocalReduceMotion.current
+    val layoutDirection = LocalLayoutDirection.current
+    val isRtl = layoutDirection == LayoutDirection.Rtl
     val scope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
     val thresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
 
+    // In RTL the physical drag direction is mirrored: a rightward (positive) drag moves toward
+    // the end (visually left), which should semantically be the defer/delete action. We negate
+    // the physical offset so resolveSwipe always sees a positive value = "toward start = complete".
+    val semanticOffset = if (isRtl) -offsetX.value else offsetX.value
+
     Box(modifier = modifier.fillMaxWidth()) {
         // Reveal layer: green complete (start side) / red defer-delete (end side).
-        val decision = resolveSwipe(offsetX.value, thresholdPx)
         Row(
             modifier = Modifier
                 .matchParentSize()
                 .background(
                     color = when {
-                        offsetX.value > 0f -> colors.success
-                        offsetX.value < 0f -> colors.danger
+                        semanticOffset > 0f -> colors.success
+                        semanticOffset < 0f -> colors.danger
                         else -> colors.surface
                     },
                     shape = RoundedCornerShape(shapes.card),
                 )
                 .padding(horizontal = spacing.xxl),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (offsetX.value > 0f) Arrangement.Start else Arrangement.End,
+            horizontalArrangement = if (semanticOffset > 0f) Arrangement.Start else Arrangement.End,
         ) {
-            if (offsetX.value > 0f) {
+            if (semanticOffset > 0f) {
                 Icon(Icons.Filled.Check, contentDescription = null, tint = colors.onAccent)
-            } else if (offsetX.value < 0f) {
+            } else if (semanticOffset < 0f) {
                 Icon(Icons.Filled.DeleteOutline, contentDescription = null, tint = colors.onAccent)
             }
         }
@@ -82,7 +90,7 @@ fun SwipeableTaskCard(
                     detectHorizontalDragGestures(
                         onDragEnd = {
                             scope.launch {
-                                when (resolveSwipe(offsetX.value, thresholdPx).action) {
+                                when (resolveSwipe(semanticOffset, thresholdPx).action) {
                                     SwipeAction.Complete -> { offsetX.snapTo(0f); onToggleComplete() }
                                     SwipeAction.DeferDelete -> { offsetX.snapTo(0f); onDefer() }
                                     SwipeAction.None -> if (reduceMotion) {

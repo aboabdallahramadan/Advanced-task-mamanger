@@ -20,7 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.automirrored.filled.NavigateNext
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -176,7 +176,7 @@ fun YouScreen(
                             modifier = Modifier.weight(1f),
                         )
                         Icon(
-                            imageVector = Icons.Filled.ChevronRight,
+                            imageVector = Icons.AutoMirrored.Filled.NavigateNext,
                             contentDescription = null,
                             tint = colors.textTertiary,
                             modifier = Modifier.size(18.dp),
