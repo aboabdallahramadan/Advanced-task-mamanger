@@ -1,6 +1,7 @@
 package net.qmindtech.tmap.ui.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -23,6 +24,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import net.qmindtech.tmap.ui.theme.LocalReduceMotion
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
@@ -39,6 +41,7 @@ fun SwipeableTaskCard(
     val colors = LocalTmapColors.current
     val shapes = LocalTmapShapes.current
     val spacing = LocalTmapSpacing.current
+    val reduceMotion = LocalReduceMotion.current
     val scope = rememberCoroutineScope()
     val offsetX = remember { Animatable(0f) }
     val thresholdPx = with(LocalDensity.current) { 96.dp.toPx() }
@@ -82,7 +85,11 @@ fun SwipeableTaskCard(
                                 when (resolveSwipe(offsetX.value, thresholdPx).action) {
                                     SwipeAction.Complete -> { offsetX.snapTo(0f); onToggleComplete() }
                                     SwipeAction.DeferDelete -> { offsetX.snapTo(0f); onDefer() }
-                                    SwipeAction.None -> offsetX.animateTo(0f)
+                                    SwipeAction.None -> if (reduceMotion) {
+                                        offsetX.snapTo(0f)
+                                    } else {
+                                        offsetX.animateTo(0f, animationSpec = spring())
+                                    }
                                 }
                             }
                         },

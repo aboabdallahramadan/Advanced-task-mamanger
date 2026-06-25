@@ -24,12 +24,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SheetState
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.ui.components.FilterChip
+import net.qmindtech.tmap.ui.theme.LocalReduceMotion
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
 import net.qmindtech.tmap.ui.theme.LocalTmapType
@@ -74,7 +77,16 @@ fun QuickCaptureSheet(
   val colors = LocalTmapColors.current
   val shapes = LocalTmapShapes.current
   val type = LocalTmapType.current
-  val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+  val reduceMotion = LocalReduceMotion.current
+  val density = LocalDensity.current
+  // Under reduce-motion start in Expanded so the sheet appears instantly (no slide-up).
+  val sheetState = remember(reduceMotion, density) {
+    SheetState(
+      skipPartiallyExpanded = true,
+      density = density,
+      initialValue = if (reduceMotion) SheetValue.Expanded else SheetValue.Hidden,
+    )
+  }
   val focusRequester = remember { FocusRequester() }
 
   ModalBottomSheet(

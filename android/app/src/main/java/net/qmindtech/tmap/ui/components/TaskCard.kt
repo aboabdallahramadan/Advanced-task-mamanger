@@ -1,7 +1,6 @@
 package net.qmindtech.tmap.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +32,7 @@ import net.qmindtech.tmap.ui.theme.LocalTmapMotion
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 import net.qmindtech.tmap.ui.theme.LocalTmapType
+import net.qmindtech.tmap.ui.theme.tmapTween
 
 @Composable
 fun TaskCard(
@@ -49,7 +49,7 @@ fun TaskCard(
 
     val checkScale by animateFloatAsState(
         targetValue = if (task.isDone) 1f else 0.9f,
-        animationSpec = tween(motion.checkOffMillis),
+        animationSpec = tmapTween(motion.checkOffMillis),
         label = "checkScale",
     )
 

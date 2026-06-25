@@ -1,5 +1,8 @@
 package net.qmindtech.tmap.ui.navigation
 
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -36,8 +39,12 @@ import net.qmindtech.tmap.ui.settings.AccountSettingsScreen
 import net.qmindtech.tmap.ui.settings.AppearanceSettingsScreen
 import net.qmindtech.tmap.ui.settings.DataSyncSettingsScreen
 import net.qmindtech.tmap.ui.settings.NotificationsSettingsScreen
+import net.qmindtech.tmap.ui.theme.LocalReduceMotion
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
+import net.qmindtech.tmap.ui.theme.LocalTmapMotion
 import net.qmindtech.tmap.ui.theme.TmapBackground
+import net.qmindtech.tmap.ui.theme.effectiveDurationMillis
+import net.qmindtech.tmap.ui.theme.standardEasing
 import net.qmindtech.tmap.ui.today.TodayScreen
 import net.qmindtech.tmap.ui.you.SettingsEntry
 import net.qmindtech.tmap.ui.you.YouScreen
@@ -54,6 +61,10 @@ import net.qmindtech.tmap.ui.you.YouScreen
 @Composable
 fun MainScaffold(navController: NavHostController = rememberNavController()) {
     val colors = LocalTmapColors.current
+    val motion = LocalTmapMotion.current
+    val reduceMotion = LocalReduceMotion.current
+    // Pre-compute effective duration so it can be captured in non-composable NavHost lambdas.
+    val navTransitionMillis = effectiveDurationMillis(motion.standardMillis, reduceMotion)
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
     val onPrimaryDestination = BOTTOM_NAV_ITEMS.any { item ->
@@ -114,6 +125,18 @@ fun MainScaffold(navController: NavHostController = rememberNavController()) {
                 NavHost(
                     navController = navController,
                     startDestination = Route.Today.route,
+                    enterTransition = {
+                        fadeIn(animationSpec = tween(navTransitionMillis, easing = standardEasing()))
+                    },
+                    exitTransition = {
+                        fadeOut(animationSpec = tween(navTransitionMillis, easing = standardEasing()))
+                    },
+                    popEnterTransition = {
+                        fadeIn(animationSpec = tween(navTransitionMillis, easing = standardEasing()))
+                    },
+                    popExitTransition = {
+                        fadeOut(animationSpec = tween(navTransitionMillis, easing = standardEasing()))
+                    },
                 ) {
                     composable(Route.Today.route) {
                         TodayScreen(
