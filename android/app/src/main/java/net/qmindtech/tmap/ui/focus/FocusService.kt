@@ -12,6 +12,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import net.qmindtech.tmap.notifications.FocusNotification
@@ -42,7 +43,12 @@ class FocusService : Service() {
             FocusNotification.build(this, focusTitle(initial), mmss(initial.remainingSeconds)),
         )
         if (collectJob == null) {
-            collectJob = controller.state.onEach { s ->
+            // Drop the leading non-active states so the StateFlow's pre-start Idle replay (the
+            // default FocusState() the controller emits before viewModel.start() flips it to
+            // Running) can't tear the service down before the interval begins. After a real
+            // interval has run and then become inactive (ended/completed), the first such state
+            // gets through and self-stops the service.
+            collectJob = controller.state.dropWhile { !it.isActive }.onEach { s ->
                 if (!s.isActive) {
                     stopForeground(STOP_FOREGROUND_REMOVE)
                     stopSelf()
