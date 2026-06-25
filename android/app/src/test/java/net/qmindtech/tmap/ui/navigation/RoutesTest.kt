@@ -47,4 +47,13 @@ class RoutesTest {
         assertEquals("login", Route.Login.route)
         assertEquals("register", Route.Register.route)
     }
+
+    @Test
+    fun settingsSubScreenRouteStringsArePinned() {
+        assertEquals("settings/notifications", Route.SettingsNotifications.route)
+        assertEquals("settings/appearance", Route.SettingsAppearance.route)
+        assertEquals("settings/account", Route.SettingsAccount.route)
+        assertEquals("settings/data_sync", Route.SettingsDataSync.route)
+        assertEquals("settings/about", Route.SettingsAbout.route)
+    }
 }

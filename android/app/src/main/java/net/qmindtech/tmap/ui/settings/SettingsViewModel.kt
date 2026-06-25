@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.local.entities.SettingEntity
 import net.qmindtech.tmap.data.repository.SettingsRepository
 import net.qmindtech.tmap.data.sync.SyncScheduler
+import net.qmindtech.tmap.ui.planning.KEY_WORKDAY_MINUTES
 import javax.inject.Inject
 
 // Setting keys — mirror desktop (packages/app/src/store.ts) verbatim where they exist.
@@ -18,7 +19,7 @@ private const val KEY_TIME_ZONE = "__timeZoneId"            // dedicated row wri
 private const val KEY_WORK_START = "workStartHour"
 private const val KEY_WORK_END = "workEndHour"
 private const val KEY_NOTIFICATIONS = "notificationsEnabled" // Android-only (§6); no desktop equivalent
-private const val KEY_WORKDAY_MINUTES = "workdayMinutes"     // P5.1 planning capacity source; default 360 = 6h
+// KEY_WORKDAY_MINUTES imported from net.qmindtech.tmap.ui.planning (P5.1 source of truth — "workdayMinutes")
 private const val KEY_DEFAULT_REMINDER = "defaultReminderMinutes" // default reminder lead-time for notifications sub-screen
 
 data class SettingsUiState(
