@@ -51,9 +51,31 @@ class KeystoreTokenStore @Inject constructor(
         return String(cipher.doFinal(ct), Charsets.UTF_8)
     }
 
+    override suspend fun saveProfile(userId: String, email: String, timeZoneId: String) {
+        context.tokenDataStore.edit { prefs ->
+            prefs[KEY_PROFILE_USER_ID] = userId
+            prefs[KEY_PROFILE_EMAIL] = email
+            prefs[KEY_PROFILE_TIMEZONE] = timeZoneId
+        }
+    }
+
+    override suspend fun readProfile(): StoredProfile? {
+        val prefs = context.tokenDataStore.data.first()
+        val userId = prefs[KEY_PROFILE_USER_ID] ?: return null
+        val email = prefs[KEY_PROFILE_EMAIL] ?: return null
+        val timeZone = prefs[KEY_PROFILE_TIMEZONE] ?: return null
+        return StoredProfile(userId, email, timeZone)
+    }
+
     override suspend fun clear() {
         accessToken = null
-        context.tokenDataStore.edit { it.remove(KEY_CIPHERTEXT); it.remove(KEY_IV) }
+        context.tokenDataStore.edit {
+            it.remove(KEY_CIPHERTEXT)
+            it.remove(KEY_IV)
+            it.remove(KEY_PROFILE_USER_ID)
+            it.remove(KEY_PROFILE_EMAIL)
+            it.remove(KEY_PROFILE_TIMEZONE)
+        }
     }
 
     private fun getOrCreateKey(): SecretKey {
@@ -79,5 +101,8 @@ class KeystoreTokenStore @Inject constructor(
         const val GCM_TAG_BITS = 128
         val KEY_CIPHERTEXT = stringPreferencesKey("refresh_ciphertext")
         val KEY_IV = stringPreferencesKey("refresh_iv")
+        val KEY_PROFILE_USER_ID = stringPreferencesKey("profile_user_id")
+        val KEY_PROFILE_EMAIL = stringPreferencesKey("profile_email")
+        val KEY_PROFILE_TIMEZONE = stringPreferencesKey("profile_timezone")
     }
 }

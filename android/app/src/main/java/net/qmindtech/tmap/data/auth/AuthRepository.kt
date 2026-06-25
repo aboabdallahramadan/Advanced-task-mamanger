@@ -45,6 +45,7 @@ class AuthRepositoryImpl @Inject constructor(
     private suspend fun applyAuth(res: AuthTokenResponse) {
         res.refreshToken?.let { tokenStore.saveRefreshToken(it) }
         tokenStore.accessToken = res.accessToken
+        tokenStore.saveProfile(res.user.id, res.user.email, res.user.timeZoneId)
         _session.value = SessionState.Authenticated(res.user.id, res.user.email, res.user.timeZoneId)
         // Resume background sync for the new session (idempotent KEEP — safe even if already scheduled).
         syncScheduler.schedulePeriodic()
@@ -68,7 +69,13 @@ class AuthRepositoryImpl @Inject constructor(
         // hitting the network. The access token is minted lazily by TokenAuthenticator on the first 401.
         val refresh = tokenStore.readRefreshToken()
         _session.value = if (refresh != null) {
-            SessionState.Authenticated(userId = "", email = "", timeZoneId = "")
+            val profile = tokenStore.readProfile()
+            if (profile != null) {
+                SessionState.Authenticated(profile.userId, profile.email, profile.timeZoneId)
+            } else {
+                // Back-compat: session predates this fix — still authenticated, profile empty until next login
+                SessionState.Authenticated(userId = "", email = "", timeZoneId = "")
+            }
         } else {
             SessionState.Unauthenticated
         }

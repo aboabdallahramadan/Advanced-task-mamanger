@@ -135,4 +135,58 @@ class AuthRepositoryTest {
             cancelAndIgnoreRemainingEvents()
         }
     }
+
+    @Test
+    fun `loadSession after login restores persisted profile`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(authBody("ref1")))
+        val repo = repo()
+        repo.login("a@b.com", "pw")
+        // Now simulate cold restart with a fresh repo instance (same tokenStore)
+        val repo2 = AuthRepositoryImpl(api, tokenStore, FixedClock(), scheduler)
+        repo2.loadSession()
+        assertEquals(0, server.requestCount - 1) // loadSession must not make a network call beyond the login
+        val s = repo2.session.value
+        assertTrue(s is SessionState.Authenticated)
+        s as SessionState.Authenticated
+        assertEquals("u1", s.userId)
+        assertEquals("a@b.com", s.email)
+        assertEquals("Asia/Riyadh", s.timeZoneId)
+    }
+
+    @Test
+    fun `logout wipes profile — subsequent loadSession with token falls back to empty email`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(authBody("ref1")))
+        val repo = repo()
+        repo.login("a@b.com", "pw")
+        server.enqueue(MockResponse().setResponseCode(204)) // logout endpoint
+        repo.logout()
+        // Re-seed a token (simulates old session without profile — back-compat path)
+        tokenStore.saveRefreshToken("oldRef")
+        repo.loadSession()
+        val s = repo.session.value
+        assertTrue(s is SessionState.Authenticated)
+        assertEquals("", (s as SessionState.Authenticated).email)
+    }
+
+    @Test
+    fun `loadSession with token but no profile falls back to empty email (back-compat)`() = runTest {
+        tokenStore.saveRefreshToken("oldRef")
+        // no saveProfile called → readProfile returns null
+        val repo = repo()
+        repo.loadSession()
+        assertEquals(0, server.requestCount)
+        val s = repo.session.value
+        assertTrue(s is SessionState.Authenticated)
+        assertEquals("", (s as SessionState.Authenticated).email)
+    }
+
+    @Test
+    fun `loadSession is network-free even after login persisted a profile`() = runTest {
+        server.enqueue(MockResponse().setResponseCode(200).setBody(authBody("ref1")))
+        val repo = repo()
+        repo.login("a@b.com", "pw")
+        val requestCountAfterLogin = server.requestCount // should be 1 (the login)
+        repo.loadSession()
+        assertEquals("loadSession must not hit the network", requestCountAfterLogin, server.requestCount)
+    }
 }
