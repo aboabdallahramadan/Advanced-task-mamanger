@@ -1,7 +1,6 @@
 package net.qmindtech.tmap.widget
 
 import android.content.Context
-import androidx.glance.appwidget.GlanceAppWidgetManager
 import androidx.glance.appwidget.updateAll
 
 /**
@@ -11,7 +10,7 @@ import androidx.glance.appwidget.updateAll
  *       (local check-off/edit → optimistic widget refresh).
  * The manifest's periodic update interval serves as a fallback for missed wakes.
  *
- * No-op safe: if a widget type has no placed instances, [GlanceAppWidgetManager.getGlanceIds]
+ * No-op safe: if a widget type has no placed instances, GlanceAppWidgetManager.getGlanceIds
  * returns an empty list and nothing is updated.
  */
 object WidgetUpdater {

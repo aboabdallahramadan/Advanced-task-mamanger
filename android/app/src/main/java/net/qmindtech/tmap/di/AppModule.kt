@@ -44,17 +44,17 @@ import net.qmindtech.tmap.data.repository.SubtaskRepositoryImpl
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.data.repository.TaskRepositoryImpl
 import net.qmindtech.tmap.data.sync.OutboxRepository
-import net.qmindtech.tmap.notifications.ReminderScheduler
-import net.qmindtech.tmap.widget.WidgetUpdater
 import net.qmindtech.tmap.data.sync.PullRunner
 import net.qmindtech.tmap.data.sync.PushRunner
 import net.qmindtech.tmap.data.sync.SyncReminderRearmer
 import net.qmindtech.tmap.data.sync.SyncScheduler
 import net.qmindtech.tmap.data.sync.WorkManagerSyncScheduler
+import net.qmindtech.tmap.notifications.ReminderScheduler
 import net.qmindtech.tmap.ui.capture.QuickCaptureParser
 import net.qmindtech.tmap.util.Clock
 import net.qmindtech.tmap.util.CoroutineDispatchers
 import net.qmindtech.tmap.util.SystemClock
+import net.qmindtech.tmap.widget.WidgetUpdater
 import javax.inject.Singleton
 
 /**
