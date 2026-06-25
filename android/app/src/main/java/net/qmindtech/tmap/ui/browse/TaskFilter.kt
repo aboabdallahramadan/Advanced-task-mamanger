@@ -3,6 +3,7 @@ package net.qmindtech.tmap.ui.browse
 import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.ui.common.htmlToPlainText
 import net.qmindtech.tmap.ui.components.PriorityDisplay
 import net.qmindtech.tmap.ui.components.StatusDisplay
 import net.qmindtech.tmap.ui.components.TaskUi
@@ -39,11 +40,12 @@ data class BrowseTaskItem(val ui: TaskUi, val task: TaskEntity)
 
 data class TaskGroup(val key: String, val label: String, val items: List<BrowseTaskItem>)
 
-private val HTML_TAG = Regex("<[^>]*>")
-private val WS = Regex("\\s+")
-
-fun stripHtml(s: String?): String =
-  s?.replace(HTML_TAG, " ")?.replace(WS, " ")?.trim() ?: ""
+/**
+ * Plain-text projection of a (possibly HTML) note body for SEARCH. Delegates to the shared
+ * [htmlToPlainText] so search matches decoded text (entities like `&amp;` / `&#39;`), not just
+ * tag-stripped raw HTML. Kept as a named function for any existing call sites.
+ */
+fun stripHtml(s: String?): String = htmlToPlainText(s)
 
 fun applyTaskFilter(
   tasks: List<TaskEntity>,

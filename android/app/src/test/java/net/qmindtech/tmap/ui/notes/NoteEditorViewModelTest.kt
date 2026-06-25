@@ -90,7 +90,8 @@ class NoteEditorViewModelTest {
         vm.save { done = true }
         assertEquals(1, notes.created.size)
         assertEquals("My Note", notes.created.first().title)
-        assertEquals("Some content", notes.created.first().content)
+        // Body is wrapped to minimal HTML on create (round-trips with the web TipTap editor).
+        assertEquals("<p>Some content</p>", notes.created.first().content)
         assertTrue(done)
     }
 
@@ -104,6 +105,62 @@ class NoteEditorViewModelTest {
         assertEquals(1, notes.updated.size)
         assertEquals("n1", notes.updated.first())
         assertTrue(done)
+    }
+
+    // ── I2 fix: HTML content cleaning + dirty-tracking save guardrail ──────────
+
+    /** (i) Opening a note with HTML content shows CLEANED text (no tags) in state. */
+    @Test fun load_html_note_shows_cleaned_text_in_state() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.singleFlow.value = fakeNote(
+            id = "n1",
+            title = "Q3",
+            content = "<p>Foo &amp; bar &#39;baz&#39;</p>",
+        )
+        val vm = editVm(notes)
+        // Editable field shows decoded plain text — no raw tags/entities.
+        assertEquals("Foo & bar 'baz'", vm.uiState.value.content)
+        // Original HTML preserved separately as the save source.
+        assertEquals("<p>Foo &amp; bar &#39;baz&#39;</p>", vm.uiState.value.originalContent)
+    }
+
+    /**
+     * (ii) Saving WITHOUT editing the body passes content=null to update so the server HTML is
+     * preserved (NoteRepository.update does content ?: current.content). THE critical guardrail.
+     */
+    @Test fun save_without_editing_body_passes_null_content_preserving_server_html() =
+        runTest(testDispatcher) {
+            val notes = FakeNoteRepo()
+            notes.singleFlow.value = fakeNote(
+                id = "n1",
+                title = "Q3",
+                content = "<p>Rich <b>server</b> HTML &amp; more</p>",
+            )
+            val vm = editVm(notes)
+            // User edits only the TITLE, never touches the body.
+            vm.onTitleChange("Q3 Strategy")
+            vm.save {}
+            val rec = notes.updates.single()
+            assertEquals("n1", rec.id)
+            assertEquals("Q3 Strategy", rec.title)
+            // content == null → repository keeps the original server HTML untouched.
+            assertEquals(null, rec.content)
+        }
+
+    /** (iii) Editing the body then saving passes wrapped HTML (the user's new text). */
+    @Test fun save_after_editing_body_passes_wrapped_html() = runTest(testDispatcher) {
+        val notes = FakeNoteRepo()
+        notes.singleFlow.value = fakeNote(
+            id = "n1",
+            title = "Q3",
+            content = "<p>Old body</p>",
+        )
+        val vm = editVm(notes)
+        vm.onContentChange("New body & stuff")
+        vm.save {}
+        val rec = notes.updates.single()
+        assertEquals("n1", rec.id)
+        assertEquals("<p>New body &amp; stuff</p>", rec.content)
     }
 
     @Test fun save_blank_title_and_content_is_noop() = runTest(testDispatcher) {

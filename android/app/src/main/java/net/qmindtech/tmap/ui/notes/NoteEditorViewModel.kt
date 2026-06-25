@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.repository.NoteGroupRepository
 import net.qmindtech.tmap.data.repository.NoteRepository
 import net.qmindtech.tmap.data.repository.ProjectRepository
+import net.qmindtech.tmap.ui.common.wrapPlainTextToHtml
 import javax.inject.Inject
 
 @HiltViewModel
@@ -40,6 +41,16 @@ class NoteEditorViewModel @Inject constructor(
     private var loadedBlank: Boolean = false
     private var loadedBlankSet: Boolean = false
 
+    /**
+     * True once the user has edited the note BODY in this editor session. Critical guardrail for
+     * the I2 fix: the editable [NoteEditorUiState.content] shows CLEANED text (tags stripped), so
+     * blindly saving it would flatten the web's rich HTML. We only re-wrap + save the body when
+     * the user actually touched it; otherwise we pass `content = null` to the repository so the
+     * stored server HTML is PRESERVED (NoteRepository.update does `content ?: current.content`).
+     * Flipped true only in [onContentChange]; reset on every [load].
+     */
+    private var contentDirty: Boolean = false
+
     private val _state = MutableStateFlow(
         if (initialNoteId == null) NoteEditorUiState(isEdit = false, loading = false)
         else NoteEditorUiState()
@@ -63,9 +74,10 @@ class NoteEditorViewModel @Inject constructor(
         val resolved = id?.takeIf { it.isNotBlank() && it != "new" }
         if (resolved == noteId && _state.value.title.isNotBlank()) return  // already loaded
         noteId = resolved
-        // Reset loadedBlank tracking for the new note.
+        // Reset loadedBlank + dirty tracking for the new note.
         loadedBlank = false
         loadedBlankSet = false
+        contentDirty = false
         _state.value = if (resolved == null) {
             NoteEditorUiState(isEdit = false, loading = false)
         } else {
@@ -110,7 +122,10 @@ class NoteEditorViewModel @Inject constructor(
     }
 
     fun onTitleChange(s: String) = _state.update { it.copy(title = s) }
-    fun onContentChange(s: String) = _state.update { it.copy(content = s) }
+    fun onContentChange(s: String) {
+        contentDirty = true
+        _state.update { it.copy(content = s) }
+    }
     fun onGroupChange(id: String?) = _state.update { it.copy(groupId = id) }
     fun onProjectChange(id: String?) = _state.update { it.copy(projectId = id) }
 
@@ -127,11 +142,27 @@ class NoteEditorViewModel @Inject constructor(
         val id = noteId
         viewModelScope.launch {
             if (id == null) {
-                val newId = noteRepo.create(s.title.trim(), s.content, s.groupId, s.projectId)
+                // New note: wrap the user's plain text into minimal HTML (no server HTML exists).
+                val newId = noteRepo.create(
+                    s.title.trim(),
+                    wrapPlainTextToHtml(s.content),
+                    s.groupId,
+                    s.projectId,
+                )
                 noteId = newId
                 _state.update { it.copy(noteId = newId, isEdit = true, saved = true) }
             } else {
-                noteRepo.update(id, title = s.title.trim(), content = s.content, groupId = s.groupId, projectId = s.projectId)
+                // CRITICAL guardrail: only re-wrap + save the body if the user actually edited it.
+                // Otherwise pass null so NoteRepository.update keeps the stored server HTML intact
+                // (untouched web notes must never be flattened to the cleaned display text).
+                val contentToSave = if (contentDirty) wrapPlainTextToHtml(s.content) else null
+                noteRepo.update(
+                    id,
+                    title = s.title.trim(),
+                    content = contentToSave,
+                    groupId = s.groupId,
+                    projectId = s.projectId,
+                )
                 _state.update { it.copy(saved = true) }
             }
             onDone()

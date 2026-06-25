@@ -64,4 +64,16 @@ class NotesViewModel @Inject constructor(
         if (n.isEmpty()) return
         viewModelScope.launch { noteGroupRepo.create(n, emoji, null) }
     }
+
+    fun renameNotebook(id: String, name: String, emoji: String) {
+        val n = name.trim()
+        if (n.isEmpty()) return
+        viewModelScope.launch { noteGroupRepo.update(id, name = n, emoji = emoji) }
+    }
+
+    fun deleteNotebook(id: String) {
+        // If the deleted notebook was selected, fall back to "All Notes".
+        if (selectedGroupId.value == id) selectedGroupId.value = null
+        viewModelScope.launch { noteGroupRepo.delete(id) }
+    }
 }

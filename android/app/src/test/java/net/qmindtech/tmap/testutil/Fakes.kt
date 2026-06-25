@@ -225,6 +225,15 @@ data class NoteDraftRecord(
   val projectId: String?,
 )
 
+/** Full record of a [FakeNoteRepo.update] call (content may be null = "preserve stored value"). */
+data class NoteUpdateRecord(
+  val id: String,
+  val title: String?,
+  val content: String?,
+  val groupId: String?,
+  val projectId: String?,
+)
+
 class FakeNoteRepo(
   val allFlow: MutableStateFlow<List<net.qmindtech.tmap.data.local.entities.NoteEntity>> =
     MutableStateFlow(emptyList()),
@@ -234,6 +243,8 @@ class FakeNoteRepo(
   var lastObserveAllArgs: Pair<String?, String?>? = null
   val created = mutableListOf<NoteDraftRecord>()
   val updated = mutableListOf<String>()
+  /** Full per-call update records (id + every arg, incl. null content). */
+  val updates = mutableListOf<NoteUpdateRecord>()
   val deleted = mutableListOf<String>()
   val pinned = mutableListOf<Pair<String, Boolean>>()
   val reordered = mutableListOf<List<String>>()
@@ -283,6 +294,7 @@ class FakeNoteRepo(
     projectId: String?,
   ) {
     updated += id
+    updates += NoteUpdateRecord(id, title, content, groupId, projectId)
   }
 
   override suspend fun delete(id: String) { deleted += id }
@@ -298,6 +310,8 @@ class FakeNoteGroupRepo(
 ) : net.qmindtech.tmap.data.repository.NoteGroupRepository {
   val created = mutableListOf<Triple<String, String, String?>>()
   val updated = mutableListOf<String>()
+  /** Full per-call update records: (id, name, emoji, projectId). */
+  val updates = mutableListOf<NoteGroupUpdateRecord>()
   val deleted = mutableListOf<String>()
   val reordered = mutableListOf<List<String>>()
   var nextId = "group-new"
@@ -312,12 +326,21 @@ class FakeNoteGroupRepo(
 
   override suspend fun update(id: String, name: String?, emoji: String?, projectId: String?) {
     updated += id
+    updates += NoteGroupUpdateRecord(id, name, emoji, projectId)
   }
 
   override suspend fun delete(id: String) { deleted += id }
 
   override suspend fun reorder(ids: List<String>) { reordered += ids }
 }
+
+/** Full record of a [FakeNoteGroupRepo.update] call. */
+data class NoteGroupUpdateRecord(
+  val id: String,
+  val name: String?,
+  val emoji: String?,
+  val projectId: String?,
+)
 
 // --- P5.3: planning-ViewModel test doubles ---
 

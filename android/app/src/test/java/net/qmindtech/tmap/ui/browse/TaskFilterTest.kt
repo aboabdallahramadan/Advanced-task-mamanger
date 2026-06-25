@@ -111,6 +111,12 @@ class TaskFilterTest {
     assertEquals(listOf("a"), ids(applyTaskFilter(tasks, projects, TaskFilter(search = "budget review"))))
   }
 
+  @Test fun search_matches_notes_with_html_entities_decoded() {
+    // htmlToPlainText decodes entities so search matches the rendered text, e.g. "Q&A".
+    val tasks = listOf(fakeTask(id = "a", title = "x", notes = "<p>Q&amp;A &#39;notes&#39;</p>"))
+    assertEquals(listOf("a"), ids(applyTaskFilter(tasks, projects, TaskFilter(search = "q&a 'notes'"))))
+  }
+
   @Test fun search_matches_project_name_including_arabic() {
     val tasks = listOf(fakeTask(id = "a", projectId = "p2"), fakeTask(id = "b", projectId = "p1"))
     assertEquals(listOf("a"), ids(applyTaskFilter(tasks, projects, TaskFilter(search = "حجوزات"))))

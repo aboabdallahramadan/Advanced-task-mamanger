@@ -3,6 +3,7 @@ package net.qmindtech.tmap.ui.notes
 import net.qmindtech.tmap.data.local.entities.NoteEntity
 import net.qmindtech.tmap.data.local.entities.NoteGroupEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
+import net.qmindtech.tmap.ui.common.htmlToPlainText
 import java.time.Instant
 
 // `null` groupId in the chip row = the "All Notes" pseudo-notebook.
@@ -28,9 +29,11 @@ data class NotesUiState(
   val isEmpty: Boolean get() = pinned.isEmpty() && recent.isEmpty()
 }
 
-// Snippet = first ~120 chars of content, single-lined, ellipsised; empty content -> "".
+// Snippet = first ~120 chars of content. Content is stored as rich HTML (TipTap) by the web
+// client, so strip tags + decode entities (htmlToPlainText) before single-lining + ellipsising.
+// Empty/blank content -> "".
 fun noteSnippet(content: String, max: Int = 120): String {
-  val flat = content.replace(Regex("\\s+"), " ").trim()
+  val flat = htmlToPlainText(content)
   if (flat.isEmpty()) return ""
   return if (flat.length <= max) flat else flat.take(max) + "…"
 }

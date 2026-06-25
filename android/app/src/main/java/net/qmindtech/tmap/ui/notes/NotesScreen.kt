@@ -1,23 +1,42 @@
 package net.qmindtech.tmap.ui.notes
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.StickyNote2
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -28,10 +47,14 @@ import net.qmindtech.tmap.ui.components.FilterChip
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.components.TmapFab
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
+import net.qmindtech.tmap.ui.theme.LocalTmapShapes
 import net.qmindtech.tmap.ui.theme.LocalTmapSpacing
 import net.qmindtech.tmap.ui.theme.LocalTmapType
 import net.qmindtech.tmap.ui.theme.TmapTheme
 import java.time.Instant
+
+/** A handful of emoji choices for the notebook create/rename dialog. */
+private val NOTEBOOK_EMOJIS: List<String> = listOf("📓", "💼", "🏠", "💡", "🎯", "📚", "🚀", "🎨")
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Stateful entry point (wired to NavGraph in P4.7)
@@ -54,13 +77,43 @@ fun NotesScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
+    // null = no dialog; NotebookDialogTarget.New = create; .Edit = rename/delete existing chip.
+    var dialog by remember { mutableStateOf<NotebookDialogTarget?>(null) }
+
     NotesContent(
         state = state,
         onSelectNotebook = viewModel::selectNotebook,
         onOpenNote = onOpenNote,
         onTogglePin = viewModel::togglePin,
         onNewNote = { viewModel.createNote(onCreated = onOpenNote) },
+        onNewNotebook = { dialog = NotebookDialogTarget.New },
+        // Only real notebooks (id != null) are editable; the synthetic "All Notes" chip is not.
+        onEditNotebook = { chip -> chip.id?.let { dialog = NotebookDialogTarget.Edit(it, chip.label) } },
     )
+
+    when (val d = dialog) {
+        is NotebookDialogTarget.New -> NotebookEditDialog(
+            initialName = "",
+            isEdit = false,
+            onDismiss = { dialog = null },
+            onSave = { name, emoji -> viewModel.createNotebook(name, emoji); dialog = null },
+            onDelete = null,
+        )
+        is NotebookDialogTarget.Edit -> NotebookEditDialog(
+            initialName = d.name,
+            isEdit = true,
+            onDismiss = { dialog = null },
+            onSave = { name, emoji -> viewModel.renameNotebook(d.id, name, emoji); dialog = null },
+            onDelete = { viewModel.deleteNotebook(d.id); dialog = null },
+        )
+        null -> Unit
+    }
+}
+
+/** Which notebook dialog (if any) is open. */
+private sealed interface NotebookDialogTarget {
+    data object New : NotebookDialogTarget
+    data class Edit(val id: String, val name: String) : NotebookDialogTarget
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -87,6 +140,8 @@ fun NotesContent(
     onOpenNote: (String) -> Unit,
     onTogglePin: (String, Boolean) -> Unit,
     onNewNote: () -> Unit,
+    onNewNotebook: () -> Unit = {},
+    onEditNotebook: (NotebookChip) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalTmapColors.current
@@ -127,11 +182,21 @@ fun NotesContent(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     items(state.chips, key = { it.id ?: "__all__" }) { chip ->
-                        FilterChip(
-                            label = chip.label,
-                            selected = chip.selected,
+                        // Long-press a real notebook chip (id != null) to rename/delete it.
+                        // The synthetic "All Notes" chip (id == null) is selection-only.
+                        NotebookChipItem(
+                            chip = chip,
                             onClick = { onSelectNotebook(chip.id) },
+                            onLongClick = if (chip.id != null) {
+                                { onEditNotebook(chip) }
+                            } else {
+                                null
+                            },
                         )
+                    }
+                    // Trailing "+ New notebook" affordance.
+                    item(key = "__new_notebook__") {
+                        NewNotebookChip(onClick = onNewNotebook)
                     }
                 }
             }
@@ -215,6 +280,174 @@ fun NotesContent(
                 .padding(end = spacing.lg, bottom = spacing.xl),
         )
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notebook chip + dialog (notebook management UI)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * A selectable notebook chip that mirrors [FilterChip]'s Midnight Calm styling but supports an
+ * optional long-press (rename/delete) via [combinedClickable]. The long-press exposes a
+ * non-gesture-equivalent a11y action label so screen-reader users can reach edit too.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun NotebookChipItem(
+    chip: NotebookChip,
+    onClick: () -> Unit,
+    onLongClick: (() -> Unit)?,
+) {
+    val colors = LocalTmapColors.current
+    val shapes = LocalTmapShapes.current
+    val type = LocalTmapType.current
+    val pill = RoundedCornerShape(shapes.pill)
+    Row(
+        modifier = Modifier
+            .background(
+                color = if (chip.selected) colors.surfaceRaised else colors.surfaceInset,
+                shape = pill,
+            )
+            .border(
+                width = 1.dp,
+                color = if (chip.selected) colors.accent else colors.borderSubtle,
+                shape = pill,
+            )
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick,
+                onLongClickLabel = if (onLongClick != null) "Edit notebook ${chip.label}" else null,
+            )
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = chip.label,
+            style = type.meta,
+            color = if (chip.selected) colors.accent else colors.textSecondary,
+        )
+    }
+}
+
+/** Trailing "+ New notebook" chip; icon-only leading add glyph carries the a11y description. */
+@Composable
+private fun NewNotebookChip(onClick: () -> Unit) {
+    val colors = LocalTmapColors.current
+    val shapes = LocalTmapShapes.current
+    val type = LocalTmapType.current
+    val pill = RoundedCornerShape(shapes.pill)
+    Row(
+        modifier = Modifier
+            .background(color = colors.surfaceInset, shape = pill)
+            .border(width = 1.dp, color = colors.borderSubtle, shape = pill)
+            .semantics {
+                contentDescription = "New notebook"
+                role = Role.Button
+            }
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Add,
+            contentDescription = null,
+            tint = colors.textSecondary,
+            modifier = Modifier.padding(0.dp),
+        )
+        Text(
+            text = "New notebook",
+            style = type.meta,
+            color = colors.textSecondary,
+        )
+    }
+}
+
+/**
+ * Create/rename/delete dialog for a notebook (note-group). Mirrors [ProjectEditDialog]'s pattern:
+ * an [AlertDialog] using tokens only, a name field + emoji picker, Create/Update confirm, optional
+ * danger Delete (edit mode), and Cancel. RTL-safe (start/end aware Rows) and a11y-labelled.
+ */
+@Composable
+fun NotebookEditDialog(
+    initialName: String,
+    isEdit: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (name: String, emoji: String) -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    val colors = LocalTmapColors.current
+    val type = LocalTmapType.current
+
+    var name by remember { mutableStateOf(initialName) }
+    var emoji by remember { mutableStateOf(NOTEBOOK_EMOJIS.first()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = colors.surfaceRaised,
+        title = {
+            Text(
+                text = if (isEdit) "Edit Notebook" else "New Notebook",
+                style = type.heading,
+                color = colors.textPrimary,
+            )
+        },
+        text = {
+            androidx.compose.foundation.layout.Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Notebook name", color = colors.textSecondary) },
+                    singleLine = true,
+                )
+                Text(text = "Icon", style = type.label, color = colors.textSecondary)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    NOTEBOOK_EMOJIS.forEach { e ->
+                        Text(
+                            text = e,
+                            fontWeight = if (emoji == e) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier
+                                .clickable { emoji = e }
+                                .semantics { contentDescription = "Select icon $e" },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(name.trim(), emoji) },
+                enabled = name.isNotBlank(),
+            ) {
+                Text(
+                    text = if (isEdit) "Update" else "Create",
+                    color = colors.accent,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        },
+        dismissButton = {
+            Row {
+                if (isEdit && onDelete != null) {
+                    TextButton(
+                        onClick = onDelete,
+                        modifier = Modifier.semantics { contentDescription = "Delete notebook" },
+                    ) {
+                        Text(text = "Delete", color = colors.danger)
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(text = "Cancel", color = colors.textSecondary)
+                }
+            }
+        },
+    )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

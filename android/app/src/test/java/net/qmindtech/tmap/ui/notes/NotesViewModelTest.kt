@@ -86,4 +86,38 @@ class NotesViewModelTest {
     vm.createNotebook("Ideas", "💡")
     assertEquals(Triple("Ideas", "💡", null), groups.created.single())
   }
+
+  @Test fun renameNotebook_delegates_with_trimmed_name_and_emoji() = runTest {
+    val (vm, _, groups) = vm()
+    vm.renameNotebook("g1", "  Work Stuff  ", "📁")
+    val rec = groups.updates.single()
+    assertEquals("g1", rec.id)
+    assertEquals("Work Stuff", rec.name)
+    assertEquals("📁", rec.emoji)
+  }
+
+  @Test fun renameNotebook_blank_name_is_noop() = runTest {
+    val (vm, _, groups) = vm()
+    vm.renameNotebook("g1", "   ", "📁")
+    assertTrue(groups.updated.isEmpty())
+  }
+
+  @Test fun deleteNotebook_delegates_to_repo() = runTest {
+    val (vm, _, groups) = vm()
+    vm.deleteNotebook("g1")
+    assertEquals(listOf("g1"), groups.deleted)
+  }
+
+  @Test fun deleteNotebook_resets_selection_to_all_notes_when_selected() = runTest {
+    val (vm, _, groups) = vm()
+    vm.uiState.test { expectMostRecentItem(); cancelAndIgnoreRemainingEvents() }
+    vm.selectNotebook("g1")
+    vm.deleteNotebook("g1")
+    assertEquals(listOf("g1"), groups.deleted)
+    vm.uiState.test {
+      val s = expectMostRecentItem()
+      assertEquals(null, s.selectedGroupId)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
 }

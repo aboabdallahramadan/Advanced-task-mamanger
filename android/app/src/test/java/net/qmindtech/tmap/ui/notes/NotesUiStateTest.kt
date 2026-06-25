@@ -18,6 +18,12 @@ class NotesUiStateTest {
     assertEquals("x".repeat(120) + "…", noteSnippet("x".repeat(200)))
   }
 
+  @Test fun snippet_strips_html_and_decodes_entities() {
+    // Content is rich HTML (TipTap) from the web — tags stripped, entities decoded, no raw tags.
+    assertEquals("Foo & bar 'baz'", noteSnippet("<p>Foo &amp; bar &#39;baz&#39;</p>"))
+    assertEquals("Line one Line two", noteSnippet("<p>Line one</p><p>Line two</p>"))
+  }
+
   @Test fun chips_all_notes_first_then_groups_with_selection() {
     val groups = listOf(fakeNoteGroup(id = "g1", name = "Work"), fakeNoteGroup(id = "g2", name = "Ideas"))
     val s = buildNotesUiState(groups, emptyList(), emptyList(), selectedGroupId = "g2")
