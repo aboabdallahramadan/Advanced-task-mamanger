@@ -1,16 +1,12 @@
 package net.qmindtech.tmap.widget
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognizerIntent
-import android.view.ContextThemeWrapper
-import android.view.WindowManager
-import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
@@ -20,20 +16,23 @@ import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.TaskDraft
 import net.qmindtech.tmap.data.repository.TaskRepository
+import net.qmindtech.tmap.ui.capture.QuickCaptureOverlay
 import net.qmindtech.tmap.ui.capture.QuickCaptureParser
+import net.qmindtech.tmap.ui.theme.TmapTheme
 import net.qmindtech.tmap.util.Clock
 import javax.inject.Inject
 
 /**
- * Invisible trampoline for the Quick Capture widget. Adds a task **without opening the app**: it
- * captures the text (voice via the system recognizer, or a lightweight inline dialog over the home
- * screen) and writes it straight to Room through [TaskRepository] (offline-first — the outbox syncs
- * it later). It never launches [net.qmindtech.tmap.MainActivity].
+ * Invisible trampoline for the Quick Capture widget. Adds a task **without opening the app**:
+ *  - Body tap → the real Midnight Calm [QuickCaptureSheet] is rendered over the launcher (this is a
+ *    `Theme.Translucent.NoTitleBar` activity), backed by [net.qmindtech.tmap.ui.capture.QuickCaptureViewModel]
+ *    which write-throughs to Room + the outbox. Dismissing the sheet finishes the activity. The full
+ *    TMap app (MainActivity / nav / tabs) never launches.
+ *  - Mic tap (`?voice=1`) → the system speech recognizer; the transcription is saved directly
+ *    (hands-free, no sheet), falling back to the sheet if no recognizer is installed.
  *
- * The widget body tap launches this with `tmap://capture` (→ text dialog); the mic glyph launches
- * `tmap://capture?voice=1` (→ ACTION_RECOGNIZE_SPEECH, falling back to the text dialog if no
- * recognizer is installed). The host activity is `Theme.Translucent.NoTitleBar`, so only the dialog
- * (or the system voice UI) appears over the launcher — the TMap app stays closed.
+ * The sheet path reuses the in-app capture UI verbatim (drag handle, NL field with parsed-token
+ * chips, Today/Inbox/Priority/Remind quick-actions, amber send) so the widget matches the app style.
  */
 @AndroidEntryPoint
 class CaptureTrampolineActivity : ComponentActivity() {
@@ -67,42 +66,30 @@ class CaptureTrampolineActivity : ComponentActivity() {
                 )
                 putExtra(RecognizerIntent.EXTRA_PROMPT, "Add a task")
             }
-            // No recognizer present → fall back to the inline text dialog.
-            runCatching { speech.launch(recognize) }.onFailure { showQuickAddDialog() }
+            // No recognizer present → fall back to the styled capture sheet.
+            runCatching { speech.launch(recognize) }.onFailure { showCaptureSheet() }
         } else {
-            showQuickAddDialog()
+            showCaptureSheet()
         }
     }
 
-    /** A minimal "type a task" dialog floating over the launcher — not the full app. */
-    private fun showQuickAddDialog() {
-        val ctx = ContextThemeWrapper(this, android.R.style.Theme_Material_Dialog_Alert)
-        val input = EditText(ctx).apply {
-            hint = "What needs doing?"
-            maxLines = 3
-            setSelectAllOnFocus(true)
+    /** Render the Midnight Calm quick-capture surface over the launcher (no app launch). */
+    private fun showCaptureSheet() {
+        setContent {
+            TmapTheme {
+                // QuickCaptureOverlay hosts the shared QuickCaptureContent in a scrim+card (not a
+                // ModalBottomSheet, which self-dismisses in a bare activity). Its VM (hiltViewModel,
+                // scoped to this @AndroidEntryPoint activity) write-throughs on submit and stays open
+                // for rapid-fire; tapping the scrim / pressing back closes the trampoline.
+                QuickCaptureOverlay(onDismiss = { finish() })
+            }
         }
-        val pad = (16 * resources.displayMetrics.density).toInt()
-        val container = FrameLayout(ctx).apply {
-            setPadding(pad, pad / 2, pad, 0)
-            addView(input)
-        }
-        val dialog = AlertDialog.Builder(ctx)
-            .setTitle("Add a task")
-            .setView(container)
-            .setPositiveButton("Add") { _, _ -> saveAndFinish(input.text?.toString().orEmpty()) }
-            .setNegativeButton("Cancel") { _, _ -> finish() }
-            .setOnCancelListener { finish() }
-            .create()
-        dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE)
-        dialog.show()
-        input.requestFocus()
     }
 
     /**
-     * Parse the captured text (NL `#project` / `!priority` / dates, reusing [QuickCaptureParser]),
-     * write the task through [TaskRepository] (Room + outbox; default destination Inbox, or Planned
-     * if a date was parsed), confirm with a toast, and finish. No app UI is shown.
+     * Voice path: parse the transcription (NL `#project` / `!priority` / dates) and write the task
+     * straight through [TaskRepository] (Room + outbox; Inbox by default, Planned if a date parsed),
+     * confirm with a toast, and finish — no UI shown.
      */
     private fun saveAndFinish(raw: String) {
         val text = raw.trim()
@@ -129,7 +116,6 @@ class CaptureTrampolineActivity : ComponentActivity() {
                 priority = parsed.priority.takeIf { it > 0 },
                 plannedDate = parsed.plannedDate,
                 scheduledStart = startInstant,
-                // Capture default is Inbox; a parsed date promotes it to Planned (matches in-app capture).
                 status = if (parsed.plannedDate != null) TaskStatus.Planned else TaskStatus.Inbox,
             )
             // Write-through to Room + outbox; TaskRepository.create also refreshes the widgets.
