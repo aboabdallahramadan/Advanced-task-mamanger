@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "TMap - Task Map: A daily planning workspace with task management and time blocking",
+  "author": "QMindTech",
   "main": "./dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -43,6 +44,7 @@
   "build": {
     "appId": "com.tmap.app",
     "productName": "TMap",
+    "electronVersion": "33.3.1",
     "directories": {
       "output": "out"
     },
