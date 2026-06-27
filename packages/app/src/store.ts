@@ -308,6 +308,10 @@ interface AppState {
   planForDate: (id: string, date: string) => Promise<void>;
   leftoverTasks: (beforeDate: string) => Task[];
   plannedForDate: (date: string) => Task[];
+  /** Planned/scheduled tasks living on any other day (or undated) — the "Everything else" pool the
+   * planning canvas lets you pull into the day being planned. Excludes the target day, inbox,
+   * backlog, done, and archived. */
+  otherPlannableTasks: (date: string) => Task[];
   unscheduledPlannedTasks: (date: string) => Task[];
 
   // Focus Mode Actions
@@ -1419,6 +1423,16 @@ export const useStore = create<AppState>((set, get) => ({
     const { tasks } = get();
     return tasks.filter(
       (t) => t.plannedDate === date && (t.status === 'planned' || t.status === 'scheduled'),
+    );
+  },
+  otherPlannableTasks: (date: string) => {
+    // Actively planned/scheduled tasks that live somewhere other than `date` (a past or future
+    // day, or undated). These are the "Everything else" pool the Choose phase surfaces so any
+    // existing task can be pulled into the day being planned. Inbox/backlog (their own column),
+    // tasks already on `date` (the Today column), and done/archived are all excluded.
+    const { tasks } = get();
+    return tasks.filter(
+      (t) => (t.status === 'planned' || t.status === 'scheduled') && t.plannedDate !== date,
     );
   },
   unscheduledPlannedTasks: (date: string) => {

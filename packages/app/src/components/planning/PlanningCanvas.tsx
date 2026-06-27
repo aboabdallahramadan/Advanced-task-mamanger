@@ -35,6 +35,7 @@ export const PlanningCanvas: React.FC = () => {
     leftoverTasks,
     inboxTasks,
     backlogTasks,
+    otherPlannableTasks,
     plannedForDate,
     workStartHour,
     workEndHour,
@@ -61,6 +62,9 @@ export const PlanningCanvas: React.FC = () => {
 
   const leftovers = leftoverTasks(targetDate);
   const pool = [...inboxTasks(), ...backlogTasks()];
+  // "Everything else": already-planned/scheduled tasks living on other days (or undated) that can
+  // still be pulled into the day being planned.
+  const everythingElse = otherPlannableTasks(targetDate);
   const todays = plannedForDate(targetDate);
   const cap = capacityStatus(todays, workStartHour, workEndHour);
   const weekday = format(parseISO(targetDate), 'EEEE');
@@ -109,8 +113,8 @@ export const PlanningCanvas: React.FC = () => {
         {/* 3-column canvas */}
         <div className="flex-1 min-h-0 grid grid-cols-3 gap-px bg-surface-800/40">
           <Column
-            title={phase === 'review' ? 'Leftovers' : 'Inbox & Backlog'}
-            subtitle={phase === 'review' ? 'From earlier days' : 'Pick what to do today'}
+            title={phase === 'review' ? 'Leftovers' : 'Choose tasks'}
+            subtitle={phase === 'review' ? 'From earlier days' : 'Pull anything into today'}
             dim={phase === 'timebox' || phase === 'commit'}
           >
             {phase === 'review' ? (
@@ -119,10 +123,27 @@ export const PlanningCanvas: React.FC = () => {
               ) : (
                 leftovers.map((t) => <TaskItem key={t.id} task={t} />)
               )
-            ) : pool.length === 0 ? (
-              <Empty text="Inbox & backlog are empty" />
+            ) : pool.length === 0 && everythingElse.length === 0 ? (
+              <Empty text="Nothing left to plan 🎉" />
             ) : (
-              pool.map((t) => <TaskItem key={t.id} task={t} />)
+              <>
+                {pool.length > 0 && (
+                  <>
+                    <GroupLabel>Inbox &amp; Backlog</GroupLabel>
+                    {pool.map((t) => (
+                      <TaskItem key={t.id} task={t} />
+                    ))}
+                  </>
+                )}
+                {everythingElse.length > 0 && (
+                  <>
+                    <GroupLabel>Everything else</GroupLabel>
+                    {everythingElse.map((t) => (
+                      <TaskItem key={t.id} task={t} />
+                    ))}
+                  </>
+                )}
+              </>
             )}
           </Column>
 
@@ -263,4 +284,12 @@ function CapacityMeter({
 
 function Empty({ text }: { text: string }) {
   return <div className="text-center text-xs text-surface-500 py-8">{text}</div>;
+}
+
+function GroupLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="text-2xs uppercase tracking-wide text-surface-500 font-medium pt-2 pb-0.5 first:pt-0">
+      {children}
+    </div>
+  );
 }
