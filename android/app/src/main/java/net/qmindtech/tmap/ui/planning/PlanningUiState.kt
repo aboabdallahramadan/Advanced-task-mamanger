@@ -43,6 +43,7 @@ data class PlanItemUi(
     val durationMinutes: Int?,   // null = use DEFAULT_TASK_MINUTES estimate
     val done: Boolean = false,   // only meaningful in Reflect (yesterday's status)
     val added: Boolean = false,  // PickToday: already in the pick set
+    val hint: String? = null,    // PickToday "Everything else": short locator, e.g. "Planned · Jun 30"
 )
 
 data class PlanningUiState(
@@ -54,10 +55,12 @@ data class PlanningUiState(
     // TriageInbox:
     val inbox: List<PlanItemUi> = emptyList(),
     // PickToday (carry-over = yesterday's undone; inboxPicks = inbox items;
-    // backlogPicks = backlog items; pick = ordered chosen set):
+    // backlogPicks = backlog items; everythingElse = every other actionable task — Planned for
+    // other days, Scheduled, or undated — pullable into today; pick = ordered chosen set):
     val carryOver: List<PlanItemUi> = emptyList(),
     val inboxPicks: List<PlanItemUi> = emptyList(),
     val backlogPicks: List<PlanItemUi> = emptyList(),
+    val everythingElse: List<PlanItemUi> = emptyList(),
     val pickedIds: List<String> = emptyList(),      // ordered; the day's plannedTaskIds
     // Capacity (live):
     val plannedMinutes: Int = 0,

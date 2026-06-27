@@ -111,12 +111,13 @@ class PlanningViewModelTest {
     yesterdayTasks: List<TaskEntity> = emptyList(),
     inbox: List<TaskEntity> = emptyList(),
     backlog: List<TaskEntity> = emptyList(),
+    other: List<TaskEntity> = emptyList(),
     settings: List<net.qmindtech.tmap.data.local.entities.SettingEntity> = emptyList(),
   ): Triple<PlanningViewModel, FakeTaskRepo, FakeDailyPlanRepo> {
-    // Inbox uses the shared byStatus fallback; Backlog gets a status-scoped flow so the VM can
-    // observe both statuses independently (FIX #4).
-    val task = FakeTaskRepo(today = MutableStateFlow(yesterdayTasks), byStatus = MutableStateFlow(inbox))
-      .apply { setByStatus(TaskStatus.Backlog, backlog) }
+    // The VM derives every section (carry-over/inbox/backlog/everything-else) from observeAll(),
+    // so seed the whole task pool through a single flow here. [other] = the "Everything else" pool
+    // (Planned-elsewhere / Scheduled / undated tasks).
+    val task = FakeTaskRepo(all = MutableStateFlow(yesterdayTasks + inbox + backlog + other))
     val projects = FakeProjectRepo().apply { setAll(listOf(fakeProject(id = "p1", name = "Work", color = "#6ea8fe"))) }
     val daily = FakeDailyPlanRepo()
     val set = FakeSettingsRepo().apply { set(settings) }
@@ -206,6 +207,61 @@ class PlanningViewModelTest {
       val up = daily.upserts.single()
       assertEquals(listOf("b"), up.plannedTaskIds)
       assertEquals(45, up.plannedMinutes)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test fun pickToday_everythingElse_lists_planned_and_scheduled_elsewhere_with_hints() = runTest {
+    val (vm, _, _) = vm(
+      yesterdayTasks = listOf(fakeTask(id = "u", plannedDate = yesterday, status = TaskStatus.Planned)),
+      inbox = listOf(fakeTask(id = "i", status = TaskStatus.Inbox)),
+      backlog = listOf(fakeTask(id = "b", status = TaskStatus.Backlog)),
+      other = listOf(
+        // Planned for a future day → appears, hint shows the date.
+        fakeTask(id = "pf", status = TaskStatus.Planned, plannedDate = LocalDate.of(2026, 6, 25)),
+        // Scheduled (no plannedDate) → appears, hint derives the date from scheduledStart (UTC).
+        fakeTask(id = "sc", status = TaskStatus.Scheduled, scheduledStart = Instant.parse("2026-06-23T09:00:00Z")),
+        // Already planned for today → excluded (it is already on today).
+        fakeTask(id = "pt", status = TaskStatus.Planned, plannedDate = today),
+        // Done → excluded.
+        fakeTask(id = "dn", status = TaskStatus.Done, plannedDate = LocalDate.of(2026, 6, 25)),
+      ),
+    )
+    vm.uiState.test {
+      val s = expectMostRecentItem()
+      // Only the two elsewhere-living actionable tasks surface, in pool order.
+      assertEquals(listOf("pf", "sc"), s.everythingElse.map { it.id })
+      // Inbox/backlog/carry-over tasks are NOT duplicated into Everything else.
+      assertEquals(true, s.everythingElse.none { it.id in listOf("u", "i", "b") })
+      // Locator hints.
+      assertEquals("Planned · Jun 25", s.everythingElse.single { it.id == "pf" }.hint)
+      assertEquals("Scheduled · Jun 23", s.everythingElse.single { it.id == "sc" }.hint)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test fun toggleAdd_everythingElse_counts_capacity_and_commit_replans_to_today() = runTest {
+    val (vm, task, daily) = vm(
+      other = listOf(fakeTask(id = "pf", status = TaskStatus.Planned, plannedDate = LocalDate.of(2026, 6, 25), durationMinutes = 30)),
+      settings = listOf(net.qmindtech.tmap.data.local.entities.SettingEntity(KEY_WORKDAY_MINUTES, "360", 0)),
+    )
+    vm.uiState.test {
+      var s = expectMostRecentItem()
+      assertEquals(listOf("pf"), s.everythingElse.map { it.id })
+
+      vm.toggleAdd("pf")   // +30
+      s = expectMostRecentItem()
+      assertEquals(listOf("pf"), s.pickedIds)
+      assertEquals(30, s.plannedMinutes)
+      assertEquals(true, s.everythingElse.single { it.id == "pf" }.added)
+
+      vm.commit()
+      val edit = task.updated.single { it.first == "pf" }.second
+      assertEquals(today, edit.plannedDate)
+      assertEquals(TaskStatus.Planned, edit.status)
+      val up = daily.upserts.single()
+      assertEquals(listOf("pf"), up.plannedTaskIds)
+      assertEquals(30, up.plannedMinutes)
       cancelAndIgnoreRemainingEvents()
     }
   }

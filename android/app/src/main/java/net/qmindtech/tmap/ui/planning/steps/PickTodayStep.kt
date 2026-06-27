@@ -48,7 +48,9 @@ fun PickTodayStep(
     onToggleAdd: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (state.carryOver.isEmpty() && state.inboxPicks.isEmpty() && state.backlogPicks.isEmpty()) {
+    if (state.carryOver.isEmpty() && state.inboxPicks.isEmpty() &&
+        state.backlogPicks.isEmpty() && state.everythingElse.isEmpty()
+    ) {
         EmptyState(
             icon = Icons.Default.Inbox,
             title = "Nothing to plan yet",
@@ -101,6 +103,20 @@ fun PickTodayStep(
             }
         }
 
+        if (state.everythingElse.isNotEmpty()) {
+            item {
+                SectionLabel(
+                    text = "Everything else",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
+                )
+            }
+            items(state.everythingElse, key = { "else_${it.id}" }) { item ->
+                PlanRow(item = item, onToggleAdd = { onToggleAdd(item.id) })
+            }
+        }
+
         item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
@@ -139,7 +155,7 @@ fun PlanRow(item: PlanItemUi, onToggleAdd: () -> Unit, modifier: Modifier = Modi
                 style = type.body,
                 color = colors.textPrimary,
             )
-            if (!item.projectName.isNullOrBlank() || item.projectColor != null) {
+            if (!item.projectName.isNullOrBlank() || item.projectColor != null || item.hint != null) {
                 Row(
                     modifier = Modifier.padding(top = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -153,6 +169,15 @@ fun PlanRow(item: PlanItemUi, onToggleAdd: () -> Unit, modifier: Modifier = Modi
                             text = item.projectName,
                             style = type.meta,
                             color = colors.textSecondary,
+                        )
+                    }
+                    // "Everything else" rows carry a locator hint (e.g. "Planned · Jun 30"); show it
+                    // in a subtler tone, prefixed with a dot only when a project label precedes it.
+                    if (item.hint != null) {
+                        Text(
+                            text = if (!item.projectName.isNullOrBlank()) "· ${item.hint}" else item.hint,
+                            style = type.meta,
+                            color = colors.textTertiary,
                         )
                     }
                 }
@@ -228,6 +253,18 @@ private fun PickTodayStepPreview() {
                         id = "4", title = "Plan Q3 roadmap",
                         projectName = "Work", projectColor = 0xFF6EA8FE,
                         durationMinutes = 90, added = false,
+                    ),
+                ),
+                everythingElse = listOf(
+                    PlanItemUi(
+                        id = "5", title = "Prep onboarding deck",
+                        projectName = "Work", projectColor = 0xFF6EA8FE,
+                        durationMinutes = 30, added = false, hint = "Planned · Jun 30",
+                    ),
+                    PlanItemUi(
+                        id = "6", title = "1:1 with Sam",
+                        projectName = null, projectColor = null,
+                        durationMinutes = 30, added = false, hint = "Scheduled · Jul 2",
                     ),
                 ),
                 pickedIds = listOf("2"),

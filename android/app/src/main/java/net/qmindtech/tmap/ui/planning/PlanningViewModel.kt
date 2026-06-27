@@ -22,7 +22,12 @@ import net.qmindtech.tmap.ui.components.parseProjectColor
 import net.qmindtech.tmap.util.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 import javax.inject.Inject
+
+/** Compact date for "Everything else" locator hints, e.g. "Jun 30". Fixed locale for stable output. */
+private val HINT_DATE = DateTimeFormatter.ofPattern("MMM d", Locale.ENGLISH)
 
 @HiltViewModel
 class PlanningViewModel @Inject constructor(
@@ -43,33 +48,19 @@ class PlanningViewModel @Inject constructor(
 
   val uiState: StateFlow<PlanningUiState> =
     combine(
-      taskRepo.observeToday(yesterday),
-      // kotlinx combine maxes at 5 typed args, so the 6th flow (Backlog) is folded into the
-      // inbox flow as a Pair — both feed the PickToday picker pool.
-      combine(
-        taskRepo.observeByStatus(TaskStatus.Inbox),
-        taskRepo.observeByStatus(TaskStatus.Backlog),
-      ) { inbox, backlog -> inbox to backlog },
+      // One flow for the whole task pool; every section is derived from it in [project]. This keeps
+      // the combine within its 5-arg limit and gives the PickToday picker the full pool (including
+      // the "Everything else" tasks that live outside Inbox/Backlog/yesterday).
+      taskRepo.observeAll(),
       projectRepo.observeAll(),
       settingsRepo.observe(),
       combine(step, picked, committed) { s, p, c -> Triple(s, p, c) },
-    ) { yTasks, inboxAndBacklog, projects, settings, local ->
-      project(
-        yTasks,
-        inboxAndBacklog.first,
-        inboxAndBacklog.second,
-        projects,
-        settings,
-        local.first,
-        local.second,
-        local.third,
-      )
+    ) { allTasks, projects, settings, local ->
+      project(allTasks, projects, settings, local.first, local.second, local.third)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlanningUiState())
 
   private fun project(
-    yesterdayTasks: List<TaskEntity>,
-    inboxTasks: List<TaskEntity>,
-    backlogTasks: List<TaskEntity>,
+    allTasks: List<TaskEntity>,
     projects: List<ProjectEntity>,
     settings: List<SettingEntity>,
     step: PlanningStep,
@@ -77,33 +68,61 @@ class PlanningViewModel @Inject constructor(
     committed: Boolean,
   ): PlanningUiState {
     val byId = projects.associateBy { it.id }
-    fun item(t: TaskEntity): PlanItemUi {
+    fun item(t: TaskEntity, hint: String? = null): PlanItemUi {
       val p = t.projectId?.let { byId[it] }
       return PlanItemUi(
         id = t.id, title = t.title, projectName = p?.name,
         projectColor = parseProjectColor(p?.color), durationMinutes = t.durationMinutes,
         done = t.status == TaskStatus.Done, added = pickedIds.contains(t.id),
+        hint = hint,
       )
     }
+
+    val yesterdayTasks = allTasks.filter { it.plannedDate == yesterday }
+    val inboxTasks = allTasks.filter { it.status == TaskStatus.Inbox }
+    val backlogTasks = allTasks.filter { it.status == TaskStatus.Backlog }
     val (done, undone) = yesterdayTasks.partition { it.status == TaskStatus.Done }
-    // The capacity sum needs the actual entities behind the picked ids
-    // (carry-over + inbox + backlog — most of the user's task pool lives in backlog).
-    val pool = (yesterdayTasks + inboxTasks + backlogTasks).associateBy { it.id }
+
+    // "Everything else": actionable tasks that live outside the sections above — Planned for other
+    // days, Scheduled, or undated — so they can be pulled into today. Excludes anything already
+    // shown (carry-over/inbox/backlog), anything already planned for today, and Done/Archived.
+    val shownIds = (undone + inboxTasks + backlogTasks).mapTo(mutableSetOf()) { it.id }
+    val everythingElse = allTasks.filter {
+      it.status != TaskStatus.Done &&
+        it.status != TaskStatus.Archived &&
+        it.id !in shownIds &&
+        it.plannedDate != today
+    }
+
+    // Capacity needs the entities behind the picked ids; the whole pool covers every pickable task.
+    val pool = allTasks.associateBy { it.id }
     val pickedTasks = pickedIds.mapNotNull { pool[it] }
     return PlanningUiState(
       loading = false,
       step = step,
-      yesterdayDone = done.map(::item),
-      yesterdayUndone = undone.map(::item),
-      inbox = inboxTasks.map(::item),
-      carryOver = undone.map(::item),
-      inboxPicks = inboxTasks.map(::item),
-      backlogPicks = backlogTasks.map(::item),
+      yesterdayDone = done.map { item(it) },
+      yesterdayUndone = undone.map { item(it) },
+      inbox = inboxTasks.map { item(it) },
+      carryOver = undone.map { item(it) },
+      inboxPicks = inboxTasks.map { item(it) },
+      backlogPicks = backlogTasks.map { item(it) },
+      everythingElse = everythingElse.map { item(it, hint = hintFor(it)) },
       pickedIds = pickedIds,
       plannedMinutes = capacityOf(pickedTasks),
       workdayMinutes = workdayMinutes(settings),
       committed = committed,
     )
+  }
+
+  /**
+   * Short locator label for an "Everything else" row, e.g. "Planned · Jun 30" or "Scheduled · Jun 23".
+   * Uses [TaskEntity.plannedDate] when present, else the local date of a [TaskEntity.scheduledStart];
+   * undated tasks show just the verb. Fixed [Locale.ENGLISH] so the ritual reads consistently.
+   */
+  private fun hintFor(t: TaskEntity): String {
+    val verb = if (t.status == TaskStatus.Scheduled) "Scheduled" else "Planned"
+    val date = t.plannedDate ?: t.scheduledStart?.atZone(clock.zone())?.toLocalDate()
+    return if (date != null) "$verb · ${date.format(HINT_DATE)}" else verb
   }
 
   fun next() { step.value = step.value.next() }
