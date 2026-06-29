@@ -113,15 +113,17 @@ class PlanningViewModelTest {
     backlog: List<TaskEntity> = emptyList(),
     other: List<TaskEntity> = emptyList(),
     settings: List<net.qmindtech.tmap.data.local.entities.SettingEntity> = emptyList(),
+    projects: List<net.qmindtech.tmap.data.local.entities.ProjectEntity> =
+      listOf(fakeProject(id = "p1", name = "Work", color = "#6ea8fe")),
   ): Triple<PlanningViewModel, FakeTaskRepo, FakeDailyPlanRepo> {
     // The VM derives every section (carry-over/inbox/backlog/everything-else) from observeAll(),
     // so seed the whole task pool through a single flow here. [other] = the "Everything else" pool
     // (Planned-elsewhere / Scheduled / undated tasks).
     val task = FakeTaskRepo(all = MutableStateFlow(yesterdayTasks + inbox + backlog + other))
-    val projects = FakeProjectRepo().apply { setAll(listOf(fakeProject(id = "p1", name = "Work", color = "#6ea8fe"))) }
+    val projectRepo = FakeProjectRepo().apply { setAll(projects) }
     val daily = FakeDailyPlanRepo()
     val set = FakeSettingsRepo().apply { set(settings) }
-    val vm = PlanningViewModel(task, projects, daily, set, FixedClock(Instant.parse("2026-06-21T06:00:00Z")))
+    val vm = PlanningViewModel(task, projectRepo, daily, set, FixedClock(Instant.parse("2026-06-21T06:00:00Z")))
     return Triple(vm, task, daily)
   }
 
@@ -229,13 +231,41 @@ class PlanningViewModelTest {
     )
     vm.uiState.test {
       val s = expectMostRecentItem()
+      val elseItems = s.everythingElse.flatMap { it.items }
       // Only the two elsewhere-living actionable tasks surface, in pool order.
-      assertEquals(listOf("pf", "sc"), s.everythingElse.map { it.id })
+      assertEquals(listOf("pf", "sc"), elseItems.map { it.id })
       // Inbox/backlog/carry-over tasks are NOT duplicated into Everything else.
-      assertEquals(true, s.everythingElse.none { it.id in listOf("u", "i", "b") })
+      assertEquals(true, elseItems.none { it.id in listOf("u", "i", "b") })
       // Locator hints.
-      assertEquals("Planned · Jun 25", s.everythingElse.single { it.id == "pf" }.hint)
-      assertEquals("Scheduled · Jun 23", s.everythingElse.single { it.id == "sc" }.hint)
+      assertEquals("Planned · Jun 25", elseItems.single { it.id == "pf" }.hint)
+      assertEquals("Scheduled · Jun 23", elseItems.single { it.id == "sc" }.hint)
+      cancelAndIgnoreRemainingEvents()
+    }
+  }
+
+  @Test fun pickToday_everythingElse_groups_by_project_in_order_with_no_project_last() = runTest {
+    val date = LocalDate.of(2026, 6, 25)
+    val (vm, _, _) = vm(
+      other = listOf(
+        fakeTask(id = "h1", status = TaskStatus.Planned, plannedDate = date, projectId = "p2"),
+        fakeTask(id = "w1", status = TaskStatus.Planned, plannedDate = date, projectId = "p1"),
+        fakeTask(id = "n1", status = TaskStatus.Planned, plannedDate = date, projectId = null),
+        fakeTask(id = "del", status = TaskStatus.Planned, plannedDate = date, projectId = "gone"),
+      ),
+      projects = listOf(
+        fakeProject(id = "p1", name = "Work", color = "#6ea8fe"),
+        fakeProject(id = "p2", name = "Health", color = "#f0a868"),
+      ),
+    )
+    vm.uiState.test {
+      val s = expectMostRecentItem()
+      // Groups follow project order; "No Project" is last.
+      assertEquals(listOf("Work", "Health", "No Project"), s.everythingElse.map { it.projectName ?: "No Project" })
+      assertEquals(listOf("p1", "p2", null), s.everythingElse.map { it.projectId })
+      // Each bucket holds its task; null + deleted-project tasks fall into "No Project" in pool order.
+      assertEquals(listOf("w1"), s.everythingElse[0].items.map { it.id })
+      assertEquals(listOf("h1"), s.everythingElse[1].items.map { it.id })
+      assertEquals(listOf("n1", "del"), s.everythingElse[2].items.map { it.id })
       cancelAndIgnoreRemainingEvents()
     }
   }
@@ -247,13 +277,13 @@ class PlanningViewModelTest {
     )
     vm.uiState.test {
       var s = expectMostRecentItem()
-      assertEquals(listOf("pf"), s.everythingElse.map { it.id })
+      assertEquals(listOf("pf"), s.everythingElse.flatMap { it.items }.map { it.id })
 
       vm.toggleAdd("pf")   // +30
       s = expectMostRecentItem()
       assertEquals(listOf("pf"), s.pickedIds)
       assertEquals(30, s.plannedMinutes)
-      assertEquals(true, s.everythingElse.single { it.id == "pf" }.added)
+      assertEquals(true, s.everythingElse.flatMap { it.items }.single { it.id == "pf" }.added)
 
       vm.commit()
       val edit = task.updated.single { it.first == "pf" }.second

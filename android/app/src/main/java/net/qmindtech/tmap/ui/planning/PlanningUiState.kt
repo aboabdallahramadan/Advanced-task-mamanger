@@ -46,6 +46,17 @@ data class PlanItemUi(
     val hint: String? = null,    // PickToday "Everything else": short locator, e.g. "Planned · Jun 30"
 )
 
+/**
+ * A project bucket within PickToday's "Everything else" list. [projectId]/[projectName]/
+ * [projectColor] are null for the trailing "No Project" group.
+ */
+data class PlanProjectGroupUi(
+    val projectId: String?,
+    val projectName: String?,
+    val projectColor: Long?,
+    val items: List<PlanItemUi>,
+)
+
 data class PlanningUiState(
     val loading: Boolean = true,
     val step: PlanningStep = PlanningStep.Reflect,
@@ -60,7 +71,7 @@ data class PlanningUiState(
     val carryOver: List<PlanItemUi> = emptyList(),
     val inboxPicks: List<PlanItemUi> = emptyList(),
     val backlogPicks: List<PlanItemUi> = emptyList(),
-    val everythingElse: List<PlanItemUi> = emptyList(),
+    val everythingElse: List<PlanProjectGroupUi> = emptyList(),
     val pickedIds: List<String> = emptyList(),      // ordered; the day's plannedTaskIds
     // Capacity (live):
     val plannedMinutes: Int = 0,

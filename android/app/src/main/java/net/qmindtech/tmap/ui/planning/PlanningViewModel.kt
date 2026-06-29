@@ -94,6 +94,36 @@ class PlanningViewModel @Inject constructor(
         it.plannedDate != today
     }
 
+    // Group "Everything else" by project: project order (projects arrive ordered by rank from the
+    // DAO), "No Project" last and only when non-empty. Item order within a group is preserved.
+    val elseByProject = everythingElse.groupBy { it.projectId }
+    val everythingElseGroups = buildList {
+      for (p in projects) {
+        val bucket = elseByProject[p.id]
+        if (!bucket.isNullOrEmpty()) {
+          add(
+            PlanProjectGroupUi(
+              projectId = p.id,
+              projectName = p.name,
+              projectColor = parseProjectColor(p.color),
+              items = bucket.map { item(it, hint = hintFor(it)) },
+            ),
+          )
+        }
+      }
+      val noProject = everythingElse.filter { it.projectId == null || byId[it.projectId] == null }
+      if (noProject.isNotEmpty()) {
+        add(
+          PlanProjectGroupUi(
+            projectId = null,
+            projectName = null,
+            projectColor = null,
+            items = noProject.map { item(it, hint = hintFor(it)) },
+          ),
+        )
+      }
+    }
+
     // Capacity needs the entities behind the picked ids; the whole pool covers every pickable task.
     val pool = allTasks.associateBy { it.id }
     val pickedTasks = pickedIds.mapNotNull { pool[it] }
@@ -106,7 +136,7 @@ class PlanningViewModel @Inject constructor(
       carryOver = undone.map { item(it) },
       inboxPicks = inboxTasks.map { item(it) },
       backlogPicks = backlogTasks.map { item(it) },
-      everythingElse = everythingElse.map { item(it, hint = hintFor(it)) },
+      everythingElse = everythingElseGroups,
       pickedIds = pickedIds,
       plannedMinutes = capacityOf(pickedTasks),
       workdayMinutes = workdayMinutes(settings),

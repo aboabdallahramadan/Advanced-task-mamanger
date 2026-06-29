@@ -36,6 +36,7 @@ import net.qmindtech.tmap.ui.components.EmptyState
 import net.qmindtech.tmap.ui.components.ProjectDot
 import net.qmindtech.tmap.ui.components.SectionLabel
 import net.qmindtech.tmap.ui.planning.PlanItemUi
+import net.qmindtech.tmap.ui.planning.PlanProjectGroupUi
 import net.qmindtech.tmap.ui.planning.PlanningUiState
 import net.qmindtech.tmap.ui.theme.LocalTmapColors
 import net.qmindtech.tmap.ui.theme.LocalTmapShapes
@@ -103,16 +104,18 @@ fun PickTodayStep(
             }
         }
 
-        if (state.everythingElse.isNotEmpty()) {
-            item {
-                SectionLabel(
-                    text = "Everything else",
+        state.everythingElse.forEach { group ->
+            val groupKey = group.projectId ?: "none"
+            item(key = "else_header_$groupKey") {
+                ProjectGroupLabel(
+                    name = group.projectName ?: "No Project",
+                    colorArgb = group.projectColor,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
                 )
             }
-            items(state.everythingElse, key = { "else_${it.id}" }) { item ->
+            items(group.items, key = { "else_${groupKey}_${it.id}" }) { item ->
                 PlanRow(item = item, onToggleAdd = { onToggleAdd(item.id) })
             }
         }
@@ -222,6 +225,25 @@ fun PlanRow(item: PlanItemUi, onToggleAdd: () -> Unit, modifier: Modifier = Modi
     }
 }
 
+/**
+ * Section header for an "Everything else" project group: an optional [colorArgb] dot followed by the
+ * uppercase project [name] (via [SectionLabel]). The "No Project" group passes [colorArgb] = null
+ * and renders dot-less.
+ */
+@Composable
+private fun ProjectGroupLabel(name: String, colorArgb: Long?, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (colorArgb != null) {
+            ProjectDot(colorArgb = colorArgb)
+        }
+        SectionLabel(text = name)
+    }
+}
+
 @Preview(showBackground = true, backgroundColor = 0xFF191A20)
 @Composable
 private fun PickTodayStepPreview() {
@@ -256,15 +278,25 @@ private fun PickTodayStepPreview() {
                     ),
                 ),
                 everythingElse = listOf(
-                    PlanItemUi(
-                        id = "5", title = "Prep onboarding deck",
-                        projectName = "Work", projectColor = 0xFF6EA8FE,
-                        durationMinutes = 30, added = false, hint = "Planned · Jun 30",
+                    PlanProjectGroupUi(
+                        projectId = "work", projectName = "Work", projectColor = 0xFF6EA8FE,
+                        items = listOf(
+                            PlanItemUi(
+                                id = "5", title = "Prep onboarding deck",
+                                projectName = "Work", projectColor = 0xFF6EA8FE,
+                                durationMinutes = 30, added = false, hint = "Planned · Jun 30",
+                            ),
+                        ),
                     ),
-                    PlanItemUi(
-                        id = "6", title = "1:1 with Sam",
-                        projectName = null, projectColor = null,
-                        durationMinutes = 30, added = false, hint = "Scheduled · Jul 2",
+                    PlanProjectGroupUi(
+                        projectId = null, projectName = null, projectColor = null,
+                        items = listOf(
+                            PlanItemUi(
+                                id = "6", title = "1:1 with Sam",
+                                projectName = null, projectColor = null,
+                                durationMinutes = 30, added = false, hint = "Scheduled · Jul 2",
+                            ),
+                        ),
                     ),
                 ),
                 pickedIds = listOf("2"),
