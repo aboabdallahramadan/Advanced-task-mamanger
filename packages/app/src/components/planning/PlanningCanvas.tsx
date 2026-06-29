@@ -3,6 +3,7 @@ import { useStore } from '../../store';
 import { TaskItem } from '../TaskItem';
 import { DayTimeline } from '../DayTimeline';
 import { capacityStatus } from '../../lib/capacity';
+import { groupByProject } from '../../lib/groupByProject';
 import { PlanningPhase } from '../../types';
 import { format, parseISO } from 'date-fns';
 import { clsx } from 'clsx';
@@ -35,6 +36,7 @@ export const PlanningCanvas: React.FC = () => {
     leftoverTasks,
     inboxTasks,
     backlogTasks,
+    projects,
     otherPlannableTasks,
     plannedForDate,
     workStartHour,
@@ -135,14 +137,15 @@ export const PlanningCanvas: React.FC = () => {
                     ))}
                   </>
                 )}
-                {everythingElse.length > 0 && (
-                  <>
-                    <GroupLabel>Everything else</GroupLabel>
-                    {everythingElse.map((t) => (
-                      <TaskItem key={t.id} task={t} />
-                    ))}
-                  </>
-                )}
+                {everythingElse.length > 0 &&
+                  groupByProject(everythingElse, projects).map((group) => (
+                    <React.Fragment key={group.projectId ?? '__none__'}>
+                      <ProjectGroupLabel name={group.name} color={group.color} />
+                      {group.tasks.map((t) => (
+                        <TaskItem key={t.id} task={t} />
+                      ))}
+                    </React.Fragment>
+                  ))}
               </>
             )}
           </Column>
@@ -290,6 +293,17 @@ function GroupLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-2xs uppercase tracking-wide text-surface-500 font-medium pt-2 pb-0.5 first:pt-0">
       {children}
+    </div>
+  );
+}
+
+function ProjectGroupLabel({ name, color }: { name: string; color: string | null }) {
+  return (
+    <div className="flex items-center gap-1.5 text-2xs uppercase tracking-wide text-surface-500 font-medium pt-2 pb-0.5 first:pt-0">
+      {color && (
+        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+      )}
+      <span className="truncate">{name}</span>
     </div>
   );
 }
