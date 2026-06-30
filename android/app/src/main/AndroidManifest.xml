@@ -121,6 +121,21 @@
                 android:resource="@xml/widget_quick_capture" />
         </receiver>
 
+        <!-- Quick-add Note 1-row home-screen widget (Feature 2). exported=true is required: the
+             AppWidget host system service binds this receiver to deliver APPWIDGET_UPDATE.
+             updatePeriodMillis=0 because the note bar has no dynamic content to refresh. -->
+        <receiver
+            android:name=".widget.QuickNoteWidgetReceiver"
+            android:exported="true"
+            android:label="TMap — Quick Note">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_quick_note" />
+        </receiver>
+
         <!-- Up Next / Focus 2×2 home-screen widget (P8.8). Shows the next incomplete task and a
              one-tap "◉ Focus" button that deep-links to tmap://focus/{taskId}. The live-countdown
              branch is stubbed (focusRemainingLabel always null) — see TODO(P6) in UpNextFocusWidget.
