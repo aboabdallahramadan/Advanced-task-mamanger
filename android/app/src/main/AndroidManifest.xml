@@ -162,6 +162,15 @@
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Trampoline for the Quick-add Note widget. Launched by class ref (not a VIEW filter);
+             opens the system speech recognizer on mic tap, or the QuickNoteOverlay on body tap. -->
+        <activity
+            android:name=".widget.NoteCaptureTrampolineActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <!-- Disable the default WorkManager initializer so TmapApplication's
              Configuration.Provider (with the HiltWorkerFactory) drives WorkManager. -->
         <provider
