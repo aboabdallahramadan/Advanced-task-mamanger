@@ -49,6 +49,24 @@
             </intent-filter>
         </activity>
 
+        <!-- Share-sheet target (Feature 1): receives ACTION_SEND text/plain from other apps and
+             saves the shared link/text as a note WITHOUT opening the app. Translucent + excluded
+             from Recents + empty taskAffinity so it never adopts the sharing app's task. text/plain
+             only — TMap intentionally does not appear for image/video shares it cannot store. -->
+        <activity
+            android:name=".share.ShareReceiverActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:label="@string/app_name"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- Fired by ReminderScheduler's exact alarm; not exported (internal PendingIntent only). -->
         <receiver
             android:name=".notifications.AlarmReceiver"
