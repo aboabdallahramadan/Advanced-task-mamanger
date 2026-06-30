@@ -12,4 +12,6 @@ object WidgetLinks {
         Uri.parse(if (taskId != null) "$SCHEME://focus/$taskId" else "$SCHEME://focus")
     fun capture(voice: Boolean = false): Uri =
         Uri.parse("$SCHEME://capture" + if (voice) "?voice=1" else "")
+    fun noteCapture(voice: Boolean = false): Uri =
+        Uri.parse("$SCHEME://note-capture" + if (voice) "?voice=1" else "")
 }

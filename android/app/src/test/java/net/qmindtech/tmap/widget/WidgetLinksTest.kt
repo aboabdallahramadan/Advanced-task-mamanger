@@ -64,4 +64,19 @@ class WidgetLinksTest {
     fun `SCHEME constant is tmap`() {
         assertEquals("tmap", WidgetLinks.SCHEME)
     }
+
+    @Test
+    fun `noteCapture URI without voice has no query`() {
+        val uri = WidgetLinks.noteCapture()
+        assertEquals("tmap", uri.scheme)
+        assertEquals("note-capture", uri.host)
+        assertNull(uri.query)
+    }
+
+    @Test
+    fun `noteCapture URI with voice=true appends voice=1 query`() {
+        val uri = WidgetLinks.noteCapture(voice = true)
+        assertEquals("note-capture", uri.host)
+        assertEquals("1", uri.getQueryParameter("voice"))
+    }
 }
