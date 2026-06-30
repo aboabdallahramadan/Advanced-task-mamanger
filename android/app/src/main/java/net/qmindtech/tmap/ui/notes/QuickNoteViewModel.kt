@@ -33,9 +33,13 @@ class QuickNoteViewModel @Inject constructor(
     fun submit(onSaved: () -> Unit) {
         val draft = NoteCapture.fromQuickText(_state.value.text) ?: return
         viewModelScope.launch {
-            noteRepo.create(draft.title, wrapPlainTextToHtml(draft.content))
-            _state.value = QuickNoteUiState()
-            onSaved()
+            // Swallow a (rare) persistence failure instead of crashing: leave the overlay open with
+            // the user's text intact so they can retry. Reset + onSaved only on success.
+            runCatching { noteRepo.create(draft.title, wrapPlainTextToHtml(draft.content)) }
+                .onSuccess {
+                    _state.value = QuickNoteUiState()
+                    onSaved()
+                }
         }
     }
 }

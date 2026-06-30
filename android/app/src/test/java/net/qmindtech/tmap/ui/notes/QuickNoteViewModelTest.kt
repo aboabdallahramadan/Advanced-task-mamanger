@@ -58,4 +58,15 @@ class QuickNoteViewModelTest {
         assertTrue(notes.created.isEmpty())
         assertFalse(saved)
     }
+
+    @Test fun `submit swallows create failure without calling onSaved or resetting text`() =
+        runTest(testDispatcher) {
+            val notes = FakeNoteRepo().apply { throwOnCreate = true }
+            val vm = QuickNoteViewModel(notes)
+            vm.onTextChange("Buy milk")
+            var saved = false
+            vm.submit { saved = true }
+            assertFalse(saved)
+            assertEquals("Buy milk", vm.uiState.value.text)
+        }
 }

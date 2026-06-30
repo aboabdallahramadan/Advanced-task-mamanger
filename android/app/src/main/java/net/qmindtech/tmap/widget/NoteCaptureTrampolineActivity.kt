@@ -81,8 +81,10 @@ class NoteCaptureTrampolineActivity : ComponentActivity() {
             return
         }
         lifecycleScope.launch {
-            noteRepo.create(draft.title, wrapPlainTextToHtml(draft.content))
-            toast("Saved to notes")
+            val ok = runCatching {
+                noteRepo.create(draft.title, wrapPlainTextToHtml(draft.content))
+            }.isSuccess
+            toast(if (ok) "Saved to notes" else "Couldn't save note")
             finish()
         }
     }

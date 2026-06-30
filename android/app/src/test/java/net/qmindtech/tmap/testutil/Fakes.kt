@@ -259,6 +259,8 @@ class FakeNoteRepo(
   val pinned = mutableListOf<Pair<String, Boolean>>()
   val reordered = mutableListOf<List<String>>()
   var nextId = "note-new"
+  /** When true, [create] throws to exercise callers' failure handling. Default false. */
+  var throwOnCreate = false
 
   // Per-id flows for testing multi-note observation scenarios.
   private val perIdFlows = mutableMapOf<String, MutableStateFlow<net.qmindtech.tmap.data.local.entities.NoteEntity?>>()
@@ -292,6 +294,7 @@ class FakeNoteRepo(
     groupId: String?,
     projectId: String?,
   ): String {
+    if (throwOnCreate) throw RuntimeException("create failed (test)")
     created += NoteDraftRecord(title, content, groupId, projectId)
     return nextId
   }
