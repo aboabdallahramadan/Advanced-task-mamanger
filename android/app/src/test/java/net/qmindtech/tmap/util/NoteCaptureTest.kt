@@ -51,4 +51,15 @@ class NoteCaptureTest {
     @Test fun `fromQuickText returns null when blank`() {
         assertNull(NoteCapture.fromQuickText("   "))
     }
+
+    @Test fun `fromSharedText subject-only returns draft with subject title and content`() {
+        val d = NoteCapture.fromSharedText(null, "Meeting notes")!!
+        assertEquals("Meeting notes", d.title)
+        assertEquals("Meeting notes", d.content)
+    }
+
+    @Test fun `titles collapse internal whitespace from any source`() {
+        assertEquals("Meeting notes", NoteCapture.fromSharedText(null, "Meeting   notes")!!.title)
+        assertEquals("Team sync", NoteCapture.fromQuickText("Team   sync\nbody")!!.title)
+    }
 }

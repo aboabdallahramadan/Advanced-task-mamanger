@@ -55,6 +55,8 @@ object NoteCapture {
         }
     }
 
-    private fun String.capTitle(): String =
-        if (length <= MAX_TITLE) this else take(MAX_TITLE).trimEnd() + "…"
+    private fun String.capTitle(): String {
+        val collapsed = replace(WHITESPACE, " ").trim()
+        return if (collapsed.length <= MAX_TITLE) collapsed else collapsed.take(MAX_TITLE).trimEnd() + "…"
+    }
 }
