@@ -188,7 +188,13 @@ export function TaskDetailDialog() {
 
     // Auto-focus title
     setTimeout(() => titleRef.current?.focus(), 100);
-  }, [taskDialog.isOpen, taskDialog.mode, taskDialog.taskId, tasks, selectedDate]);
+    // Populate ONLY when the dialog opens or its target changes — NOT on every `tasks`
+    // identity change. The periodic sync's refreshFromLocal() replaces the `tasks` array
+    // (~every 60s); if `tasks`/`selectedDate` were deps this effect would re-run mid-edit
+    // and the create-mode branch would wipe the user's unsaved title/notes. `tasks` and
+    // `selectedDate` are still read inside — at open time — which is exactly what we want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskDialog.isOpen, taskDialog.mode, taskDialog.taskId]);
 
   if (!taskDialog.isOpen) return null;
 
