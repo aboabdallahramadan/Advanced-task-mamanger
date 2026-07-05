@@ -247,7 +247,11 @@ export function TaskDetailDialog() {
       taskData.scheduledStart = `${plannedDate}T${scheduledStart}:00`;
       const startMs = new Date(taskData.scheduledStart).getTime();
       const endMs = startMs + durationMinutes * 60000;
-      taskData.scheduledEnd = new Date(endMs).toISOString().replace('Z', '').split('.')[0];
+      // Emit end as a LOCAL wall-clock string to match scheduledStart (and the DayTimeline /
+      // drop-to-timeline paths). Using toISOString() here made end a UTC wall-clock while start
+      // stayed local, so east-of-UTC clients sent end < start once the server parsed both in one
+      // zone — tripping the ScheduledEnd >= ScheduledStart validator with a 400.
+      taskData.scheduledEnd = format(new Date(endMs), "yyyy-MM-dd'T'HH:mm:ss");
       taskData.status = 'scheduled';
     }
 
