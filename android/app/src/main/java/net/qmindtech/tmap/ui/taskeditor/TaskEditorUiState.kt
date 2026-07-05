@@ -4,6 +4,9 @@ import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.data.recurrence.RecurrenceDraft
+import net.qmindtech.tmap.data.recurrence.RecurrenceEndType
+import net.qmindtech.tmap.data.recurrence.RecurrenceFrequency
 import net.qmindtech.tmap.data.repository.TaskDraft
 import net.qmindtech.tmap.data.repository.TaskEdit
 import java.time.Instant
@@ -30,6 +33,15 @@ data class TaskEditorUiState(
   val subtasks: List<SubtaskEntity> = emptyList(),
   val projects: List<ProjectEntity> = emptyList(),
   val saved: Boolean = false,
+  val recurrenceEnabled: Boolean = false,
+  val recurrenceFrequency: RecurrenceFrequency = RecurrenceFrequency.Daily,
+  val recurrenceInterval: Int = 1,
+  val recurrenceDaysOfWeek: List<Int> = listOf(0),
+  val recurrenceEndType: RecurrenceEndType = RecurrenceEndType.Never,
+  val recurrenceEndCount: Int = 10,
+  val recurrenceEndDate: LocalDate? = null,
+  val recurrenceRuleId: String? = null,
+  val recurrenceDetached: Boolean = false,
 )
 
 fun TaskEntity.toEditorState(
@@ -55,6 +67,8 @@ fun TaskEntity.toEditorState(
   completedAt = completedAt,
   subtasks = subtasks,
   projects = projects,
+  recurrenceRuleId = recurrenceRuleId,
+  recurrenceDetached = recurrenceDetached,
 )
 
 fun TaskEditorUiState.toDraft(): TaskDraft = TaskDraft(
@@ -70,6 +84,15 @@ fun TaskEditorUiState.toDraft(): TaskDraft = TaskDraft(
   priority = priority,
   reminderMinutes = reminderMinutes,
   dueDate = dueDate,
+)
+
+fun TaskEditorUiState.toRecurrenceDraft(): RecurrenceDraft = RecurrenceDraft(
+  frequency = recurrenceFrequency,
+  interval = recurrenceInterval,
+  daysOfWeek = recurrenceDaysOfWeek.sorted(),
+  endType = recurrenceEndType,
+  endCount = recurrenceEndCount,
+  endDate = recurrenceEndDate,
 )
 
 fun TaskEditorUiState.toEdit(): TaskEdit = TaskEdit(

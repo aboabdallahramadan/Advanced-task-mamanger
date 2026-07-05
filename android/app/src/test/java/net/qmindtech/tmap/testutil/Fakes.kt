@@ -9,8 +9,10 @@ import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
+import net.qmindtech.tmap.data.recurrence.RecurrenceDraft
 import net.qmindtech.tmap.data.repository.FocusSessionRepository
 import net.qmindtech.tmap.data.repository.ProjectRepository
+import net.qmindtech.tmap.data.repository.RecurrenceRepository
 import net.qmindtech.tmap.data.repository.SubtaskRepository
 import net.qmindtech.tmap.data.repository.TaskDraft
 import net.qmindtech.tmap.data.repository.TaskEdit
@@ -138,6 +140,22 @@ class FakeTaskRepo(
   fun emitForId(id: String, entity: TaskEntity?) {
     perIdFlows[id]?.value = entity
   }
+}
+
+class FakeRecurrenceRepo : RecurrenceRepository {
+  data class Created(val task: TaskDraft, val rule: RecurrenceDraft)
+  val created = mutableListOf<Created>()
+  val updated = mutableListOf<Pair<String, RecurrenceDraft>>()
+  val deletedAll = mutableListOf<String>()
+  val deletedFuture = mutableListOf<Pair<String, LocalDate>>()
+  var nextId = "tmpl-1"
+
+  override suspend fun createRecurring(task: TaskDraft, rule: RecurrenceDraft): String {
+    created += Created(task, rule); return nextId
+  }
+  override suspend fun updateRule(ruleId: String, rule: RecurrenceDraft) { updated += ruleId to rule }
+  override suspend fun deleteAll(ruleId: String) { deletedAll += ruleId }
+  override suspend fun deleteFuture(ruleId: String, fromDate: LocalDate) { deletedFuture += ruleId to fromDate }
 }
 
 class FakeProjectRepo(

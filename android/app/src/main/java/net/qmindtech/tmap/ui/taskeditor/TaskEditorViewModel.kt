@@ -13,7 +13,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
+import net.qmindtech.tmap.data.recurrence.RecurrenceEndType
+import net.qmindtech.tmap.data.recurrence.RecurrenceFrequency
 import net.qmindtech.tmap.data.repository.ProjectRepository
+import net.qmindtech.tmap.data.repository.RecurrenceRepository
 import net.qmindtech.tmap.data.repository.SubtaskRepository
 import net.qmindtech.tmap.data.repository.TaskRepository
 import net.qmindtech.tmap.util.Clock
@@ -29,6 +32,7 @@ class TaskEditorViewModel @Inject constructor(
   private val taskRepo: TaskRepository,
   private val subtaskRepo: SubtaskRepository,
   private val projectRepo: ProjectRepository,
+  private val recurrenceRepo: RecurrenceRepository,
   private val clock: Clock,
   savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -120,6 +124,34 @@ class TaskEditorViewModel @Inject constructor(
 
   fun onDueDateChange(date: LocalDate?) = _state.update { it.copy(dueDate = date) }
 
+  fun onRecurrenceToggle(on: Boolean) = _state.update { it.copy(recurrenceEnabled = on) }
+
+  fun onFrequencyChange(f: RecurrenceFrequency) = _state.update {
+    // Seed weekly with today's weekday if empty (getDayOfWeek: Mon=1..Sun=7 -> Sun=0..Sat=6).
+    val seededDays = if (f == RecurrenceFrequency.Weekly && it.recurrenceDaysOfWeek.isEmpty()) {
+      listOf(clock.today().dayOfWeek.value % 7)
+    } else {
+      it.recurrenceDaysOfWeek
+    }
+    it.copy(recurrenceFrequency = f, recurrenceDaysOfWeek = seededDays)
+  }
+
+  fun onIntervalChange(n: Int) = _state.update { it.copy(recurrenceInterval = n.coerceIn(1, 52)) }
+
+  fun onDaysOfWeekToggle(day: Int) = _state.update {
+    val cur = it.recurrenceDaysOfWeek
+    val next = when {
+      cur.contains(day) && cur.size > 1 -> cur - day
+      cur.contains(day) -> cur                 // refuse removing the last day
+      else -> (cur + day).sorted()
+    }
+    it.copy(recurrenceDaysOfWeek = next)
+  }
+
+  fun onEndTypeChange(t: RecurrenceEndType) = _state.update { it.copy(recurrenceEndType = t) }
+  fun onEndCountChange(n: Int) = _state.update { it.copy(recurrenceEndCount = n.coerceIn(1, 365)) }
+  fun onEndDateChange(d: LocalDate?) = _state.update { it.copy(recurrenceEndDate = d) }
+
   /**
    * Exposed so composables can obtain the user's timezone for building Instants from LocalTime
    * without depending on [Clock] directly.
@@ -159,7 +191,13 @@ class TaskEditorViewModel @Inject constructor(
     if (s.title.isBlank()) return
     val id = taskId   // capture before coroutine; taskId is a var and can't be smart-cast inside lambda
     viewModelScope.launch {
-      if (id == null) taskRepo.create(s.toDraft()) else taskRepo.update(id, s.toEdit())
+      if (id == null && s.recurrenceEnabled) {
+        recurrenceRepo.createRecurring(s.toDraft(), s.toRecurrenceDraft())
+      } else if (id == null) {
+        taskRepo.create(s.toDraft())
+      } else {
+        taskRepo.update(id, s.toEdit())
+      }
       _state.update { it.copy(saved = true) }
       onDone()
     }
