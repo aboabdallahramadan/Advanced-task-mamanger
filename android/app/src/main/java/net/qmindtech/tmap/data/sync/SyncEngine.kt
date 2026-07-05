@@ -2,6 +2,8 @@ package net.qmindtech.tmap.data.sync
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import net.qmindtech.tmap.data.remote.TmapApiService
+import net.qmindtech.tmap.util.Clock
 import javax.inject.Inject
 
 /**
@@ -18,6 +20,8 @@ open class SyncEngine @Inject constructor(
     private val pull: PullRunner,
     private val statusHolder: SyncStatusHolder,
     private val isOnline: () -> Boolean,
+    private val api: TmapApiService,
+    private val clock: Clock,
 ) {
     private val mutex = Mutex()
 
@@ -37,6 +41,13 @@ open class SyncEngine @Inject constructor(
                     parked = pushOutcome.parked,
                 )
             }
+            // Materialize recurring instances for [today, today+14] server-side before pulling, so the
+            // new task rows stream down in this same cycle (desktop store.ts:489-493). Best-effort.
+            runCatching {
+                val today = clock.today()
+                api.ensureInstances(today.toString(), today.plusDays(14).toString())
+            }
+
             val pullOutcome = pull.pullAll()
             val result = SyncResult(
                 pushed = pushOutcome.pushed,

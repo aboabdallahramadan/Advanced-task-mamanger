@@ -95,6 +95,16 @@ fun throwingPush(): PushRunner {
     )
 }
 
+/** A throwaway TmapApiService pointed at nothing — only used to satisfy SyncEngine's ctor in test doubles
+ *  that override syncNow() entirely (so the api is never actually invoked). */
+fun throwingApi(): net.qmindtech.tmap.data.remote.TmapApiService {
+    val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; explicitNulls = false }
+    val retrofit = retrofit2.Retrofit.Builder().baseUrl("http://localhost/")
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+    return retrofit.create(net.qmindtech.tmap.data.remote.TmapApiService::class.java)
+}
+
 fun throwingPull(): PullRunner {
     val db = throwingEnvDb()
     val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; explicitNulls = false }

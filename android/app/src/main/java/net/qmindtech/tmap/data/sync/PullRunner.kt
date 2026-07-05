@@ -19,6 +19,7 @@ import net.qmindtech.tmap.data.remote.dto.FocusSessionSyncRow
 import net.qmindtech.tmap.data.remote.dto.NoteGroupSyncRow
 import net.qmindtech.tmap.data.remote.dto.NoteSyncRow
 import net.qmindtech.tmap.data.remote.dto.ProjectSyncRow
+import net.qmindtech.tmap.data.remote.dto.RecurrenceRuleSyncRow
 import net.qmindtech.tmap.data.remote.dto.SettingSyncRow
 import net.qmindtech.tmap.data.remote.dto.SubtaskSyncRow
 import net.qmindtech.tmap.data.remote.dto.SyncChanges
@@ -94,6 +95,7 @@ class PullRunner(
                     db.withTransaction {
                         taskDao.clear(); subtaskDao.clear(); projectDao.clear(); settingsDao.clear()
                         noteDao.clear(); noteGroupDao.clear(); focusSessionDao.clear(); dailyPlanDao.clear()
+                        db.recurrenceRuleDao().clear()
                         syncStateDao.upsert(state.copy(lastSeq = 0L, initialSyncComplete = false))
                     }
                     fullResynced = true
@@ -249,6 +251,13 @@ class PullRunner(
                 if (shadow.contains(row.date)) continue
                 if (row.deletedAt != null) dailyPlanDao.deleteByDate(java.time.LocalDate.parse(row.date))
                 else dailyPlanDao.upsertAll(listOf(row.toEntity()))
+                applied = true
+            }
+            // Recurrence-rules (id-keyed upsert/tombstone) -> local recurrence_rules table.
+            for (row: RecurrenceRuleSyncRow in changes.recurrenceRules) {
+                if (shadow.contains(row.id)) continue
+                if (row.deletedAt != null) db.recurrenceRuleDao().deleteById(row.id)
+                else db.recurrenceRuleDao().upsertAll(listOf(row.toEntity()))
                 applied = true
             }
         }

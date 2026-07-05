@@ -59,6 +59,8 @@ class RecordingSyncEngine(private val canned: SyncResult) :
         pull = throwingPull(),
         statusHolder = SyncStatusHolder(),
         isOnline = { true },
+        api = throwingApi(),
+        clock = FixedClock(),
     ) {
     var calls = 0
     override suspend fun syncNow(reason: String): SyncResult { calls++; return canned }
@@ -70,6 +72,8 @@ class ThrowingSyncEngine :
         pull = throwingPull(),
         statusHolder = SyncStatusHolder(),
         isOnline = { true },
+        api = throwingApi(),
+        clock = FixedClock(),
     ) {
     override suspend fun syncNow(reason: String): SyncResult = throw RuntimeException("network down")
 }

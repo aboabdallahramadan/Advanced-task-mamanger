@@ -51,7 +51,7 @@ class SyncEngineTest {
 
     @Test
     fun `offline — syncNow sets Offline and does not hit the wire`() = runTest {
-        val engine = SyncEngine(push, pull, holder, isOnline = { false })
+        val engine = SyncEngine(push, pull, holder, isOnline = { false }, api = env.api, clock = clock)
         val result = engine.syncNow("test")
         assertEquals(SyncResult(), result)
         assertEquals(SyncStatus.Offline, holder.status.value)
@@ -59,14 +59,28 @@ class SyncEngineTest {
     }
 
     @Test
+    fun `syncNow materializes recurrence instances before pulling`() = runTest {
+        env.server.enqueue(env.jsonResponse(200, "[]")) // ensure-instances
+        env.server.enqueue(env.jsonResponse(200, """{"changes":{},"nextSince":0,"hasMore":false}""")) // /sync
+
+        val engine = SyncEngine(push, pull, holder, isOnline = { true }, api = env.api, clock = clock)
+        engine.syncNow("test")
+
+        val first = env.server.takeRequest()
+        assertEquals("POST", first.method)
+        assertTrue(first.path!!, first.path!!.contains("/api/v1/recurrence/ensure-instances"))
+    }
+
+    @Test
     fun `online — syncNow pushes then pulls, ends Idle, summarizes the cycle`() = runTest {
-        // One queued create to push, then a pull page with one row.
+        // One queued create to push, then ensure-instances, then a pull page with one row.
         env.server.enqueue(env.jsonResponse(201, taskRow("c1", 1)))
+        env.server.enqueue(env.jsonResponse(200, "[]")) // ensure-instances
         env.server.enqueue(env.jsonResponse(200, """{"changes":{"tasks":[${taskRow("p1", 100)}]},"nextSince":100,"hasMore":false}"""))
         outbox.enqueueRaw(EntityType.TASK, "c1", OpType.CREATE,
             env.json.encodeToString(CreateTaskRequest.serializer(), CreateTaskRequest(id = "c1", title = "c")))
 
-        val engine = SyncEngine(push, pull, holder, isOnline = { true })
+        val engine = SyncEngine(push, pull, holder, isOnline = { true }, api = env.api, clock = clock)
 
         // Concrete cycle summary: one create pushed, one pull page applied (pages=1 -> pulled=1).
         val result = engine.syncNow("test")
@@ -81,8 +95,9 @@ class SyncEngineTest {
             assertEquals(SyncStatus.Idle, expectMostRecentItem())
         }
         assertEquals(SyncStatus.Idle, holder.status.value)
-        // POST then GET sync hit the wire in order.
+        // POST tasks, then POST ensure-instances, then GET sync hit the wire in order.
         assertEquals("/api/v1/tasks", env.server.takeRequest().path)
+        assertTrue(env.server.takeRequest().path!!.contains("/api/v1/recurrence/ensure-instances"))
         assertTrue(env.server.takeRequest().path!!.startsWith("/api/v1/sync"))
     }
 
@@ -93,7 +108,7 @@ class SyncEngineTest {
         outbox.enqueueRaw(EntityType.TASK, "c1", OpType.CREATE,
             env.json.encodeToString(CreateTaskRequest.serializer(), CreateTaskRequest(id = "c1", title = "c")))
 
-        val engine = SyncEngine(push, pull, holder, isOnline = { true })
+        val engine = SyncEngine(push, pull, holder, isOnline = { true }, api = env.api, clock = clock)
         val result = engine.syncNow("test")
 
         assertEquals(SyncStatus.Offline, holder.status.value) // network abort surfaces as Offline (not a hard Error)
@@ -114,7 +129,7 @@ class SyncEngineTest {
         outbox.enqueueRaw(EntityType.TASK, "bad", OpType.CREATE,
             env.json.encodeToString(CreateTaskRequest.serializer(), CreateTaskRequest(id = "bad", title = "x")))
 
-        val engine = SyncEngine(push, pull, holder, isOnline = { true })
+        val engine = SyncEngine(push, pull, holder, isOnline = { true }, api = env.api, clock = clock)
         val result = engine.syncNow("test")
 
         assertEquals(1, result.rejected)
@@ -138,7 +153,7 @@ class SyncEngineTest {
             env.db.noteDao(), env.db.noteGroupDao(), env.db.focusSessionDao(), env.db.dailyPlanDao(),
             env.db.syncStateDao(), env.json, { },
         )
-        val engine = SyncEngine(pushWithBackoff, pull, holder, isOnline = { true })
+        val engine = SyncEngine(pushWithBackoff, pull, holder, isOnline = { true }, api = env.api, clock = clock)
 
         // Three cycles park the poison op (attempts 4 -> 8 -> 10, matches PushRunner5xxParkTest cadence).
         engine.syncNow("c1")
@@ -155,10 +170,19 @@ class SyncEngineTest {
 
     @Test
     fun `single-flight — concurrent syncNow calls serialize and never overlap`() = runTest {
-        // Two queued creates + two pull pages so both cycles do real (sequential) work.
+        // Two queued creates + two pull pages so both cycles do real (sequential) work. Cycle A's
+        // drain() loop peeks op "b" too (still queued) before cycle A ever yields the mutex; that
+        // second push attempt lands on the response meant for the FIRST pull page (not a valid
+        // TaskResponse), which PushRunner treats as a network abort — so cycle A bails out (via
+        // SyncEngine's networkAborted early-return, BEFORE reaching the new ensure-instances hook)
+        // without ever pulling, leaving op "b" queued for cycle B. Cycle B then pushes "b", fires
+        // ensure-instances once, and pulls once. This ordering (and the "extra" response burned by
+        // cycle A's failed second push attempt) already existed pre-task-7; only the single
+        // ensure-instances response for cycle B is new.
         env.server.enqueue(env.jsonResponse(201, taskRow("a", 1)))
         env.server.enqueue(env.jsonResponse(200, """{"changes":{},"nextSince":1,"hasMore":false}"""))
         env.server.enqueue(env.jsonResponse(201, taskRow("b", 2)))
+        env.server.enqueue(env.jsonResponse(200, "[]")) // ensure-instances (cycle b only)
         env.server.enqueue(env.jsonResponse(200, """{"changes":{},"nextSince":2,"hasMore":false}"""))
         outbox.enqueueRaw(EntityType.TASK, "a", OpType.CREATE,
             env.json.encodeToString(CreateTaskRequest.serializer(), CreateTaskRequest(id = "a", title = "a")))
@@ -169,12 +193,17 @@ class SyncEngineTest {
         // the two launched coroutines run strictly one-after-another, so the flag never trips.
         var inFlight = 0
         var overlapDetected = false
-        val engine = SyncEngine(push, pull, holder, isOnline = {
-            inFlight++
-            if (inFlight > 1) overlapDetected = true
-            inFlight--
-            true
-        })
+        val engine = SyncEngine(
+            push, pull, holder,
+            isOnline = {
+                inFlight++
+                if (inFlight > 1) overlapDetected = true
+                inFlight--
+                true
+            },
+            api = env.api,
+            clock = clock,
+        )
 
         val first = async { engine.syncNow("a") }
         val second = async { engine.syncNow("b") }
