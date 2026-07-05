@@ -20,12 +20,16 @@ import net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
+import net.qmindtech.tmap.data.remote.dto.CreateRecurringTaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
+import net.qmindtech.tmap.data.remote.dto.DeleteSeriesFutureRequest
+import net.qmindtech.tmap.data.remote.dto.RecurrenceDeletePayload
 import net.qmindtech.tmap.data.remote.dto.ReorderItem
 import net.qmindtech.tmap.data.remote.dto.UpdateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
+import net.qmindtech.tmap.data.remote.dto.UpdateRuleRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpsertDailyPlanRequest
@@ -185,6 +189,9 @@ class PushRunner(
             EntityType.NOTE_GROUP -> noteGroupDao.deleteById(id)
             EntityType.FOCUS_SESSION -> focusSessionDao.deleteById(id)
             EntityType.DAILY_PLAN -> dailyPlanDao.deleteByDate(java.time.LocalDate.parse(id))
+            // A dropped recurrence CREATE arms a from-0 recovery pull (full resync) which wipes the
+            // orphaned optimistic rule + template; no targeted local delete needed here.
+            EntityType.RECURRENCE -> Unit
         }
     }
 
@@ -245,6 +252,30 @@ class PushRunner(
                 else -> error("daily-plan is upserted as OpType.UPDATE keyed by date")
             }
             EntityType.SETTINGS -> error("settings are pushed via SettingsRepository.saveSettings, not the outbox replay")
+            EntityType.RECURRENCE -> when (op.opType) {
+                OpType.CREATE -> api.createRecurrence(
+                    json.decodeFromString(CreateRecurringTaskRequest.serializer(), op.payloadJson),
+                )
+                OpType.UPDATE -> requireOk(
+                    api.updateRecurrenceRule(
+                        op.entityId,
+                        json.decodeFromString(UpdateRuleRequest.serializer(), op.payloadJson),
+                    ).code(),
+                    op,
+                )
+                OpType.DELETE -> {
+                    val p = json.decodeFromString(RecurrenceDeletePayload.serializer(), op.payloadJson)
+                    if (p.scope == "future") {
+                        requireOk(
+                            api.deleteRecurrenceFuture(op.entityId, DeleteSeriesFutureRequest(p.fromDate!!)).code(),
+                            op,
+                        )
+                    } else {
+                        requireOk(api.deleteRecurrenceRule(op.entityId).code(), op)
+                    }
+                }
+                OpType.REORDER -> error("recurrence has no reorder")
+            }
         }
     }
 
@@ -328,6 +359,9 @@ class PushRunner(
             }
             EntityType.FOCUS_SESSION -> Unit  // append-only, never CREATEs a 409-conflicting id worth remapping
             EntityType.DAILY_PLAN -> Unit     // date-keyed; no id remap/adopt (spec §7.6)
+            // Recurrence ids are client-minted and accepted verbatim by POST /recurrence, so a
+            // create is never id-adopted (mirrors FOCUS_SESSION/DAILY_PLAN).
+            EntityType.RECURRENCE -> Unit
         }
         outbox.remapEntityId(ghostId, existingId)
         outbox.delete(createOp.localSeq)
