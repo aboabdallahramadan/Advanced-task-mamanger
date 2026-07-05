@@ -150,8 +150,8 @@ data class RecurrenceRuleSyncRow(
     val endCount: Int? = null,
     val endDate: String? = null,
     val generatedUntil: String? = null,
-    val createdAt: String = "",
-    val updatedAt: String = "",
+    val createdAt: String,
+    val updatedAt: String,
     val changeSeq: Long,
     val deletedAt: String? = null,
 )

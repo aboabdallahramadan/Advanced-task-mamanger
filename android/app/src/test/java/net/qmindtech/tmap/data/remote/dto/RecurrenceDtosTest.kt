@@ -27,6 +27,7 @@ class RecurrenceDtosTest {
         assertTrue(s, s.contains("\"frequency\":\"Weekly\""))
         assertTrue(s, s.contains("\"daysOfWeek\":[1,3,5]"))
         assertTrue(s, s.contains("\"source\":\"android\""))
+        assertTrue(s, s.contains("\"endType\":\"Never\""))
     }
 
     @Test
@@ -41,6 +42,25 @@ class RecurrenceDtosTest {
         assertEquals("Daily", row.frequency)
         assertEquals(5, row.endCount)
         assertEquals(42L, row.changeSeq)
+        assertEquals(emptyList<Int>(), row.daysOfWeek)
+    }
+
+    @Test
+    fun `tombstone-only payload decodes with defaults for omitted fields`() {
+        // id, changeSeq, createdAt, updatedAt are the only unconditionally-required fields
+        // (the backend always sends timestamps, even on tombstone rows); every other field
+        // is omitted here and must fall back to its default.
+        val payload = """
+          {"id":"r9","changeSeq":3,
+           "createdAt":"2026-07-05T10:00:00+00:00","updatedAt":"2026-07-05T10:00:00+00:00",
+           "deletedAt":"2026-07-05T11:00:00+00:00"}
+        """.trimIndent()
+        val row = json.decodeFromString(RecurrenceRuleSyncRow.serializer(), payload)
+        assertEquals("r9", row.id)
+        assertEquals(3L, row.changeSeq)
+        assertTrue(row.deletedAt != null)
+        assertEquals("2026-07-05T11:00:00+00:00", row.deletedAt)
+        assertEquals("Daily", row.frequency)
         assertEquals(emptyList<Int>(), row.daysOfWeek)
     }
 

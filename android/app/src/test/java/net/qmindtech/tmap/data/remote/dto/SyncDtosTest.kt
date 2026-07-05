@@ -27,7 +27,8 @@ class SyncDtosTest {
               "notes":[{"id":"n1","groupId":null,"projectId":null,"title":"t","content":"c",
                 "rank":null,"createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z",
                 "changeSeq":1}],
-              "recurrenceRules":[{"id":"r1","changeSeq":2}]},
+              "recurrenceRules":[{"id":"r1","changeSeq":2,
+                "createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z"}]},
              "nextSince":7,"hasMore":true}
         """.trimIndent()
         val r = json.decodeFromString<SyncResponse>(wire)
@@ -83,7 +84,8 @@ class SyncDtosTest {
                 "changeSeq":6,"deletedAt":null}],
               "dailyPlans":[{"date":"2026-06-18","committedAt":"2026-06-18T07:00:00Z",
                 "plannedTaskIds":["t1","t2"],"plannedMinutes":120,"changeSeq":8,"deletedAt":null}],
-              "recurrenceRules":[{"id":"r1","changeSeq":3}]
+              "recurrenceRules":[{"id":"r1","changeSeq":3,
+                "createdAt":"2026-06-18T08:00:00Z","updatedAt":"2026-06-18T08:00:00Z"}]
             },"nextSince":9,"hasMore":false}
         """.trimIndent()
         val r = json.decodeFromString<SyncResponse>(wire)
