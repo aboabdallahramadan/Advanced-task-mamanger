@@ -246,6 +246,23 @@ class TaskEditorViewModel @Inject constructor(
     viewModelScope.launch { taskRepo.delete(id); onDone() }
   }
 
+  /** Delete-scope: only this occurrence's row — same as [delete]. */
+  fun deleteThisOccurrence(onDone: () -> Unit) = delete(onDone)
+
+  /** Delete-scope: this occurrence and every future one in the series. */
+  fun deleteThisAndFuture(onDone: () -> Unit) {
+    val s = _state.value
+    val ruleId = s.recurrenceRuleId ?: return
+    val from = s.plannedDate ?: clock.today()
+    viewModelScope.launch { recurrenceRepo.deleteFuture(ruleId, from); onDone() }
+  }
+
+  /** Delete-scope: the entire recurring series, past and future. */
+  fun deleteAllOccurrences(onDone: () -> Unit) {
+    val ruleId = _state.value.recurrenceRuleId ?: return
+    viewModelScope.launch { recurrenceRepo.deleteAll(ruleId); onDone() }
+  }
+
   fun addSubtask(title: String) {
     val id = taskId ?: return
     val t = title.trim()

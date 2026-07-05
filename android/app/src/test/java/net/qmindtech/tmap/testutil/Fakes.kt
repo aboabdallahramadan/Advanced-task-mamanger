@@ -42,6 +42,7 @@ fun fakeTask(
   rank: String? = null,
   dueDate: LocalDate? = null,
   recurrenceRuleId: String? = null,
+  recurrenceOriginalDate: LocalDate? = null,
   completedAt: Instant? = null,
   createdAt: Instant = EPOCH,
   updatedAt: Instant = EPOCH,
@@ -52,7 +53,7 @@ fun fakeTask(
   scheduledEnd = scheduledEnd, durationMinutes = durationMinutes, actualTimeMinutes = actualTimeMinutes,
   priority = priority, reminderMinutes = reminderMinutes, rank = rank, dueDate = dueDate,
   recurrenceRuleId = recurrenceRuleId, isRecurrenceTemplate = false, recurrenceDetached = false,
-  recurrenceOriginalDate = null, completedAt = completedAt, createdAt = createdAt,
+  recurrenceOriginalDate = recurrenceOriginalDate, completedAt = completedAt, createdAt = createdAt,
   updatedAt = updatedAt, changeSeq = changeSeq,
 )
 

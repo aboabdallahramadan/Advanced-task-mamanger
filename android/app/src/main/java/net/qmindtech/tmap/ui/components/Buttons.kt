@@ -64,6 +64,8 @@ fun PrimaryButton(
  * Secondary/ghost button with a [TmapColorScheme.surfaceRaised] fill and [TmapColorScheme.borderStrong] outline.
  *
  * Text: [TmapColorScheme.textPrimary] when enabled, [TmapColorScheme.textTertiary] when disabled.
+ * When [danger] is set, both the border and the label switch to [TmapColorScheme.danger] — the
+ * same tint used by the destructive delete icon elsewhere in the editor.
  * Corner radius: [TmapShapes.button] (13 dp).
  */
 @Composable
@@ -72,15 +74,22 @@ fun SecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    danger: Boolean = false,
 ) {
     val colors = LocalTmapColors.current
     val shapes = LocalTmapShapes.current
     val type = LocalTmapType.current
     val shape = RoundedCornerShape(shapes.button)
+    val contentColor = when {
+        !enabled -> colors.textTertiary
+        danger -> colors.danger
+        else -> colors.textPrimary
+    }
+    val borderColor = if (danger && enabled) colors.danger else colors.borderStrong
     Box(
         modifier = modifier
             .background(colors.surfaceRaised, shape)
-            .border(1.dp, colors.borderStrong, shape)
+            .border(1.dp, borderColor, shape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 20.dp, vertical = 13.dp),
         contentAlignment = Alignment.Center,
@@ -88,7 +97,7 @@ fun SecondaryButton(
         Text(
             text = text,
             style = type.body,
-            color = if (enabled) colors.textPrimary else colors.textTertiary,
+            color = contentColor,
         )
     }
 }

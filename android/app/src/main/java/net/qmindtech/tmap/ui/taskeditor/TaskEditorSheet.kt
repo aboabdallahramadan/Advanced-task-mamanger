@@ -93,6 +93,7 @@ fun TaskEditorSheet(
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
     var showRecurrenceEndDatePicker by remember { mutableStateOf(false) }
+    var showDeleteScope by remember { mutableStateOf(false) }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.accent,
@@ -685,9 +686,13 @@ fun TaskEditorSheet(
                             .weight(1f)
                             .semantics { contentDescription = "Mark task complete" },
                     )
-                    // Delete
+                    // Delete — a recurring occurrence prompts for scope first; a plain task
+                    // deletes immediately (unchanged behavior).
                     IconButton(
-                        onClick = { viewModel.delete(onDismiss) },
+                        onClick = {
+                            if (state.recurrenceRuleId != null) showDeleteScope = true
+                            else viewModel.delete(onDismiss)
+                        },
                         modifier = Modifier.semantics { contentDescription = "Delete task" },
                     ) {
                         Icon(
@@ -709,6 +714,46 @@ fun TaskEditorSheet(
             )
 
             Spacer(modifier = Modifier.height(spacing.base))
+        }
+    }
+
+    // ── Delete-series scope sheet ────────────────────────────────────────────
+    // Only reachable when the task belongs to a recurring series (recurrenceRuleId != null).
+    if (showDeleteScope) {
+        SheetScaffold(
+            onDismiss = { showDeleteScope = false },
+            title = "Delete recurring task",
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                SecondaryButton(
+                    text = "This occurrence",
+                    onClick = {
+                        showDeleteScope = false
+                        viewModel.deleteThisOccurrence(onDismiss)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SecondaryButton(
+                    text = "This and future occurrences",
+                    onClick = {
+                        showDeleteScope = false
+                        viewModel.deleteThisAndFuture(onDismiss)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                SecondaryButton(
+                    text = "All occurrences",
+                    danger = true,
+                    onClick = {
+                        showDeleteScope = false
+                        viewModel.deleteAllOccurrences(onDismiss)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 }

@@ -180,6 +180,23 @@ class TaskEditorViewModelTest {
     assertTrue(done)
   }
 
+  @Test fun `delete scopes route to the right calls`() = runTest(testDispatcher) {
+    val rec = FakeRecurrenceRepo()
+    val repo = FakeTaskRepo()
+    val date = LocalDate.parse("2026-07-10")
+    repo.setSingle(fakeTask(id = "t1", recurrenceRuleId = "r1", plannedDate = date, recurrenceOriginalDate = date))
+    val vm = editVm(repo, recurrenceRepo = rec)
+
+    vm.deleteThisAndFuture {}
+    assertEquals("r1" to date, rec.deletedFuture.single())
+
+    vm.deleteAllOccurrences {}
+    assertEquals("r1", rec.deletedAll.single())
+
+    vm.deleteThisOccurrence {}
+    assertEquals(listOf("t1"), repo.deleted)
+  }
+
   @Test fun addSubtask_only_when_persisted_task() = runTest(testDispatcher) {
     val repo = FakeTaskRepo()
     val subs = FakeSubtaskRepo()
