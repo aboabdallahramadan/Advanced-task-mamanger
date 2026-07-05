@@ -69,4 +69,12 @@ class ConvertersTest {
         assertEquals(ids, c.toStringList(c.fromStringList(ids)))
         assertEquals(emptyList<String>(), c.toStringList(c.fromStringList(emptyList())))
     }
+
+    @Test
+    fun `intList round-trips including empty`() {
+        assertEquals("[1,3,5]", c.fromIntList(listOf(1, 3, 5)))
+        assertEquals(listOf(1, 3, 5), c.toIntList("[1,3,5]"))
+        assertEquals("[]", c.fromIntList(emptyList()))
+        assertEquals(emptyList<Int>(), c.toIntList("[]"))
+    }
 }

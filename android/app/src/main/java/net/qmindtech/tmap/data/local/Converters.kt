@@ -35,6 +35,14 @@ class Converters {
     @TypeConverter
     fun toStringList(value: String): List<String> = json.decodeFromString(stringListSerializer, value)
 
+    private val intListSerializer = ListSerializer(Int.serializer())
+
+    @TypeConverter
+    fun fromIntList(value: List<Int>): String = json.encodeToString(intListSerializer, value)
+
+    @TypeConverter
+    fun toIntList(value: String): List<Int> = json.decodeFromString(intListSerializer, value)
+
     // TaskStatus <-> canonical PascalCase name (read path is case-insensitive, defaults to Inbox)
     @TypeConverter
     fun fromTaskStatus(value: TaskStatus): String = value.name
