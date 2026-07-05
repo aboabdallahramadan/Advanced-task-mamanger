@@ -37,6 +37,8 @@ import net.qmindtech.tmap.data.repository.NoteRepository
 import net.qmindtech.tmap.data.repository.NoteRepositoryImpl
 import net.qmindtech.tmap.data.repository.ProjectRepository
 import net.qmindtech.tmap.data.repository.ProjectRepositoryImpl
+import net.qmindtech.tmap.data.repository.RecurrenceRepository
+import net.qmindtech.tmap.data.repository.RecurrenceRepositoryImpl
 import net.qmindtech.tmap.data.repository.SettingsRepository
 import net.qmindtech.tmap.data.repository.SettingsRepositoryImpl
 import net.qmindtech.tmap.data.repository.SubtaskRepository
@@ -89,6 +91,9 @@ abstract class AppModule {
 
     @Binds @Singleton
     abstract fun bindDailyPlanRepository(impl: DailyPlanRepositoryImpl): DailyPlanRepository
+
+    @Binds @Singleton
+    abstract fun bindRecurrenceRepository(impl: RecurrenceRepositoryImpl): RecurrenceRepository
 
     @Binds @Singleton
     abstract fun bindSettingsRepository(impl: SettingsRepositoryImpl): SettingsRepository

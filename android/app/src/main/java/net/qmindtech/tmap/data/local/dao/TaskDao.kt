@@ -43,6 +43,14 @@ interface TaskDao {
     @Query("DELETE FROM tasks WHERE id = :id")
     suspend fun deleteById(id: String)
 
+    @Query("DELETE FROM tasks WHERE recurrenceRuleId = :ruleId")
+    suspend fun deleteByRecurrenceRule(ruleId: String)
+
+    @Query(
+        "DELETE FROM tasks WHERE recurrenceRuleId = :ruleId AND isRecurrenceTemplate = 0 AND plannedDate >= :fromDateIso",
+    )
+    suspend fun deleteFutureInstances(ruleId: String, fromDateIso: String)
+
     @Query("DELETE FROM tasks")
     suspend fun clear()
 }
