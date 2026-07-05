@@ -14,6 +14,7 @@ import net.qmindtech.tmap.data.local.dao.NoteDao
 import net.qmindtech.tmap.data.local.dao.NoteGroupDao
 import net.qmindtech.tmap.data.local.dao.OutboxDao
 import net.qmindtech.tmap.data.local.dao.ProjectDao
+import net.qmindtech.tmap.data.local.dao.RecurrenceRuleDao
 import net.qmindtech.tmap.data.local.dao.SettingsDao
 import net.qmindtech.tmap.data.local.dao.SubtaskDao
 import net.qmindtech.tmap.data.local.dao.SyncStateDao
@@ -60,4 +61,7 @@ object DatabaseModule {
 
     @Provides
     fun provideDailyPlanDao(db: AppDatabase): DailyPlanDao = db.dailyPlanDao()
+
+    @Provides
+    fun provideRecurrenceRuleDao(db: AppDatabase): RecurrenceRuleDao = db.recurrenceRuleDao()
 }
