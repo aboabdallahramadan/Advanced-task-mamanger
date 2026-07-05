@@ -5,9 +5,11 @@ import net.qmindtech.tmap.data.remote.dto.CreateFocusSessionRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.CreateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.CreateProjectRequest
+import net.qmindtech.tmap.data.remote.dto.CreateRecurringTaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.CreateTaskRequest
 import net.qmindtech.tmap.data.remote.dto.DailyPlanResponse
+import net.qmindtech.tmap.data.remote.dto.DeleteSeriesFutureRequest
 import net.qmindtech.tmap.data.remote.dto.FocusSessionResponse
 import net.qmindtech.tmap.data.remote.dto.LoginRequest
 import net.qmindtech.tmap.data.remote.dto.LogoutRequest
@@ -25,6 +27,7 @@ import net.qmindtech.tmap.data.remote.dto.TaskResponse
 import net.qmindtech.tmap.data.remote.dto.UpdateNoteGroupRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateNoteRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateProjectRequest
+import net.qmindtech.tmap.data.remote.dto.UpdateRuleRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateSubtaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpdateTaskRequest
 import net.qmindtech.tmap.data.remote.dto.UpsertDailyPlanRequest
@@ -71,6 +74,25 @@ interface TmapApiService {
 
     @DELETE("api/v1/subtasks/{id}")
     suspend fun deleteSubtask(@Path("id") id: String): Response<Unit>
+
+    // ── Recurrence ─────────────────────────────────────────
+    @POST("api/v1/recurrence")
+    suspend fun createRecurrence(@Body b: CreateRecurringTaskRequest): List<TaskResponse>
+
+    @PATCH("api/v1/recurrence/rules/{id}")
+    suspend fun updateRecurrenceRule(@Path("id") id: String, @Body b: UpdateRuleRequest): Response<Unit>
+
+    @DELETE("api/v1/recurrence/rules/{id}")
+    suspend fun deleteRecurrenceRule(@Path("id") id: String): Response<Unit>
+
+    @POST("api/v1/recurrence/rules/{id}/delete-future")
+    suspend fun deleteRecurrenceFuture(@Path("id") id: String, @Body b: DeleteSeriesFutureRequest): Response<Unit>
+
+    @POST("api/v1/recurrence/ensure-instances")
+    suspend fun ensureInstances(
+        @Query("start") start: String,   // yyyy-MM-dd
+        @Query("end") end: String,       // yyyy-MM-dd
+    ): List<TaskResponse>
 
     @GET("api/v1/projects")
     suspend fun getProjects(): List<ProjectResponse>
