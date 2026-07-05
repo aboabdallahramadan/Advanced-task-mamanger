@@ -189,8 +189,11 @@ class PushRunner(
             EntityType.NOTE_GROUP -> noteGroupDao.deleteById(id)
             EntityType.FOCUS_SESSION -> focusSessionDao.deleteById(id)
             EntityType.DAILY_PLAN -> dailyPlanDao.deleteByDate(java.time.LocalDate.parse(id))
-            // A dropped recurrence CREATE arms a from-0 recovery pull (full resync) which wipes the
-            // orphaned optimistic rule + template; no targeted local delete needed here.
+            // No-op: on a dropped recurrence CREATE the local optimistic rule row + template task
+            // are orphaned (server rejected them). They are harmless — the template is filtered
+            // from all lists and the rule is never rendered — and a targeted cleanup would require
+            // the template id (not carried on this op) plus a recurrenceRuleDao here. Known
+            // low-severity leak; left for a follow-up.
             EntityType.RECURRENCE -> Unit
         }
     }

@@ -58,7 +58,25 @@ class PushRunnerRecurrenceTest {
         val outcome = runner.drain()
 
         assertEquals(1, outcome.pushed)
-        assertTrue(env.server.takeRequest().path!!.endsWith("/api/v1/recurrence/rules/r1"))
+        val req = env.server.takeRequest()
+        // The path is shared with the PATCH updateRule endpoint, so the method must be pinned.
+        assertEquals("DELETE", req.method)
+        assertTrue(req.path!!.endsWith("/api/v1/recurrence/rules/r1"))
+    }
+
+    @Test
+    fun `recurrence update-rule sends PATCH to rules path`() = runTest {
+        val body = """{"frequency":"Weekly","interval":2,"daysOfWeek":[1,3],
+            "endType":"Never","endCount":null,"endDate":null}""".trimIndent()
+        outbox.enqueueRaw(EntityType.RECURRENCE, "r1", OpType.UPDATE, body)
+        env.server.enqueue(env.jsonResponse(200, ""))
+
+        val outcome = runner.drain()
+
+        assertEquals(1, outcome.pushed)
+        val req = env.server.takeRequest()
+        assertEquals("PATCH", req.method)
+        assertTrue(req.path!!, req.path!!.endsWith("/api/v1/recurrence/rules/r1"))
     }
 
     @Test

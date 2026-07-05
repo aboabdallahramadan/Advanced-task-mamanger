@@ -502,16 +502,23 @@ fun TaskEditorSheet(
             // section stays hidden for a plain existing task.
             if (!state.isEdit || state.recurrenceRuleId != null) {
                 SectionLabel(text = "Repeat", colors = colors, type = type)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
-                    verticalArrangement = Arrangement.spacedBy(spacing.base),
-                ) {
-                    FilterChip(
-                        label = if (state.recurrenceEnabled) "Recurring" else "No repeat",
-                        selected = state.recurrenceEnabled,
-                        onClick = { viewModel.onRecurrenceToggle(!state.recurrenceEnabled) },
-                    )
+                // The on/off toggle is create-mode only: un-recurring an existing series is a
+                // silent no-op (save() falls through to a plain task update; the series keeps
+                // generating) and deleting the series is the supported path instead. In edit
+                // mode of a recurring task, recurrence is always already on here — go straight
+                // to the rule fields below.
+                if (!state.isEdit) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(spacing.base),
+                    ) {
+                        FilterChip(
+                            label = if (state.recurrenceEnabled) "Recurring" else "No repeat",
+                            selected = state.recurrenceEnabled,
+                            onClick = { viewModel.onRecurrenceToggle(!state.recurrenceEnabled) },
+                        )
+                    }
                 }
 
                 if (state.recurrenceEnabled) {

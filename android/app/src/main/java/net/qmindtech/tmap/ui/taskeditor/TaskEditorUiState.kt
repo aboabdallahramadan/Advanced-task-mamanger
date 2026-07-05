@@ -42,6 +42,14 @@ data class TaskEditorUiState(
   val recurrenceEndDate: LocalDate? = null,
   val recurrenceRuleId: String? = null,
   val recurrenceDetached: Boolean = false,
+  /**
+   * The recurrence rule as it was loaded from the DB (built the same way [toRecurrenceDraft]
+   * would from the freshly-prefilled fields, i.e. sorted `daysOfWeek`). `null` when there was
+   * no rule to load (create-mode or a non-recurring task). Compared against the live
+   * [toRecurrenceDraft] in `save()` to decide whether the user actually changed the rule —
+   * see Fix 1 (data-loss guard around `updateRule`).
+   */
+  val recurrenceRuleLoaded: RecurrenceDraft? = null,
 )
 
 fun TaskEntity.toEditorState(

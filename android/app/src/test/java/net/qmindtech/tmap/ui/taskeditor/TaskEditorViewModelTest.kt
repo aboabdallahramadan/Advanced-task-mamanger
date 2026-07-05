@@ -152,6 +152,28 @@ class TaskEditorViewModelTest {
     assertEquals("t1", repo.updated.first().first)
   }
 
+  @Test fun `editing a recurring task's non-rule field does not call updateRule`() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1", title = "Standup", status = TaskStatus.Planned, recurrenceRuleId = "r1"))
+    val rec = FakeRecurrenceRepo()
+    val ruleDao = FakeRecurrenceRuleDao().apply {
+      put(recurrenceRuleEntity(id = "r1", frequency = "Weekly", daysOfWeek = listOf(1, 3)))
+    }
+    val vm = editVm(repo, recurrenceRepo = rec, ruleDao = ruleDao)
+
+    // Only touch a plain task field — no recurrence handler is called.
+    vm.onTitleChange("new")
+    vm.save {}
+
+    // Rule is unchanged, so updateRule must NOT fire (Fix 1: avoid tombstoning + regenerating
+    // the series on an unrelated field edit).
+    assertTrue(rec.updated.isEmpty())
+    // The plain field edit still persists via the normal task update.
+    assertEquals(1, repo.updated.size)
+    assertEquals("t1", repo.updated.first().first)
+    assertEquals("new", repo.updated.first().second.title)
+  }
+
   @Test fun `day toggle keeps at least one selected`() = runTest(testDispatcher) {
     val vm = createVm()
     vm.onFrequencyChange(RecurrenceFrequency.Weekly)

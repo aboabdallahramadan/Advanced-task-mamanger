@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.dao.RecurrenceRuleDao
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
+import net.qmindtech.tmap.data.recurrence.RecurrenceDraft
 import net.qmindtech.tmap.data.recurrence.RecurrenceEndType
 import net.qmindtech.tmap.data.recurrence.RecurrenceFrequency
 import net.qmindtech.tmap.data.repository.ProjectRepository
@@ -112,18 +113,33 @@ class TaskEditorViewModel @Inject constructor(
   private suspend fun prefillRecurrenceRule(ruleId: String?) {
     if (ruleId == null) return
     val rule = recurrenceRuleDao.getById(ruleId) ?: return
+    val frequency = runCatching { RecurrenceFrequency.valueOf(rule.frequency) }
+      .getOrDefault(RecurrenceFrequency.Daily)
+    val daysOfWeek = rule.daysOfWeek.ifEmpty { listOf(0) }
+    val endType = runCatching { RecurrenceEndType.valueOf(rule.endType) }
+      .getOrDefault(RecurrenceEndType.Never)
+    val endCount = rule.endCount ?: 10
+    val endDate = rule.endDate
     _state.update {
       it.copy(
         recurrenceEnabled = true,
         recurrenceRuleId = ruleId,
-        recurrenceFrequency = runCatching { RecurrenceFrequency.valueOf(rule.frequency) }
-          .getOrDefault(RecurrenceFrequency.Daily),
+        recurrenceFrequency = frequency,
         recurrenceInterval = rule.interval,
-        recurrenceDaysOfWeek = rule.daysOfWeek.ifEmpty { listOf(0) },
-        recurrenceEndType = runCatching { RecurrenceEndType.valueOf(rule.endType) }
-          .getOrDefault(RecurrenceEndType.Never),
-        recurrenceEndCount = rule.endCount ?: 10,
-        recurrenceEndDate = rule.endDate,
+        recurrenceDaysOfWeek = daysOfWeek,
+        recurrenceEndType = endType,
+        recurrenceEndCount = endCount,
+        recurrenceEndDate = endDate,
+        // Snapshot of the just-loaded rule, built the same way toRecurrenceDraft() would
+        // (sorted daysOfWeek) so an unmodified rule compares equal in save(). See Fix 1.
+        recurrenceRuleLoaded = RecurrenceDraft(
+          frequency = frequency,
+          interval = rule.interval,
+          daysOfWeek = daysOfWeek.sorted(),
+          endType = endType,
+          endCount = endCount,
+          endDate = endDate,
+        ),
       )
     }
   }
@@ -223,10 +239,16 @@ class TaskEditorViewModel @Inject constructor(
       } else if (id == null) {
         taskRepo.create(s.toDraft())
       } else if (s.recurrenceEnabled && s.recurrenceRuleId != null) {
-        // Existing recurring task: task fields update normally; rule changes apply to
-        // the whole series via updateRule (no per-occurrence edit dialog — out of scope).
+        // Existing recurring task: plain field edits ALWAYS go through the normal task
+        // update. updateRule tombstones + regenerates the whole series from the template,
+        // so it must only fire when the user actually changed the recurrence rule itself —
+        // otherwise a title/notes/etc. edit on one occurrence gets silently reverted by the
+        // next sync (Fix 1 data-loss guard).
         taskRepo.update(id, s.toEdit())
-        recurrenceRepo.updateRule(s.recurrenceRuleId, s.toRecurrenceDraft())
+        val liveRule = s.toRecurrenceDraft()
+        if (liveRule != s.recurrenceRuleLoaded) {
+          recurrenceRepo.updateRule(s.recurrenceRuleId, liveRule)
+        }
       } else {
         taskRepo.update(id, s.toEdit())
       }
