@@ -139,10 +139,19 @@ data class DailyPlanSyncRow(
     val deletedAt: String? = null,
 )
 
-/** Tolerated-only (spec §7.5): modeled minimally so the /sync payload deserializes cleanly. */
+/** Fully modeled (spec §7.5): ingested into the local `recurrence_rules` table on sync. */
 @Serializable
 data class RecurrenceRuleSyncRow(
     val id: String,
+    val frequency: String = "Daily",
+    val interval: Int = 1,
+    val daysOfWeek: List<Int> = emptyList(),
+    val endType: String = "Never",
+    val endCount: Int? = null,
+    val endDate: String? = null,
+    val generatedUntil: String? = null,
+    val createdAt: String = "",
+    val updatedAt: String = "",
     val changeSeq: Long,
     val deletedAt: String? = null,
 )
