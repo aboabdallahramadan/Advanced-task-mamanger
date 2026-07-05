@@ -6,6 +6,7 @@ import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.NoteEntity
 import net.qmindtech.tmap.data.local.entities.NoteGroupEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
+import net.qmindtech.tmap.data.local.entities.RecurrenceRuleEntity
 import net.qmindtech.tmap.data.local.entities.SettingEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
@@ -25,6 +26,7 @@ import net.qmindtech.tmap.data.remote.dto.NoteResponse
 import net.qmindtech.tmap.data.remote.dto.NoteSyncRow
 import net.qmindtech.tmap.data.remote.dto.ProjectResponse
 import net.qmindtech.tmap.data.remote.dto.ProjectSyncRow
+import net.qmindtech.tmap.data.remote.dto.RecurrenceRuleSyncRow
 import net.qmindtech.tmap.data.remote.dto.SettingSyncRow
 import net.qmindtech.tmap.data.remote.dto.SubtaskResponse
 import net.qmindtech.tmap.data.remote.dto.SubtaskSyncRow
@@ -297,5 +299,21 @@ object Mappers {
 
     fun DailyPlanEntity.toUpsertRequest(): UpsertDailyPlanRequest = UpsertDailyPlanRequest(
         plannedTaskIds = plannedTaskIds, plannedMinutes = plannedMinutes,
+    )
+
+    // ── Recurrence-rules ───────────────────────────────────
+    fun RecurrenceRuleSyncRow.toEntity(): RecurrenceRuleEntity = RecurrenceRuleEntity(
+        id = id,
+        frequency = frequency,
+        interval = interval,
+        daysOfWeek = daysOfWeek,
+        endType = endType,
+        endCount = endCount,
+        endDate = parseDate(endDate),
+        generatedUntil = parseDate(generatedUntil),
+        createdAt = parseInstant(createdAt)!!,
+        updatedAt = parseInstant(updatedAt)!!,
+        changeSeq = changeSeq,
+        deletedAt = parseInstant(deletedAt),
     )
 }
