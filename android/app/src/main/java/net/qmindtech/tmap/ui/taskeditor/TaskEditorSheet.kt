@@ -43,6 +43,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.recurrence.RecurrenceEndType
+import net.qmindtech.tmap.data.recurrence.RecurrenceFrequency
 import net.qmindtech.tmap.ui.components.FilterChip
 import net.qmindtech.tmap.ui.components.PrimaryButton
 import net.qmindtech.tmap.ui.components.PriorityDisplay
@@ -90,6 +92,7 @@ fun TaskEditorSheet(
     var showDueDatePicker by remember { mutableStateOf(false) }
     var showStartTimePicker by remember { mutableStateOf(false) }
     var showEndTimePicker by remember { mutableStateOf(false) }
+    var showRecurrenceEndDatePicker by remember { mutableStateOf(false) }
 
     val textFieldColors = OutlinedTextFieldDefaults.colors(
         focusedBorderColor = colors.accent,
@@ -202,6 +205,32 @@ fun TaskEditorSheet(
                     }) { Text("OK") }
                 }
             }
+        }
+    }
+
+    // ── Recurrence end-date picker dialog ─────────────────────────────────
+    if (showRecurrenceEndDatePicker) {
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = state.recurrenceEndDate
+                ?.atStartOfDay(ZoneId.of("UTC"))?.toInstant()?.toEpochMilli(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { showRecurrenceEndDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { ms ->
+                        viewModel.onEndDateChange(
+                            Instant.ofEpochMilli(ms).atZone(ZoneId.of("UTC")).toLocalDate()
+                        )
+                    }
+                    showRecurrenceEndDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRecurrenceEndDatePicker = false }) { Text("Cancel") }
+            },
+        ) {
+            DatePicker(state = datePickerState)
         }
     }
 
@@ -466,6 +495,125 @@ fun TaskEditorSheet(
                 }
             }
 
+            // ── Repeat (create path only — recurring-rule editing for an existing task is
+            // handled separately once the rule already exists) ────────────
+            if (!state.isEdit) {
+                SectionLabel(text = "Repeat", colors = colors, type = type)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalArrangement = Arrangement.spacedBy(spacing.base),
+                ) {
+                    FilterChip(
+                        label = if (state.recurrenceEnabled) "Recurring" else "No repeat",
+                        selected = state.recurrenceEnabled,
+                        onClick = { viewModel.onRecurrenceToggle(!state.recurrenceEnabled) },
+                    )
+                }
+
+                if (state.recurrenceEnabled) {
+                    // Frequency
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(spacing.base),
+                    ) {
+                        listOf(
+                            RecurrenceFrequency.Daily to "Daily",
+                            RecurrenceFrequency.Weekly to "Weekly",
+                        ).forEach { (f, chipLabel) ->
+                            FilterChip(
+                                label = chipLabel,
+                                selected = state.recurrenceFrequency == f,
+                                onClick = { viewModel.onFrequencyChange(f) },
+                            )
+                        }
+                    }
+
+                    // Interval
+                    SectionLabel(text = "Every", colors = colors, type = type)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(spacing.base),
+                    ) {
+                        val unit = if (state.recurrenceFrequency == RecurrenceFrequency.Daily) "day" else "week"
+                        (1..4).forEach { n ->
+                            FilterChip(
+                                label = if (n == 1) "1 $unit" else "$n ${unit}s",
+                                selected = state.recurrenceInterval == n,
+                                onClick = { viewModel.onIntervalChange(n) },
+                            )
+                        }
+                    }
+
+                    // Days of week (weekly only)
+                    if (state.recurrenceFrequency == RecurrenceFrequency.Weekly) {
+                        SectionLabel(text = "On days", colors = colors, type = type)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            verticalArrangement = Arrangement.spacedBy(spacing.base),
+                        ) {
+                            RECURRENCE_DAY_LABELS.forEachIndexed { idx, lbl ->
+                                FilterChip(
+                                    label = lbl,
+                                    selected = state.recurrenceDaysOfWeek.contains(idx),
+                                    onClick = { viewModel.onDaysOfWeekToggle(idx) },
+                                )
+                            }
+                        }
+                    }
+
+                    // End condition
+                    SectionLabel(text = "Ends", colors = colors, type = type)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                        verticalArrangement = Arrangement.spacedBy(spacing.base),
+                    ) {
+                        listOf(
+                            RecurrenceEndType.Never to "Never",
+                            RecurrenceEndType.Count to "After N",
+                            RecurrenceEndType.Date to "On date",
+                        ).forEach { (t, chipLabel) ->
+                            FilterChip(
+                                label = chipLabel,
+                                selected = state.recurrenceEndType == t,
+                                onClick = { viewModel.onEndTypeChange(t) },
+                            )
+                        }
+                    }
+
+                    when (state.recurrenceEndType) {
+                        RecurrenceEndType.Count -> FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                            verticalArrangement = Arrangement.spacedBy(spacing.base),
+                        ) {
+                            listOf(5, 10, 20, 30, 50).forEach { n ->
+                                FilterChip(
+                                    label = "$n times",
+                                    selected = state.recurrenceEndCount == n,
+                                    onClick = { viewModel.onEndCountChange(n) },
+                                )
+                            }
+                        }
+                        RecurrenceEndType.Date -> {
+                            FilterChip(
+                                label = state.recurrenceEndDate?.format(DATE_FORMATTER) ?: "Pick date",
+                                selected = state.recurrenceEndDate != null,
+                                onClick = { showRecurrenceEndDatePicker = true },
+                                modifier = Modifier.semantics {
+                                    contentDescription = "Pick recurrence end date, current value: ${state.recurrenceEndDate?.format(DATE_FORMATTER) ?: "none"}"
+                                },
+                            )
+                        }
+                        RecurrenceEndType.Never -> Unit
+                    }
+                }
+            }
+
             // ── Subtasks (edit mode only) ─────────────────────────────────
             if (state.isEdit) {
                 SectionLabel(text = "Subtasks", colors = colors, type = type)
@@ -567,6 +715,9 @@ fun TaskEditorSheet(
 
 private val DATE_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy")
 private val TIME_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
+
+// index 0 = Sunday, matching TaskEditorUiState.recurrenceDaysOfWeek's convention.
+private val RECURRENCE_DAY_LABELS: List<String> = listOf("S", "M", "T", "W", "T", "F", "S")
 
 // ── Local helper ──────────────────────────────────────────────────────────────
 
