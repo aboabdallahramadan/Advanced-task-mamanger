@@ -5,8 +5,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.local.dao.ProjectProgress
+import net.qmindtech.tmap.data.local.dao.RecurrenceRuleDao
 import net.qmindtech.tmap.data.local.entities.FocusSessionEntity
 import net.qmindtech.tmap.data.local.entities.ProjectEntity
+import net.qmindtech.tmap.data.local.entities.RecurrenceRuleEntity
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.local.entities.TaskEntity
 import net.qmindtech.tmap.data.recurrence.RecurrenceDraft
@@ -52,6 +54,24 @@ fun fakeTask(
   recurrenceRuleId = recurrenceRuleId, isRecurrenceTemplate = false, recurrenceDetached = false,
   recurrenceOriginalDate = null, completedAt = completedAt, createdAt = createdAt,
   updatedAt = updatedAt, changeSeq = changeSeq,
+)
+
+fun recurrenceRuleEntity(
+  id: String,
+  frequency: String = "Daily",
+  interval: Int = 1,
+  daysOfWeek: List<Int> = emptyList(),
+  endType: String = "Never",
+  endCount: Int? = null,
+  endDate: LocalDate? = null,
+  generatedUntil: LocalDate? = null,
+  createdAt: Instant = EPOCH,
+  updatedAt: Instant = EPOCH,
+  changeSeq: Long = 0,
+): RecurrenceRuleEntity = RecurrenceRuleEntity(
+  id = id, frequency = frequency, interval = interval, daysOfWeek = daysOfWeek,
+  endType = endType, endCount = endCount, endDate = endDate, generatedUntil = generatedUntil,
+  createdAt = createdAt, updatedAt = updatedAt, changeSeq = changeSeq, deletedAt = null,
 )
 
 fun fakeProject(
@@ -156,6 +176,36 @@ class FakeRecurrenceRepo : RecurrenceRepository {
   override suspend fun updateRule(ruleId: String, rule: RecurrenceDraft) { updated += ruleId to rule }
   override suspend fun deleteAll(ruleId: String) { deletedAll += ruleId }
   override suspend fun deleteFuture(ruleId: String, fromDate: LocalDate) { deletedFuture += ruleId to fromDate }
+}
+
+/** Map-backed fake for [RecurrenceRuleDao] — no Room DB required. */
+class FakeRecurrenceRuleDao : RecurrenceRuleDao {
+  private val store = mutableMapOf<String, RecurrenceRuleEntity>()
+  private val perIdFlows = mutableMapOf<String, MutableStateFlow<RecurrenceRuleEntity?>>()
+  private val allFlow = MutableStateFlow<List<RecurrenceRuleEntity>>(emptyList())
+
+  /** Seeds (or replaces) a rule row, updating any observers. */
+  fun put(rule: RecurrenceRuleEntity) {
+    store[rule.id] = rule
+    perIdFlows.getOrPut(rule.id) { MutableStateFlow(null) }.value = rule
+    allFlow.value = store.values.toList()
+  }
+
+  override fun observeAll(): Flow<List<RecurrenceRuleEntity>> = allFlow
+  override fun observeById(id: String): Flow<RecurrenceRuleEntity?> =
+    perIdFlows.getOrPut(id) { MutableStateFlow(store[id]) }
+  override suspend fun getById(id: String): RecurrenceRuleEntity? = store[id]
+  override suspend fun upsertAll(rows: List<RecurrenceRuleEntity>) { rows.forEach { put(it) } }
+  override suspend fun deleteById(id: String) {
+    store.remove(id)
+    perIdFlows[id]?.value = null
+    allFlow.value = store.values.toList()
+  }
+  override suspend fun clear() {
+    store.clear()
+    perIdFlows.values.forEach { it.value = null }
+    allFlow.value = emptyList()
+  }
 }
 
 class FakeProjectRepo(

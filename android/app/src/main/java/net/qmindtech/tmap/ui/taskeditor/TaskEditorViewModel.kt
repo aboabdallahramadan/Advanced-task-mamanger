@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.qmindtech.tmap.data.local.TaskStatus
+import net.qmindtech.tmap.data.local.dao.RecurrenceRuleDao
 import net.qmindtech.tmap.data.local.entities.SubtaskEntity
 import net.qmindtech.tmap.data.recurrence.RecurrenceEndType
 import net.qmindtech.tmap.data.recurrence.RecurrenceFrequency
@@ -33,6 +34,7 @@ class TaskEditorViewModel @Inject constructor(
   private val subtaskRepo: SubtaskRepository,
   private val projectRepo: ProjectRepository,
   private val recurrenceRepo: RecurrenceRepository,
+  private val recurrenceRuleDao: RecurrenceRuleDao,
   private val clock: Clock,
   savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -89,6 +91,7 @@ class TaskEditorViewModel @Inject constructor(
         }.collect { (task, subs, projects) ->
           if (task != null) {
             _state.value = task.toEditorState(subs, projects)
+            prefillRecurrenceRule(task.recurrenceRuleId)
           } else {
             _state.update { it.copy(loading = false, projects = projects) }
           }
@@ -98,6 +101,30 @@ class TaskEditorViewModel @Inject constructor(
       observeJob = viewModelScope.launch {
         projectRepo.observeAll().collect { projects -> _state.update { it.copy(projects = projects) } }
       }
+    }
+  }
+
+  /**
+   * When editing a task that belongs to a recurring series, prefill the recurrence-picker
+   * fields from the locally-synced [net.qmindtech.tmap.data.local.entities.RecurrenceRuleEntity]
+   * (no network fetch — Task 7 sync already keeps rules in the local `recurrence_rules` table).
+   */
+  private suspend fun prefillRecurrenceRule(ruleId: String?) {
+    if (ruleId == null) return
+    val rule = recurrenceRuleDao.getById(ruleId) ?: return
+    _state.update {
+      it.copy(
+        recurrenceEnabled = true,
+        recurrenceRuleId = ruleId,
+        recurrenceFrequency = runCatching { RecurrenceFrequency.valueOf(rule.frequency) }
+          .getOrDefault(RecurrenceFrequency.Daily),
+        recurrenceInterval = rule.interval,
+        recurrenceDaysOfWeek = rule.daysOfWeek.ifEmpty { listOf(0) },
+        recurrenceEndType = runCatching { RecurrenceEndType.valueOf(rule.endType) }
+          .getOrDefault(RecurrenceEndType.Never),
+        recurrenceEndCount = rule.endCount ?: 10,
+        recurrenceEndDate = rule.endDate,
+      )
     }
   }
 
@@ -195,6 +222,11 @@ class TaskEditorViewModel @Inject constructor(
         recurrenceRepo.createRecurring(s.toDraft(), s.toRecurrenceDraft())
       } else if (id == null) {
         taskRepo.create(s.toDraft())
+      } else if (s.recurrenceEnabled && s.recurrenceRuleId != null) {
+        // Existing recurring task: task fields update normally; rule changes apply to
+        // the whole series via updateRule (no per-occurrence edit dialog — out of scope).
+        taskRepo.update(id, s.toEdit())
+        recurrenceRepo.updateRule(s.recurrenceRuleId, s.toRecurrenceDraft())
       } else {
         taskRepo.update(id, s.toEdit())
       }

@@ -495,9 +495,11 @@ fun TaskEditorSheet(
                 }
             }
 
-            // ── Repeat (create path only — recurring-rule editing for an existing task is
-            // handled separately once the rule already exists) ────────────
-            if (!state.isEdit) {
+            // ── Repeat — shown when creating a task, and when editing a task that is
+            // already part of a recurring series (rule edits route through updateRule).
+            // Converting an existing non-recurring task into one is out of scope, so the
+            // section stays hidden for a plain existing task.
+            if (!state.isEdit || state.recurrenceRuleId != null) {
                 SectionLabel(text = "Repeat", colors = colors, type = type)
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),

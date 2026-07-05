@@ -11,12 +11,14 @@ import net.qmindtech.tmap.data.local.TaskStatus
 import net.qmindtech.tmap.data.recurrence.RecurrenceFrequency
 import net.qmindtech.tmap.testutil.FakeProjectRepo
 import net.qmindtech.tmap.testutil.FakeRecurrenceRepo
+import net.qmindtech.tmap.testutil.FakeRecurrenceRuleDao
 import net.qmindtech.tmap.testutil.FakeSubtaskRepo
 import net.qmindtech.tmap.testutil.FakeTaskRepo
 import net.qmindtech.tmap.testutil.FixedClock
 import net.qmindtech.tmap.testutil.fakeProject
 import net.qmindtech.tmap.testutil.fakeSubtask
 import net.qmindtech.tmap.testutil.fakeTask
+import net.qmindtech.tmap.testutil.recurrenceRuleEntity
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -41,15 +43,17 @@ class TaskEditorViewModelTest {
     subs: FakeSubtaskRepo = FakeSubtaskRepo(),
     id: String = "t1",
     recurrenceRepo: FakeRecurrenceRepo = FakeRecurrenceRepo(),
+    ruleDao: FakeRecurrenceRuleDao = FakeRecurrenceRuleDao(),
   ): TaskEditorViewModel =
-    TaskEditorViewModel(repo, subs, FakeProjectRepo(), recurrenceRepo, clock(), SavedStateHandle(mapOf("taskId" to id)))
+    TaskEditorViewModel(repo, subs, FakeProjectRepo(), recurrenceRepo, ruleDao, clock(), SavedStateHandle(mapOf("taskId" to id)))
 
   private fun createVm(
     repo: FakeTaskRepo = FakeTaskRepo(),
     subs: FakeSubtaskRepo = FakeSubtaskRepo(),
     recurrenceRepo: FakeRecurrenceRepo = FakeRecurrenceRepo(),
+    ruleDao: FakeRecurrenceRuleDao = FakeRecurrenceRuleDao(),
   ): TaskEditorViewModel =
-    TaskEditorViewModel(repo, subs, FakeProjectRepo(), recurrenceRepo, clock(), SavedStateHandle(mapOf("taskId" to null)))
+    TaskEditorViewModel(repo, subs, FakeProjectRepo(), recurrenceRepo, ruleDao, clock(), SavedStateHandle(mapOf("taskId" to null)))
 
   @Test fun toEditorState_maps_entity_fields() {
     val t = fakeTask(
@@ -120,6 +124,32 @@ class TaskEditorViewModelTest {
 
     assertEquals(1, rec.created.size)
     assertEquals(RecurrenceFrequency.Weekly, rec.created.first().rule.frequency)
+  }
+
+  @Test fun `editing a recurring task prefills rule and saves via updateRule`() = runTest(testDispatcher) {
+    val repo = FakeTaskRepo()
+    repo.setSingle(fakeTask(id = "t1", title = "Standup", status = TaskStatus.Planned, recurrenceRuleId = "r1"))
+    val rec = FakeRecurrenceRepo()
+    val ruleDao = FakeRecurrenceRuleDao().apply {
+      put(recurrenceRuleEntity(id = "r1", frequency = "Weekly", daysOfWeek = listOf(1, 3)))
+    }
+    val vm = editVm(repo, recurrenceRepo = rec, ruleDao = ruleDao)
+
+    // prefilled
+    assertEquals(true, vm.uiState.value.recurrenceEnabled)
+    assertEquals("r1", vm.uiState.value.recurrenceRuleId)
+    assertEquals(RecurrenceFrequency.Weekly, vm.uiState.value.recurrenceFrequency)
+    assertEquals(listOf(1, 3), vm.uiState.value.recurrenceDaysOfWeek)
+
+    vm.onIntervalChange(3)
+    vm.save {}
+
+    assertEquals(1, rec.updated.size)
+    assertEquals("r1", rec.updated.first().first)
+    assertEquals(3, rec.updated.first().second.interval)
+    // title/notes still flow through the normal task update
+    assertEquals(1, repo.updated.size)
+    assertEquals("t1", repo.updated.first().first)
   }
 
   @Test fun `day toggle keeps at least one selected`() = runTest(testDispatcher) {
@@ -287,7 +317,7 @@ class TaskEditorViewModelTest {
       repo.setForId(fakeTask(id = "b", title = "Task B"))
 
       val vm = TaskEditorViewModel(
-        repo, FakeSubtaskRepo(), FakeProjectRepo(), FakeRecurrenceRepo(), clock(),
+        repo, FakeSubtaskRepo(), FakeProjectRepo(), FakeRecurrenceRepo(), FakeRecurrenceRuleDao(), clock(),
         SavedStateHandle(mapOf("taskId" to null)),
       )
 
